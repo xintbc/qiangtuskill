@@ -1,0 +1,17 @@
+# 运行时数据 / 编译产物
+多文件版/客户端/配置/
+多文件版/客户端/游戏/
+多文件版/客户端/*.exe
+多文件版/客户端/*.o
+多文件版/客户端/启动日志.txt
+多文件版/手机版安卓/app/src/main/assets/
+多文件版/手机版安卓/output/
+多文件版/手机版安卓/*.apk
+多文件版/手机版安卓/*.idsig
+*.keystore
+local.properties
+
+# 系统杂物
+.DS_Store
+Thumbs.db
+desktop.ini

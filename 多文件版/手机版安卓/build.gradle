@@ -1,0 +1,6 @@
+// 手机版（Android）构建脚本
+// ⚠️ 本机没有 Android SDK，这个工程**还没编译验证过**。
+//    装好 Android SDK（或 Android Studio）后，在仓库根目录执行 gradlew assembleDebug 即可出包。
+plugins {
+    id 'com.android.application' version '8.1.4' apply false
+}

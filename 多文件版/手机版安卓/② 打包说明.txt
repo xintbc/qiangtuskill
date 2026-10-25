@@ -1,0 +1,42 @@
+════════════════════════════════════════════════════════
+  枪战突击 · 手机版（Android）说明
+════════════════════════════════════════════════════════
+
+现在是什么状态
+──────────────
+  工程骨架已经写好，但**还没编译过** —— 这台电脑只有 JDK，没有 Android SDK。
+  装好 Android SDK（或直接装 Android Studio）就能出 apk。
+
+它是什么
+────────
+  一个只服务这款游戏的 WebView 壳，和电脑版客户端是同一个思路：
+    · 游戏的整个「多文件版」被打进 apk 的 assets，**不联网也能玩**
+    · 强制横屏（sensorLandscape，左右都横，随重力翻）
+    · 全屏沉浸：状态栏、导航栏全部隐藏
+    · 不允许跳到任何外部网页（只认自己的虚拟站点）
+    · 多人：主菜单那条「连接服务器」照旧，填开服电脑的 IP:8765
+
+怎么出包
+────────
+  1) 双击  ① 准备资源（复制游戏本体）.bat
+       把 index.html / js / lib / libs / mode 复制进 app/src/main/assets/
+  2) 装 Android Studio（自带 SDK），打开本文件夹
+  3) 连手机或开模拟器，点 Run；或者命令行：
+           gradlew assembleDebug
+     apk 在 app/build/outputs/apk/debug/
+
+技术要点（改代码时别踩）
+────────────────────────
+  · 别用 file:// 加载：file:// 下 fetch/XHR 会被同源策略挡掉，模组加载会失败。
+    这里用 WebViewAssetLoader 把 assets 映射成
+        https://appassets.androidplatform.net/assets/index.html
+    在浏览器眼里是个正常安全源，WebGL / ES6 / fetch 都照常。
+  · minSdk 24（Android 7.0）起：再低的 WebView 跑 WebGL2 不稳。
+  · 联机是 ws:// 明文，所以开了 usesCleartextTraffic + MIXED_CONTENT_ALWAYS_ALLOW。
+  · 想要桌面图标，把 ic_launcher 放进 app/src/main/res/mipmap-*/（现在没放，
+    第一次编译前补一个 192x192 的 png 就行，或者让 Android Studio 自动生成）。
+
+和电脑版的关系
+──────────────
+  · 同一份游戏本体、同一个服务端，手机和电脑可以进同一个房间。
+  · 手机版的界面：游戏本身已经做了触屏适配（摇杆、技能键），不用额外改。

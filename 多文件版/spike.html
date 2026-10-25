@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh" data-page-node-id="tG1qgkB5MafGnLsRPrflsZ">
+<head data-page-node-id="hh1Dj2uhacAc1EgaNotURj">
+<meta charset="UTF-8" data-page-node-id="WXZ0S6LCzHavIBp00wUyxf">
+<title>3D枪战-终极建模版</title>
+<link rel="icon" type="image/png" href="图标.png">
+<link rel="shortcut icon" href="图标.ico">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+/* 关掉浏览器手势：下拉刷新 / 触控板与触摸屏的滑动返回 / 边到边橡皮筋回弹 */
+html{overscroll-behavior:none;height:100%}
+body{overflow:hidden;background:#0a0a15;font-family:'Segoe UI',Arial,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline:none;cursor:crosshair;overscroll-behavior:none}
+canvas{display:block;position:fixed;top:0;left:0;z-index:0;touch-action:none;-webkit-user-drag:none}
+/* overflow 很关键：小屏 / 横屏手机上菜单比屏幕高，不能滚就会把「开始游戏」等按钮顶到屏幕外 */
+#blocker,#wave-shop,#go{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:100;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#blocker{background:rgba(5,5,15,.95)}
+#wave-shop{background:rgba(5,5,15,.85);z-index:80;display:none;cursor:default}
+#weapon-select{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(6,8,18,.92);z-index:110;display:none;cursor:default;align-items:flex-start;justify-content:center;overflow-y:auto;}
+#weapon-select .wsel-inner{width:94%;max-width:900px;margin:auto;padding:26px 0 44px;color:#fff;}
+#weapon-select h2{text-align:center;font-size:30px;margin-bottom:4px;color:#fff;text-shadow:0 0 18px rgba(120,200,255,.5)}
+#weapon-select .wsel-sub{text-align:center;color:#9ab;margin-bottom:20px;font-size:14px}
+#wsel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.wsel-card{background:linear-gradient(180deg,rgba(24,28,44,.96),rgba(12,15,24,.98));border:2px solid rgba(120,160,220,.28);border-radius:14px;padding:16px;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;position:relative;overflow:hidden}
+.wsel-card:hover{transform:translateY(-3px);border-color:rgba(120,200,255,.7);box-shadow:0 8px 26px rgba(0,0,0,.5)}
+.wsel-card.cur{border-color:#ffd23c;box-shadow:0 0 0 2px rgba(255,210,60,.35),0 8px 26px rgba(0,0,0,.5)}
+.wsel-card .wsel-ico{font-size:42px;text-align:center;margin-bottom:8px}
+.wsel-card .wsel-name{font-size:19px;font-weight:bold;text-align:center;margin-bottom:10px}
+.wsel-card .wsel-stats{font-size:13px;color:#bcd;line-height:1.8}
+.wsel-card .wsel-stats b{color:#fff;font-weight:600}
+.wsel-card .wsel-tag{position:absolute;top:8px;right:8px;font-size:11px;color:#0a0;background:rgba(0,255,140,.15);border:1px solid rgba(0,255,140,.4);border-radius:6px;padding:1px 6px}
+.wsel-card.melee .wsel-tag{color:#f80;background:rgba(255,140,0,.15);border-color:rgba(255,140,0,.4)}
+.wsel-card.spike{border-color:rgba(255,140,40,.45)}
+.wsel-card.spike:hover{border-color:rgba(255,170,60,.9)}
+.wsel-card.spike.cur{border-color:#ff9a3c;box-shadow:0 0 0 2px rgba(255,150,50,.35),0 8px 26px rgba(0,0,0,.5)}
+.wsel-card.spike .wsel-tag{color:#fd6;background:rgba(255,140,0,.15);border-color:rgba(255,140,0,.4)}
+.wsel-close{display:block;margin:24px auto 0;padding:11px 40px;font-size:16px;color:#fff;background:linear-gradient(135deg,#3a6,#282);border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.wsel-close:hover{transform:scale(1.04)}
+#go{background:rgba(0,0,0,.92);z-index:200;display:none}
+#menu{text-align:center;color:#fff;max-width:700px;width:92%;margin:auto;max-height:100%;padding:10px 0}
+#menu h1{font-size:38px;color:#f44;text-shadow:0 0 30px #f00;margin-bottom:4px}
+#menu .subtitle{font-size:13px;color:#666;margin-bottom:8px}
+.tabs{display:flex;gap:4px;margin-bottom:10px;justify-content:center}
+.tab{padding:10px 26px;background:rgba(255,255,255,.05);color:#8a93a3;border:1px solid rgba(255,255,255,.1);border-radius:6px 6px 0 0;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:1px;transition:.2s}
+.tab:hover{background:rgba(255,255,255,.1);color:#c9d3e2}
+.tab.active{background:linear-gradient(180deg,rgba(255,70,85,.20),rgba(255,70,85,.06));color:#ff4655;border-color:#ff4655;border-bottom-color:transparent}
+.panel{display:none;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:0 0 12px 12px;padding:16px;text-align:left}
+.panel.active{display:block}
+/* 【batch175】主菜单一屏放得下：内容区自己滚，**开始/多人这些按钮永远露在外面**，
+   不用每次进来都往下翻半天找按钮。 */
+#menu{max-height:96vh;overflow-y:auto;overscroll-behavior:contain}   /* 兜底：窗口极矮时整个菜单还能滚，不会把按钮裁掉 */
+.panel.active{max-height:min(48vh,460px);overflow-y:auto;overscroll-behavior:contain}
+#menuHomeBtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+#menuHomeBtns .start-btn,#menuHomeBtns #netBtn{margin-top:0;padding:11px 18px;font-size:15px;letter-spacing:1px;flex:1 1 160px;max-width:250px}
+#menuSetBtn{margin:8px 5px 0 !important;padding:8px 16px !important;font-size:13px !important}
+#relockBtn{margin:8px 5px 0 !important;padding:8px 16px !important;font-size:13px !important}
+/* ⚠️ 别给 #relockBtn 加 display !important —— 它默认 display:none，由 JS 在「指针没锁上」时才显示；
+   强行 !important 会连 JS 的隐藏一起盖掉，按钮就永远挂在那儿了（batch175 踩过）。 */
+#menuTips{margin:0 auto 6px;max-width:640px;text-align:left}
+#menuTips summary{cursor:pointer;color:#8fd6ff;font-size:12px;list-style:none}
+#menuTips summary::-webkit-details-marker{display:none}
+#menuTips .tip-body{font-size:12px;color:#fa0;line-height:1.6;margin-top:4px}
+.upgrade-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.upgrade-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;transition:.2s}
+.upgrade-card:hover{background:rgba(255,255,255,.07)}
+.upgrade-card.maxed{border-color:rgba(255,204,0,.3);background:rgba(255,204,0,.05)}
+.upgrade-icon{font-size:28px;margin-bottom:8px}
+.upgrade-name{font-size:15px;font-weight:bold;color:#eee;margin-bottom:4px}
+.upgrade-desc{font-size:12px;color:#888;margin-bottom:10px}
+.upgrade-level{display:flex;gap:4px;margin-bottom:10px}
+.level-pip{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.1)}
+.level-pip.filled{background:linear-gradient(90deg,#f44,#f66)}
+.level-pip.filled.maxed{background:linear-gradient(90deg,#fc0,#fd0)}
+.upgrade-btn{width:100%;padding:8px;border:none;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;transition:.2s;color:#fff}
+.upgrade-btn.can-buy{background:linear-gradient(135deg,#f44,#c00)}
+.upgrade-btn.can-buy:hover{transform:scale(1.03)}
+.upgrade-btn.locked{background:rgba(255,255,255,.08);color:#555;cursor:not-allowed}
+.upgrade-btn.max-level{background:linear-gradient(135deg,#fc0,#da0);color:#000;cursor:default}
+.gold-display{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px;font-size:22px;color:#fc0;font-weight:bold}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.info-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px}
+/* 【batch124 世界观】阵营小标 / 选人分组标题 / 本季剧情卡 */
+.vl-fac{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,255,255,.10);vertical-align:middle}
+.vl-group{display:flex;align-items:center;gap:8px;margin:7px 2px 1px;font:800 11px/1.6 system-ui;letter-spacing:1px}
+.vl-group::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.12)}
+.vl-dfac{font-size:11px;font-weight:700;letter-spacing:1px;margin-top:3px;color:#8ea3c0}
+.info-card.story{grid-column:1 / -1;border-color:rgba(255,200,110,.42);
+  background:linear-gradient(180deg,rgba(255,200,110,.08),rgba(255,255,255,.03))}
+.info-card.story h3{color:#ffd75e}
+.info-card.story .fac{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.info-card.story .fac>div{flex:1 1 210px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.7;color:#cfe0f2}
+.info-card.story .fac b{color:#fff}
+.info-card h3{font-size:14px;color:#f44;margin-bottom:8px}
+.info-card p{font-size:12px;color:#aaa;line-height:1.6}
+/* ==================== 特工 / 地图选择（瓦罗兰特风，batch117）====================
+   要点：深色底 + 强调色细分割线；标题大写 + 大字距；左边一列特工（色条+头像+名字+定位+技能图标），
+   右边一大块详情（主色径向渐变的"立绘位" + 巨型图标 + 名字水印 + ✓已选择角标，下面 3 条技能）。
+   全部用 CSS 画，不引外部图片（单文件、离线可用）。强调色 #ff4655＝瓦罗兰特的标志红。
+   【注意】.hero-card 的 class 必须**原样**保留（t_hero.js 会数 `class="hero-card"` 恰好 4 个），
+   所以"选中"靠内联 box-shadow + 卡片里的角标来表示，不能靠加 class。 */
+.vl-panel{background:linear-gradient(180deg,rgba(13,16,26,.94),rgba(7,9,15,.97)) !important;
+  border:1px solid rgba(255,70,85,.30) !important;border-radius:0 0 12px 12px !important}
+.vl-head{display:flex;align-items:baseline;gap:10px;padding:0 2px 9px;border-bottom:2px solid rgba(255,70,85,.55);margin-bottom:11px}
+.vl-title{font-size:19px;font-weight:800;color:#fff;letter-spacing:3px}
+.vl-sub{font-size:10px;font-weight:700;color:#ff4655;letter-spacing:3px;opacity:.9}
+.vl-note{font-size:11px;color:#93a3ba;line-height:1.6;margin-bottom:11px;padding-left:8px;border-left:3px solid rgba(255,70,85,.5)}
+.vl-note b{color:#ffd166}
+/* ---- 特工：左列 + 右详情 ---- */
+.vl-hero{display:grid;grid-template-columns:190px 1fr;gap:14px;align-items:start}
+.vl-list{display:flex;flex-direction:column;gap:7px;
+  /* 【batch180】角色一多（尤其是装了模组角色）或名字一长，列表就撑得比面板还高，
+     超出可视区后**后面的角色直接看不见**。限高 + 自带滚动，保证再多角色也都能翻到。 */
+  max-height:min(56vh,520px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
+.hero-card{--c:#8ea3c0;position:relative;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:center;
+  background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:2px solid rgba(255,255,255,.10);
+  border-left:5px solid var(--c);border-radius:4px 10px 10px 4px;padding:8px 9px;cursor:pointer;transition:.16s;text-align:left}
+.hero-card:hover{background:linear-gradient(90deg,rgba(255,255,255,.11),rgba(255,255,255,.03));transform:translateX(2px)}
+.hero-card .vl-face{grid-row:1 / span 2;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;border-radius:50%;background:rgba(0,0,0,.38);border:1px solid var(--c)}
+.hero-card .vl-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:1px;
+  /* 【batch180】名字 + 后面内联挂的「阵营 / 🔒锁定 / 🧩模组」标签会把卡片撑成两三行
+     （🧩 模组原来压根没有样式，直接继承 14px 粗体，特别占宽）→ 列表更高、后面的角色被挤出可视区。
+     改成弹性行：**名字自己单行省略**，三个标签 flex:none 永不压缩，长名收起来（完整名在右侧详情看）。 */
+  display:flex;align-items:center;min-width:0}
+.hero-card .vl-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-card .vl-fac,.hero-card .vl-lock,.hero-card .vl-mod{flex:none;white-space:nowrap}
+.hero-card .vl-mod{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  color:#9ad8ff;border:1px solid rgba(120,200,255,.45);background:rgba(120,200,255,.12)}
+.hero-card .vl-role{font-size:10px;font-weight:700;color:var(--c);letter-spacing:1px}
+.hero-card .vl-keys{grid-column:1 / span 2;display:flex;gap:4px;margin-top:4px}
+.hero-card .hs{width:22px;height:20px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;border-radius:4px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14)}
+.hero-card .hd{grid-column:1 / span 2;margin-top:4px;font-size:10px;line-height:1.4;color:#8ea3c0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 【batch171】熟练度条（英雄卡内） */
+.hero-card .vl-xp{grid-column:1 / span 2;margin-top:5px}
+.hero-card .vl-xplv{font-size:10px;font-weight:700;color:#9ab;letter-spacing:.5px}
+.hero-card .vl-sptag{margin-left:6px;font-size:10px;font-weight:800;color:#ffd166;border:1px solid rgba(255,209,102,.5);
+  border-radius:4px;padding:0 5px;background:rgba(255,209,102,.12)}
+.hero-card .vl-xpbar{margin-top:3px;height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden}
+.hero-card .vl-xpbar i{display:block;height:100%;background:#49b6ff;border-radius:3px;transition:width .2s}
+/* 【batch171】SP 切换盒（详情区） */
+.vl-spbox{margin-top:10px;padding:9px 11px;border-radius:8px;border:1px dashed rgba(255,209,102,.45);background:rgba(255,209,102,.06)}
+.vl-spbox.on{border-style:solid;background:rgba(255,209,102,.12)}
+.vl-sptitle{font-size:13px;font-weight:800;color:#ffd166;letter-spacing:1px}
+.vl-spdesc{font-size:11px;color:#c9d3e2;line-height:1.5;margin:4px 0 8px}
+.vl-spbtn{display:block;width:100%;padding:8px;font-size:13px;font-weight:800;color:#10131c;cursor:pointer;
+  background:linear-gradient(135deg,#ffd166,#ffb454);border:none;border-radius:7px;letter-spacing:1px}
+.vl-spbtn:hover{filter:brightness(1.08)}
+.vl-spflag{font-size:11px;font-weight:800;color:#ffd166;border:1px solid rgba(255,209,102,.55);border-radius:4px;padding:1px 6px;vertical-align:2px}
+.vl-detail{position:relative;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px}
+.vl-big{position:relative;height:104px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.12);
+  background:radial-gradient(circle at 24% 20%,var(--c),rgba(8,10,18,.97) 66%)}
+.vl-bigicon{position:absolute;left:20px;top:50%;transform:translateY(-50%);font-size:50px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.65))}
+.vl-watermark{position:absolute;right:12px;bottom:-8px;font-size:42px;font-weight:900;letter-spacing:5px;color:rgba(255,255,255,.10);white-space:nowrap}
+.vl-sel{position:absolute;right:8px;top:8px;font-size:11px;font-weight:700;color:#ff4655;border:1px solid rgba(255,70,85,.75);
+  border-radius:4px;padding:2px 7px;background:rgba(255,70,85,.14)}
+.vl-dname{font-size:17px;font-weight:800;color:#fff;letter-spacing:2px;margin:10px 0 2px}
+.vl-drole{font-size:11px;font-weight:700;color:var(--c);letter-spacing:2px}
+.vl-sk{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)}
+.vl-skico{grid-row:1 / span 2;position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;border-radius:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15)}
+.vl-skico b{position:absolute;right:-4px;bottom:-4px;padding:0 3px;font-size:9px;color:#fff;background:#ff4655;border-radius:3px}
+.vl-skname{font-size:13px;font-weight:700;color:#fff}
+.vl-skcd{margin-left:6px;font-size:10px;font-weight:400;color:#7fd6ff}
+.vl-skdesc{font-size:11px;color:#a9b6cc;line-height:1.5}
+.vl-passive{margin-top:9px;padding:7px 9px;border-radius:7px;background:rgba(255,70,85,.09);
+  border:1px solid rgba(255,70,85,.30);font-size:11px;color:#ffd7da;line-height:1.55}
+/* ---- 地图：一条一条横着排 ---- */
+.vl-maps{display:flex;flex-direction:column;gap:10px}
+.map-card{--c:#6ea8ff;position:relative;display:grid;grid-template-columns:118px 1fr;gap:12px;
+  background:rgba(255,255,255,.035);border:2px solid rgba(255,255,255,.10);border-radius:8px;padding:9px;
+  transition:.16s;cursor:pointer;text-align:left}
+.map-card:hover{background:rgba(255,255,255,.075);transform:translateX(2px)}
+.map-card.on{border-color:#ff4655;box-shadow:inset 0 0 0 1px rgba(255,70,85,.45)}
+.map-card .vl-thumb{display:flex;align-items:center;justify-content:center;font-size:36px;border-radius:6px;
+  border:1px solid rgba(255,255,255,.12);background:radial-gradient(circle at 50% 40%,var(--c),rgba(7,9,15,.96) 72%)}
+.map-card .vl-mtop{display:flex;align-items:center}
+.map-card .vl-mname{font-size:16px;font-weight:800;color:#fff;letter-spacing:2px}
+.map-card .vl-mtag{margin-left:8px;padding:1px 6px;font-size:10px;font-weight:700;color:#ff4655;
+  border:1px solid rgba(255,70,85,.75);border-radius:4px;background:rgba(255,70,85,.14)}
+.map-card .md{margin-top:5px;font-size:11px;color:#a9b6cc;line-height:1.55}
+.map-card .mc{margin-top:5px;font-size:11px;color:#7fd6ff}
+#skillHud{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:220;display:none;align-items:flex-end;gap:8px;padding:7px 12px;border-radius:12px;background:rgba(16,18,28,.72);border:2px solid rgba(255,255,255,.18);color:#e8eefc;font-size:12px;pointer-events:none}
+#skillHud .skSlot{display:flex;flex-direction:column;align-items:center;gap:2px;width:82px;padding:4px 2px;border-radius:9px;opacity:.55;transition:.15s}
+#skillHud .skSlot.ready{opacity:1;box-shadow:0 0 10px rgba(123,255,168,.30)}
+#skillHud .skSlot .skIcon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:bold}
+#skillHud .skSlot .skName{font-size:10px;color:#cfd8ea;white-space:nowrap}
+#skillHud .skSlot .skKey{font-size:10px;color:#8ea3c0}
+#skillHud .skSlot .skBarWrap{width:66px;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
+#skillHud .skSlot .skBar{height:100%;width:0}
+#btnSkill{right:214px;bottom:152px;width:86px;height:54px;background:rgba(150,90,220,.62);}
+#btnSkill2{right:214px;bottom:216px;width:86px;height:54px;background:rgba(150,90,220,.62);}
+#btnSkill3{right:214px;bottom:280px;width:86px;height:54px;background:rgba(150,90,220,.62);}
+
+.start-btn{margin-top:24px;padding:16px 60px;font-size:24px;font-weight:bold;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:10px;cursor:pointer;transition:.3s;letter-spacing:2px}
+.start-btn:hover{transform:scale(1.05)}
+#hud{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none !important;z-index:50;display:none}
+#crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.7)}
+#crosshair::before{width:2px;height:100%;left:50%;transform:translateX(-50%)}
+#crosshair::after{width:100%;height:2px;top:50%;transform:translateY(-50%)}
+.dot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:#f44}
+#hp-wrap{position:absolute;bottom:30px;left:30px;width:220px;height:18px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.15);border-radius:9px;overflow:hidden}
+#hp-bar{height:100%;width:100%;background:linear-gradient(90deg,#4f4,#6f6);transition:width .2s;border-radius:9px}
+#hp-text{position:absolute;bottom:52px;left:30px;color:#fff;font-size:13px;font-weight:bold;text-shadow:0 0 4px #000}
+#gold-hud{position:absolute;bottom:30px;left:270px;color:#fc0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #000}
+#score{position:absolute;top:16px;right:24px;color:#fff;font-size:22px;font-weight:bold;text-shadow:0 0 8px #000}
+#wave{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#fc0;font-size:17px;font-weight:bold;text-shadow:0 0 8px #000}
+#ammo{position:absolute;bottom:30px;right:30px;color:#fff;font-size:32px;font-weight:bold;text-shadow:0 0 8px #000}
+#ammo span{font-size:16px;color:#aaa}
+#weapon-name{position:absolute;bottom:68px;right:30px;color:#aaa;font-size:14px;font-weight:bold;text-shadow:0 0 4px #000}
+#reload-text{position:absolute;bottom:68px;right:30px;color:#fa0;font-size:14px;opacity:0;transition:opacity .2s}
+#msg{position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);font-size:36px;font-weight:bold;text-shadow:0 0 16px #000;opacity:0;transition:opacity .4s;color:#fff}
+#dmg-overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none !important;z-index:45;border:6px solid transparent;transition:border-color .1s}
+#minimap{position:absolute;top:55px;right:16px;width:120px;height:120px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);border-radius:50%;overflow:hidden}
+#fps{position:absolute;top:16px;left:16px;color:#0f0;font-size:11px;font-family:monospace}
+.gold-popup{position:fixed;pointer-events:none;z-index:60;color:#fc0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #000;animation:goldFloat 1.2s forwards}
+@keyframes goldFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
+.ws-btn{padding:12px 40px;font-size:18px;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.ws-btn:hover{transform:scale(1.05)}
+#go h1{font-size:56px;color:#f44;text-shadow:0 0 24px #f00;margin-bottom:16px}
+#go p{color:#fff;font-size:18px;margin:6px}
+#go .btn{margin-top:24px;padding:14px 44px;font-size:20px;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:8px;cursor:pointer}
+#touchUI{position:fixed;inset:0;z-index:40;pointer-events:none;display:none;user-select:none;-webkit-user-select:none;touch-action:none;}
+#joyBase{position:absolute;left:22px;bottom:22px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.10);border:2px solid rgba(255,255,255,.30);pointer-events:auto;touch-action:none;z-index:60;}
+#joyKnob{position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.45);}
+#lookPad{position:absolute;right:0;top:0;width:56%;height:100%;pointer-events:auto;touch-action:none;z-index:50;}
+.tbtn{position:absolute;pointer-events:auto;touch-action:none;z-index:60;border-radius:14px;background:rgba(40,40,60,.55);border:2px solid rgba(255,255,255,.35);color:#fff;font-size:16px;font-weight:bold;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;}
+#btnFire{right:22px;bottom:24px;width:104px;height:104px;border-radius:50%;background:rgba(200,40,40,.62);font-size:22px;}
+#btnRescue{right:24px;bottom:150px;width:88px;height:88px;border-radius:50%;background:rgba(255,170,40,.78);font-size:20px;color:#3a2000;}   /* 【batch159】手机营救按钮：靠近营救点才出现（按住＝长按 F） */
+#btnReload{right:22px;bottom:140px;width:86px;height:54px;}
+#btnJump{right:118px;bottom:24px;width:86px;height:54px;}
+#btnClimb{right:118px;bottom:88px;width:86px;height:54px;}
+#btnCrouch{right:118px;bottom:280px;width:86px;height:54px;}
+#btnWeapon{right:118px;bottom:216px;width:86px;height:54px;}
+#btnPeekL{right:214px;bottom:24px;width:86px;height:54px;}
+#btnPeekR{right:214px;bottom:88px;width:86px;height:54px;}
+#btnAim{right:22px;bottom:256px;width:86px;height:54px;background:rgba(60,120,200,.62);}
+#btnSettings{position:absolute;left:14px;top:38px;width:46px;height:46px;border-radius:12px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;z-index:70;}
+
+/* ==================== 多比例 / 多尺寸屏幕适配 ====================
+   三类问题：① 手机横屏 / 小笔记本上菜单比屏幕高 → 按钮被顶出可视区（已用 overflow:auto 兜住）
+             ② HUD 左右两端的元素在窄屏上互相压住 → 按宽度收缩字号与位置
+             ③ 技能 HUD 居中在底部，窄屏上会和摇杆/开火键抢位置 → 抬高 + 缩小 */
+@media (max-width:900px){
+  #menu h1{font-size:34px;margin-bottom:6px}
+  #menu .subtitle{font-size:12px;margin-bottom:12px}
+  .tab{padding:8px 14px;font-size:13px}
+  .panel{padding:14px}
+  .gold-display{font-size:17px;margin-bottom:12px}
+  .upgrade-grid{grid-template-columns:1fr 1fr;gap:9px}
+  .info-grid{grid-template-columns:1fr 1fr;gap:9px}
+  /* 窄屏：特工"左列 + 右详情"排不下 → 变成"上面一排特工卡、下面详情" */
+  .vl-hero{grid-template-columns:1fr;gap:10px}
+  .vl-list{flex-direction:row;flex-wrap:wrap}
+  .hero-card{flex:1 1 42%}
+  .map-card{grid-template-columns:88px 1fr;gap:9px}
+  .map-card .vl-thumb{font-size:28px}
+  .start-btn{padding:13px 40px;font-size:20px;margin-top:14px}
+  #score{font-size:17px;right:12px;top:10px}
+  #wave{font-size:14px;top:10px}
+  #fps{top:10px;left:10px}
+  #minimap{width:92px;height:92px;top:44px;right:10px}
+  #hp-wrap{width:150px;left:12px;bottom:26px;height:16px}
+  #hp-text{left:12px;bottom:46px;font-size:12px}
+  #gold-hud{left:172px;bottom:26px;font-size:15px}
+  #ammo{font-size:24px;right:12px;bottom:26px}
+  #weapon-name,#reload-text{bottom:56px;right:12px;font-size:12px}
+  #skillHud{bottom:74px;padding:5px 8px;gap:5px}
+  #skillHud .skSlot{width:66px}
+  #skillHud .skSlot .skBarWrap{width:52px}
+  #skillHud .skSlot .skName{font-size:9px}
+  #go h1{font-size:38px}
+  #go p{font-size:15px}
+  #btnPause{width:40px;height:40px;font-size:17px;left:10px;top:78px}
+  #btnSettings{width:40px;height:40px;font-size:19px;left:10px;top:32px}
+}
+@media (max-height:640px){
+  #menu h1{font-size:26px;margin-bottom:4px}
+  #menu .subtitle{font-size:11px;margin-bottom:8px}
+  .tabs{margin-bottom:10px}
+  .tab{padding:7px 14px;font-size:12px}
+  .panel{padding:12px}
+  .gold-display{font-size:15px;margin-bottom:8px}
+  .upgrade-card{padding:10px}
+  .upgrade-desc{font-size:11px;margin-bottom:6px}
+  .hero-card{padding:7px}
+  .vl-detail{padding:9px}
+  .map-card .md{font-size:10px}
+  .start-btn{padding:11px 34px;font-size:18px;margin-top:10px}
+  #netBtn{padding:9px 20px;font-size:13px;margin-top:8px}
+  #menuSetBtn{padding:8px 16px;font-size:13px;margin-top:8px}
+  #skillHud{bottom:66px;transform:translateX(-50%) scale(.88);transform-origin:bottom center}
+  #msg{font-size:26px}
+}
+@media (max-height:520px){
+  #menu h1{font-size:21px}
+  .tab{padding:6px 11px;font-size:11px}
+  .upgrade-desc{display:none}
+  .info-card p{font-size:11px;line-height:1.4}
+  .start-btn{padding:9px 26px;font-size:16px;margin-top:8px}
+  #go h1{font-size:30px}
+  #skillHud{transform:translateX(-50%) scale(.8)}
+}
+#layoutBar{position:fixed;left:50%;top:10px;transform:translateX(-50%);display:none;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(20,20,32,.92);border:2px solid rgba(255,255,255,.3);color:#fff;font-size:13px;pointer-events:auto;touch-action:none;z-index:600;}
+#layoutBar.on{display:flex;}
+.lbTip{white-space:nowrap;}
+.lbtn{pointer-events:auto;background:rgba(60,120,200,.85);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:bold;}
+.lbDone{background:rgba(40,170,90,.9);}
+#touchUI.editing .tbtn,#touchUI.editing #joyBase,#touchUI.editing #lookPad{outline:2px dashed rgba(255,210,60,.95);outline-offset:2px;}
+#touchUI.editing #lookPad{background:rgba(255,210,60,.07);}
+#touchUI.editing #btnSettings{display:none;}
+#touchUI.editing .dragging{outline:3px solid #ffd23c !important;opacity:.9;}
+#lookPad .padLabel{display:none;position:absolute;left:8px;top:8px;color:#ffd23c;font-size:12px;font-weight:bold;}
+#touchUI.editing #lookPad .padLabel{display:block;}
+#settingsPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);pointer-events:auto;touch-action:none;z-index:600;}
+#settingsPanel.on{display:flex;}
+.spCard{width:86%;max-width:360px;background:rgba(22,22,34,.97);border:2px solid rgba(255,255,255,.28);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:88vh;overflow-y:auto;touch-action:auto;}
+.spCard h3{margin:2px 0 12px;font-size:18px;}
+.spRow{font-size:13px;color:#9fb4d6;margin:6px 0 8px;}
+.spBtn{display:block;width:100%;margin:8px 0;padding:11px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;pointer-events:auto;}
+.spClose{background:rgba(90,90,110,.85);}
+.spHint{font-size:12px;color:#9aa;line-height:1.5;margin:10px 2px;}
+#spKeysRow{display:none;}
+body:not(.is-touch) #spKeysRow{display:block;}
+#keyPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);z-index:645;touch-action:auto;}
+#keyPanel.on{display:flex;}
+#keyList{max-height:52vh;overflow-y:auto;margin:6px 0 10px;padding-right:4px;}
+.kRow{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px;color:#dfe8f7;}
+.kRow>span:first-child{flex:1;text-align:left;}
+.kCode{min-width:78px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);color:#7fd4ff;font-weight:bold;font-size:12px;}
+.kCode.wait{background:rgba(255,180,60,.28);border-color:#ffb43c;color:#ffd27f;}
+.kBtn{padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:12px;cursor:pointer;}
+#netBtn{display:inline-block;margin:12px 0 0;padding:11px 26px;border-radius:10px;border:1px solid rgba(120,220,255,.5);background:rgba(30,110,170,.9);color:#cdeaff;font-size:15px;font-weight:bold;cursor:pointer;}
+#netBtn:hover{background:rgba(40,140,210,.95);}
+#netPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:660;touch-action:auto;}
+#netPanel.on{display:flex;}
+#netAddr{width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;outline:none;letter-spacing:1px;margin-top:4px;}
+#netHint.ok{color:#7fe3a0;}
+#netHint.bad{color:#ff6b6b;}
+/* 【batch139】原来是 display:none + 只有 body.is-touch 才显示 —— 判定改成认操作系统之后，
+   电脑上这个"设置"按钮也被一起藏掉了（用户："设置界面不见了，按键映射也调不了"）。
+   灵敏度 / 开镜方式 / 键盘键位对电脑一样需要，所以改成两边都显示。 */
+#menuSetBtn{display:inline-block;margin:14px auto 0;padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;}
+/* 只给触屏端看的行（全屏、陀螺仪、摇杆大小、触屏按键布局）—— 电脑上自动隐藏 */
+body:not(.is-touch) .only-touch{display:none !important;}
+#relockBtn{display:none;margin:10px auto 0;padding:9px 18px;border-radius:10px;border:1px solid rgba(255,210,60,.6);background:rgba(120,80,20,.9);color:#ffd84a;font-size:14px;font-weight:bold;cursor:pointer;}
+#touchUI.layoutTop{z-index:400;}
+#btnPause{position:absolute;left:14px;top:92px;width:46px;height:46px;border-radius:12px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;z-index:70;}
+/* 鼠标未锁定提示（电脑端）：只要"在打游戏 + 指针没锁"就一直挂着，点一下就能重新锁定 */
+/* ==================== 【batch126】剧情模式 / 英雄锁定 ==================== */
+.vl-lock{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,180,84,.18);color:#ffb454;border:1px solid rgba(255,180,84,.5);vertical-align:middle}
+.vl-dlock{margin:8px 0 2px;padding:8px 10px;border-radius:8px;font:700 12px/1.6 system-ui;
+  background:rgba(255,180,84,.12);border:1px solid rgba(255,180,84,.4);color:#ffb454}
+.story-launch{background:linear-gradient(135deg,#3b1a63,#6b2ea0);border:1px solid rgba(169,140,255,.55)}
+.story-launch.storyDone{background:linear-gradient(135deg,#16351f,#1f6b3a);border-color:rgba(110,240,150,.55)}
+.story-launch em{display:block;font-style:normal;font-size:11px;font-weight:600;opacity:.88;margin-top:3px;letter-spacing:0}
+.stCard{max-width:560px;text-align:left}
+.stGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0 4px}
+.stCardItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  padding:10px 6px;text-align:center;cursor:pointer;transition:.15s;border-top:3px solid var(--c,#888)}
+.stCardItem[data-on="1"]{background:rgba(169,140,255,.18);border-color:#a98cff;box-shadow:0 0 0 2px rgba(169,140,255,.45)}
+.stCardItem .stIcon{font-size:24px;line-height:1.2}
+.stCardItem .stName{font:800 14px/1.5 system-ui;color:#fff;margin-top:2px}
+.stCardItem .stTag{font:600 11px/1.4 system-ui;color:#9fb4d6}
+.stCardItem .stSk{font-size:13px;letter-spacing:1px;margin-top:3px}
+.stTip{font-size:12px;line-height:1.7;color:#9fb4d6;margin:6px 0 0}
+#storyCut{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.82);z-index:800;cursor:pointer;padding:0 8%;text-align:center;
+  pointer-events:auto;touch-action:auto}      /* 【batch129】必须可点：点击＝跳下一段 */
+#storyCutTxt{color:#fff;font:700 22px/1.9 system-ui;max-width:760px;text-shadow:0 2px 14px rgba(0,0,0,.9);
+  opacity:0;transition:opacity .5s}
+#storyCutTxt.in{opacity:1}
+#storyCutHint{color:#8ea3c0;font:600 12px/1.6 system-ui;margin-top:22px;letter-spacing:2px}
+#storyHud{position:fixed;left:50%;top:56px;transform:translateX(-50%);display:none;z-index:420;
+  background:rgba(10,14,22,.82);border:1px solid rgba(120,220,255,.45);border-radius:10px;
+  padding:6px 16px;color:#cfe0f2;font:700 14px/1.6 system-ui;letter-spacing:1px}
+#bossWrap{position:fixed;left:50%;top:14px;transform:translateX(-50%);display:none;z-index:430;width:min(560px,74vw);text-align:center}
+#bossName{color:#6ff0ff;font:800 14px/1.8 system-ui;letter-spacing:2px;text-shadow:0 0 12px rgba(0,230,255,.7)}
+#bossBarOut{height:12px;border-radius:7px;background:rgba(0,0,0,.6);border:1px solid rgba(0,230,255,.55);overflow:hidden}
+#bossBar{height:100%;width:100%;background:linear-gradient(90deg,#00e5ff,#6ff0ff,#bdf7ff);transition:width .12s}
+#trainHpWrap{position:fixed;left:50%;top:52px;transform:translateX(-50%);display:none;z-index:429;width:min(420px,60vw);text-align:center;pointer-events:none}
+#trainHpName{color:#ffb347;font:800 13px/1.8 system-ui;letter-spacing:2px;text-shadow:0 0 12px rgba(255,150,60,.7)}
+#trainHpBarOut{height:10px;border-radius:6px;background:rgba(0,0,0,.6);border:1px solid rgba(255,170,80,.55);overflow:hidden}
+#trainHpBar{height:100%;width:100%;background:linear-gradient(90deg,#ff7a2a,#ffb347,#ffd9a0);transition:width .12s}
+.stLine{font:700 14px/1.9 system-ui;color:#fff;margin:5px 0}
+.stLine.dim{font-weight:600;color:#9fb4d6}
+.stUnlock{margin:12px 0;padding:11px 12px;border-radius:10px;background:rgba(111,240,255,.10);
+  border:1px solid rgba(111,240,255,.5);color:#c8f6ff;font:700 13px/1.7 system-ui}
+.stUnlock b{color:#6ff0ff}
+/* ==================== 【batch149】剧情章节选择 + 第二章营救进度 ==================== */
+.stChap{display:grid;grid-template-columns:repeat(2,1fr);gap:11px;margin:12px 0 6px}
+.stChapItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  padding:12px 10px;cursor:pointer;transition:.15s;border-top:3px solid rgba(73,224,255,.75)}
+.stChapItem[data-on="1"]{background:rgba(73,224,255,.16);border-color:#49e0ff;box-shadow:0 0 0 2px rgba(73,224,255,.4)}
+.stChapItem .stIcon{font-size:26px;line-height:1.2}
+.stChapItem .stName{font:800 14px/1.5 system-ui;color:#fff;margin-top:3px}
+.stChapItem .stTag{font:600 11px/1.5 system-ui;color:#9fb4d6;margin-top:2px}
+.stChapItem .stDesc{font:600 11px/1.6 system-ui;color:#8ea3c0;margin-top:5px}
+#rescueWrap{position:fixed;left:50%;top:96px;transform:translateX(-50%);display:none;z-index:425;
+  width:min(430px,80vw);background:rgba(10,14,22,.86);border:1px solid rgba(255,160,61,.5);
+  border-radius:11px;padding:8px 14px 10px;text-align:center}
+#rescueTitle{color:#ffc98a;font:800 13px/1.7 system-ui;letter-spacing:1px}
+#rescueBarOut{height:11px;border-radius:7px;background:rgba(0,0,0,.62);border:1px solid rgba(255,160,61,.5);
+  overflow:hidden;margin-top:5px}
+#rescueBar{height:100%;width:0%;background:linear-gradient(90deg,#ff7a2d,#ffc04d,#ffe9a8);transition:width .1s}
+#rescueHint{color:#9fb4d6;font:600 11px/1.7 system-ui;margin-top:5px;letter-spacing:.5px}
+/* 【batch129】剧情专用阵亡提示（红色的另一态；剧情里**不弹**通用的「游戏结束」结算面板） */
+.ctCard.stDead{border-color:rgba(255,90,90,.7);
+  background:linear-gradient(180deg,rgba(120,20,20,.35),rgba(20,22,34,.98))}
+.ctCard.stDead h3{color:#ff6b6b}
+.ctCard.stDead .ctBtn{background:rgba(150,40,40,.9);border-color:rgba(255,120,120,.5)}
+#lockHint{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:95;display:none;padding:11px 22px;border-radius:12px;background:rgba(20,22,34,.94);border:2px solid rgba(255,210,60,.75);color:#ffd84a;font-size:15px;font-weight:bold;cursor:pointer;pointer-events:auto;text-align:center;box-shadow:0 6px 22px rgba(0,0,0,.55);animation:lockPulse 1.4s ease-in-out infinite;}
+#lockHint.on{display:block;}
+@keyframes lockPulse{0%,100%{box-shadow:0 6px 22px rgba(0,0,0,.55)}50%{box-shadow:0 6px 30px rgba(255,210,60,.45)}}
+body.is-touch #lockHint{display:none !important;}
+/* 闪光弹致盲：整屏泛白，透明度由 heroBlindSync() 按剩余致盲时间驱动 */
+#blindFx{position:fixed;inset:0;z-index:4000;background:#fff;opacity:0;pointer-events:none;}
+/* 【batch107】身处烟雾中时的"屏幕雾"：几何上烟已经有 6 米厚（t_smoke.js 量的），这层是
+   "保证不漏"的第二道保险 —— 开镜放大也透不过去。z-index 30：盖住 3D 画面与第一人称枪，
+   但让 HUD(50) / 触屏按键(40) / 准星仍然看得见。 */
+#smokeFx{position:fixed;inset:0;z-index:30;background:#dfe6ec;opacity:0;pointer-events:none;}
+/* 【batch120】闪电「过载/触电」：满屏电弧干扰（不能开镜，视野被糊住） */
+#zapFx{position:fixed;inset:0;z-index:32;opacity:0;pointer-events:none;
+  background:repeating-linear-gradient(115deg,rgba(160,240,255,0) 0 9px,rgba(160,240,255,.22) 9px 10px,rgba(160,240,255,0) 10px 26px);}
+/* 【枪械包·狙击枪】开镜时显示「镜框暗角」：中间透亮、四周压黑，模拟透过瞄准镜看，且不挡视野。
+   z-index 46：盖在 3D 画面与 smokeFx(30) 之上，但在 HUD(50)/准星 之下（开镜时准星本就会被隐藏）。 */
+#scopeFx{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;
+  background:radial-gradient(circle at 50% 50%,rgba(0,0,0,0) 24%,rgba(0,0,0,.30) 30%,rgba(0,0,0,.85) 45%,#000 60%);}
+/* 狙击镜中心准星（开镜时随 scopeFx 一起显示） */
+#scopeFx .reticle{position:absolute;left:50%;top:50%;width:0;height:0;}
+#scopeFx .reticle .h,#scopeFx .reticle .v{position:absolute;background:rgba(255,60,60,.85);box-shadow:0 0 2px rgba(0,0,0,.9);}
+#scopeFx .reticle .h{width:42px;height:1.5px;left:-21px;top:-0.75px;}
+#scopeFx .reticle .v{width:1.5px;height:42px;left:-0.75px;top:-21px;}
+#scopeFx .reticle .dot{position:absolute;width:3px;height:3px;left:-1.5px;top:-1.5px;background:#ff3c3c;border-radius:50%;box-shadow:0 0 3px rgba(0,0,0,.9);}
+/* 【枪械包·红点镜】开镜时显示「红点」准星：仅中心一个小点（外圈极淡细环），绝无遮挡，不挡视野 */
+#redDotFx{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;}
+#redDotFx .ring{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px solid rgba(255,60,60,.8);border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.4);}/* 圆尺寸由 JS 按当前散布动态设置；transform 居中保证与红点严格同心 */
+#redDotFx .dot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:4px;height:4px;background:#ff2a2a;border-radius:50%;box-shadow:0 0 5px rgba(255,40,40,.95),0 0 2px #000;}/* 用 transform 居中：全局 .dot 规则自带 translate(-50%,-50%)，不能再叠 margin 否则双重居中会偏 2px */
+/* 【手机版】狙击镜框 / 红点准星：整层降到触屏 UI（#touchUI z-index 40）**之下** ——
+   否则开镜时全屏暗角（边缘纯黑）会把摇杆和所有触屏按钮糊住、看不见（它 pointer-events:none 所以还能点，但看不见等于没法用）。
+   只给 body.is-touch（手机版）降级，电脑版层级完全不变。 */
+body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
+/* 【batch120】球形闪电：自己倒地时的遮罩 + 倒计时 */
+#downedFx{position:fixed;inset:0;z-index:118;display:none;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;background:radial-gradient(ellipse at center,rgba(120,0,0,0) 34%,rgba(120,0,0,.58) 100%);}
+#downedFx h2{margin:0;font-size:32px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:3px}
+#downedFx p{margin:10px 0 0;color:#ffd7d7;font-size:15px}
+/* 【batch145】虚化（日蚀之门）：紫色边光 + 底部操作提示 */
+#ghostFx{position:fixed;inset:0;z-index:117;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:15vh;pointer-events:none;background:radial-gradient(ellipse at center,rgba(96,44,168,0) 44%,rgba(96,44,168,.5) 100%);}
+#ghostFx h2{margin:0;font-size:26px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#ghostFx p{margin:8px 0 0;color:#e6d4ff;font-size:15px;text-shadow:0 2px 8px #000}
+/* 【batch160】遁入暗影：整圈暗紫黑边光 + 倒计时提示（比虚化更暗——整个人没进影子里去了） */
+#shadowFx{position:fixed;inset:0;z-index:117;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:15vh;pointer-events:none;background:radial-gradient(ellipse at center,rgba(10,4,26,.20) 28%,rgba(10,4,26,.74) 100%);}
+#shadowFx h2{margin:0;font-size:26px;color:#cfc2ff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#shadowFx p{margin:8px 0 0;color:#a99ad6;font-size:15px;text-shadow:0 2px 8px #000}
+/* 【batch100 被动】天狼「敌情预警」：准星外圈的红色方向箭头（转到敌人方向；越近越亮） */
+#scoutAlert{position:fixed;left:50%;top:50%;width:0;height:0;z-index:405;pointer-events:none !important;display:none;opacity:0;transition:opacity .12s}
+#scoutArrow{position:absolute;left:-14px;top:-72px;width:28px;height:32px;line-height:32px;text-align:center;font-size:26px;color:#ff5a5a;text-shadow:0 0 10px #ff2a2a,0 0 20px #ff0000;transform-origin:14px 72px;opacity:1}
+#scoutRing{position:absolute;left:-14px;top:-72px;width:28px;height:32px;border-radius:50%;box-shadow:0 0 22px 6px rgba(255,50,50,.35);opacity:.9}
+.spRange{display:block;width:100%;height:26px;margin:0 0 12px;touch-action:auto;pointer-events:auto;accent-color:#5aa0ff;}
+.spVal{color:#7fd4ff;font-weight:bold;}
+.ctLayer{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:640;touch-action:auto;}
+.ctLayer.on{display:flex;}
+.ctCard{width:84%;max-width:340px;background:rgba(20,22,34,.98);border:2px solid rgba(255,210,60,.55);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:86vh;overflow-y:auto;touch-action:auto;}
+.ctCard h3{margin:2px 0 12px;font-size:17px;color:#ffd23c;}
+.ctInput{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;letter-spacing:3px;outline:none;}
+.ctErr{font-size:12px;color:#ff6b6b;min-height:16px;margin:8px 0 0;}
+.ctBtn{display:block;width:100%;margin:9px 0 0;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;}
+.ctBtn.ctCancel{background:rgba(255,255,255,.12);}
+.ctRow{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#9fb4d6;margin:11px 0 5px;}
+.ctVal{color:#ffd23c;font-weight:bold;}
+.ctSw{width:52px;height:28px;border-radius:14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);position:relative;cursor:pointer;flex:0 0 auto;}
+.ctSw i{position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#8a8a8a;transition:left .15s,background .15s;}
+.ctSw.on{background:rgba(0,200,120,.35);border-color:#0c8;}
+.ctSw.on i{left:27px;background:#0f8;}
+.ctRange{width:100%;}
+.ctMsg{font-size:11px;color:#7d8ba3;margin-top:12px;line-height:1.55;}
+/* ==================== 多人对战 UI ==================== */
+#netBoard{position:fixed;top:12px;right:12px;z-index:60;background:rgba(12,16,24,.8);border:1px solid #2b3446;
+  border-radius:10px;padding:8px 10px;font-size:13px;color:#dfe7f5;min-width:168px;display:none;line-height:1.6}
+#netBoard h4{margin:0 0 6px;font-size:12px;color:#8ea3c0;font-weight:600;letter-spacing:1px}
+#netBoard .nb-row{display:flex;justify-content:space-between;gap:14px}
+#netBoard .nb-me{color:#ffd166;font-weight:700}
+#netDeath{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;
+  flex-direction:column;background:rgba(70,0,0,.42);pointer-events:none}
+#netDeath h2{margin:0;font-size:34px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#netDeath p{margin:10px 0 0;color:#ffd7d7;font-size:15px}
+#netMode{margin-top:8px;font-size:12px;color:#7fd6ff;text-align:center;line-height:1.7}
+/* ==================== 主菜单 / 游戏内菜单 ==================== */
+#menuPauseBtns{display:none}
+#blocker.pause-mode #menuHomeBtns{display:none}
+#blocker.pause-mode #menuPauseBtns{display:block}
+/* 【batch117】局内（暂停菜单）不许换地图 / 换英雄：
+   页签栏整个藏掉，四个面板也一律藏掉（含新增的 #tab-hero / #tab-map）——
+   否则用户在主菜单停在「特工」页时按 Esc，那个面板会跟着暂停菜单一起露出来。 */
+#blocker.pause-mode .tabs,#blocker.pause-mode #tab-upgrades,#blocker.pause-mode #tab-info,
+#blocker.pause-mode #tab-hero,#blocker.pause-mode #tab-map,
+#blocker.pause-mode .gold-display,#blocker.pause-mode #netMode{display:none !important}
+#btnQuit{display:block;margin:14px auto 0;padding:11px 30px;border-radius:10px;
+  border:1px solid rgba(255,120,120,.6);background:rgba(150,40,40,.9);color:#ffd7d7;
+  font-size:15px;font-weight:bold;cursor:pointer;}
+#btnQuit:hover{background:rgba(190,55,55,.95);}
+#namePanel .ctCard{border-color:rgba(120,220,255,.6);}
+#namePanel h3{color:#7fd6ff;}
+#nameInput{letter-spacing:1px;text-align:center;}
+</style>
+</head>
+<body tabindex="0" data-page-node-id="Zs89goIXHI37yRyM0D51w5">
+<!-- ============================================================================
+     瓦罗兰特（爆能器）版 · 独立页面 body
+     ----------------------------------------------------------------------------
+     这一整块是**手写的**，不是从原版 index.html 派生出来的。
+     原版的主体（主菜单 / 枪械改装 / 战斗商店 / 剧情 / 波次）在这里**完全不存在**。
+     只有下面两类东西是"共用"的：
+       · 引擎必需的元素（准星 / 血条 / 弹药 / 提示 / 技能栏 / 小地图 …）
+         —— 这些是"瞄准射击"本身要用的，两版都一样，所以用 @EX 锚点从主体抽过来；
+       · 通用设置面板（灵敏度 / 键位 / 触屏按键布局 / 取名）
+         —— 也不是原版的"玩法内容"，是通用件。
+     ============================================================================ -->
+
+<!-- ============ 瓦罗兰特自己的主菜单（原版菜单在这里根本不存在）============ -->
+<div id="blocker"><div id="vlMenu">
+  <div class="vlMenuTop">
+    <span class="vlMenuLogo">VALORANT</span>
+    <span class="vlMenuSub">爆 能 器 · 自 建 房</span>
+  </div>
+  <div class="vlTabs">
+    <div class="vlTab on" data-vl="agent">特工</div>
+    <div class="vlTab" data-vl="map">地图</div>
+    <div class="vlTab" data-vl="how">规则</div>
+  </div>
+  <div class="vlPane on" id="vlPaneAgent">
+    <div class="vl-note">选一个特工出战。技能与其它模式共用（电脑端 V / B / N，手机端右下角技能键）。</div>
+    <div class="vl-hero" id="hero-grid"></div>
+  </div>
+  <div class="vlPane" id="vlPaneMap">
+    <div class="vl-note">选一张地图。<b>地图也是房间的一部分</b>：不同地图的人不会被分到同一间房。</div>
+    <div class="vl-maps" id="map-grid"></div>
+  </div>
+  <div class="vlPane" id="vlPaneHow">
+    <div class="vlNote">
+      <p><b>玩法</b>：进攻方带爆能器到点位长按 <b>F</b> 安放（4 秒），安放后 40 秒引爆即进攻方胜；防守方在点位长按 <b>F</b> 拆除（7 秒）。</p>
+      <p><b>回合</b>：每回合 100 秒，开局有 12 秒准备时间（不能离开出生点）。<b>阵亡不复活</b>，下回合满血重来；一方被团灭 / 时间耗尽 / 引爆 / 拆除都会结束这一回合。</p>
+      <p><b>开局条件</b>：至少 2 人、两队各至少 1 人、<b>全员准备</b>后由<b>队长</b>点「开始游戏」。回合开始前<b>不会进入地图</b>。</p>
+      <p><b>阵营</b>：在爆能器大厅里自己选（加入进攻 / 防守）。</p>
+    </div>
+  </div>
+  <div class="vlMenuBtns">
+    <button id="vbEnter" class="vlBtn">💣 进入爆能器大厅</button>
+    <button id="vbSet" class="vlBtn gray">⚙ 设置</button>
+  </div>
+  <div class="vlMenuTip" id="vbTip">开服那台电脑的黑窗口里有服务器地址；同一个地址 + 同一个房号 + 同一张地图 = 同一场对局。</div>
+</div>
+<!-- 局内按 ESC 弹出的暂停菜单（瓦罗兰特版自己的；原版那套菜单在本页不存在） -->
+<div id="vlPause">
+  <div class="vlPauseCard">
+    <div class="vlPauseTitle">⏸ 暂停</div>
+    <button id="btnResume" class="vlBtn">▶ 继续游戏</button>
+    <button id="vbSet2" class="vlBtn gray">⚙ 设置（灵敏度 / 键位）</button>
+    <button id="btnQuit" class="vlBtn gray">🚪 退出这一局</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ 引擎必需的通用件（敏感度 / 键位 / 触屏按键 / 取名）============ -->
+<!-- 技能栏（三格技能、冷却；引擎会往里写） -->
+<div id="skillHud"></div>
+
+<div id="touchUI">
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <div id="lookPad"><span class="padLabel">视角区</span></div>
+  <div id="btnFire" class="tbtn">开火</div>
+  <div id="btnReload" class="tbtn">换弹</div>
+  <div id="btnJump" class="tbtn">跳</div>
+  <div id="btnClimb" class="tbtn">上梯</div>
+  <div id="btnCrouch" class="tbtn">蹲</div>
+  <div id="btnWeapon" class="tbtn">换枪</div>
+  <div id="btnSkill" class="tbtn">技能①</div>
+  <div id="btnSkill2" class="tbtn">技能②</div>
+  <div id="btnSkill3" class="tbtn">技能③</div>
+  <div id="btnRescue" class="tbtn only-touch" style="display:none">救援</div>
+    <div id="btnPeekL" class="tbtn">左探头</div>
+  <div id="btnPeekR" class="tbtn">右探头</div>
+  <div id="btnAim" class="tbtn">开镜</div>
+  <div id="btnPause">⏸</div>
+  <div id="btnSettings">⚙</div>
+</div>
+<div id="layoutBar"><span class="lbTip">拖动按键调整位置</span><button id="lbReset" class="lbtn">重置</button><button id="lbDone" class="lbtn lbDone">完成</button></div>
+<div id="settingsPanel"><div class="spCard">
+    <h3>⚙ 设置</h3>
+    <div class="spRow">🖱️ 镜头灵敏度 <span id="spSensVal" class="spVal">1.00x</span></div>
+    <input id="spSens" class="spRange" type="range" min="0.4" max="2.6" step="0.05" value="1">
+    <div class="spRow">🗺️ 小地图大小 <span id="spMMVal" class="spVal">120</span></div>
+    <input id="spMM" class="spRange" type="range" min="90" max="240" step="10" value="120">
+    <div class="spRow only-touch">🕹️ 摇杆大小 <span id="spJoyVal" class="spVal">1.00x</span></div>
+    <input id="spJoy" class="spRange only-touch" type="range" min="0.7" max="1.6" step="0.05" value="1">
+    <!-- 【batch139】手机专有：全屏 + 陀螺仪灵敏度（0＝关）。
+         电脑上 F11 就能全屏、鼠标也不需要陀螺仪，所以这两项只给触屏端（用户要求） -->
+    <div class="spRow only-touch">🖥️ 全屏 <span id="spFsVal" class="spVal">关</span></div>
+    <button id="spFullscreen" class="spBtn only-touch">⛶ 切换全屏（手机横过来更爽）</button>
+    <div class="spRow only-touch">🌀 陀螺仪灵敏度 <span id="spGyroVal" class="spVal">关</span></div>
+    <input id="spGyro" class="spRange only-touch" type="range" min="0" max="100" step="1" value="0">
+    <p class="spHint only-touch">陀螺仪＝把"手机怎么拿"当微调：0 就是关闭，100 最灵敏。<br>用法：正常拿着手机，开启后**左右/前后倾斜手机**就能补瞄（相对式，不用重新校准）。<br>iOS 第一次开会在屏幕上弹一次权限申请，点「允许」。</p>
+    <div class="spRow">🎯 开镜方式 <span id="spAdsVal" class="spVal">按住右键</span></div>
+    <button id="spAdsMode" class="spBtn">🔄 切换为「点一下开镜」（防浏览器鼠标手势）</button>
+    <p class="spHint">Edge 114+ 自带「鼠标手势」：按住右键移动鼠标会被浏览器当成手势（左滑后退、下划刷新…），而「按住右键开镜」正好是这个动作。改成「点一下开镜」后不必长按右键，手势就不会被触发；也可以在 Edge 里「设置 → 外观 → 鼠标手势」直接关掉。开镜＝点右键开、再点一下关。</p>
+    <div id="spKeysRow">
+      <div class="spRow">⌨️ 键盘键位</div>
+      <button id="spKeys" class="spBtn">🖮 自定义键盘按键</button>
+      <button id="spKeysReset" class="spBtn">↺ 恢复默认键位</button>
+    </div>
+    <div class="spRow only-touch">触屏按键布局</div>
+    <button id="spEdit" class="spBtn only-touch">🎮 调整按键位置</button>
+    <button id="spReset" class="spBtn only-touch">↺ 恢复默认布局</button>
+    <button id="spClose" class="spBtn spClose">关闭</button>
+    <p class="spHint">进入调整模式后，直接拖动屏幕上的摇杆与各个按键到顺手的位置，点“完成”即保存，下次打开自动记住。</p>
+  </div></div>
+<div id="keyPanel"><div class="ctCard">
+  <h3>⌨️ 键盘键位</h3>
+  <p class="spHint">点某一行的「改」，然后按下你想用的键；按 Esc 取消。改完即时生效并自动保存。</p>
+  <div id="keyList"></div>
+  <button id="keyReset" class="spBtn">↺ 恢复默认键位</button>
+  <button id="keyClose" class="spBtn spClose">关闭</button>
+</div></div>
+
+<!-- ============ 特效层（致盲 / 烟雾 / 电弧 / 倒地 / 虚化 / 暗影 / 侦查）============ -->
+<div id="lockHint">🖱️ 鼠标未锁定 —— 点击画面即可重新锁定鼠标</div>
+<div id="blindFx"></div>
+<div id="smokeFx"></div>
+<div id="zapFx"></div>
+<div id="downedFx"><h2>⚡ 你已倒地</h2><p id="downedTip">被治疗即可站起 · 再挨一下就是死</p></div>
+<div id="ghostFx"><h2>🌀 虚化中（无敌）</h2><p id="ghostTip">WASD 飘 · 空格升 / 蹲下键降 · 左键 或 再按技能键 = 放下门</p></div>
+<div id="shadowFx"><h2>🌑 遁入暗影（无敌）</h2><p id="shadowTip">不能攻击 / 开枪 / 开镜 · 再按 N 化回实体</p></div>
+<div id="scoutAlert"><div id="scoutRing"></div><div id="scoutArrow">▲</div></div>
+
+<!-- ============ 取名 ============ -->
+<div id="namePanel" class="ctLayer on"><div class="ctCard">
+  <h3>🪪 起个名字</h3>
+  <p class="spHint">给自己起个名字再开打。这个名字在<b>单人</b>和<b>多人对战</b>里都会一直沿用，换局也不会丢；存在本机时是<b>加密</b>的。</p>
+  <p class="spHint">所有人的名字<b>不能重复</b>：如果服务器上已经有人用了这个名字，会提醒你换一个。</p>
+  <p class="spHint">换过网址（隧道 / 局域网 / 本地文件三选一）？名字不用重取：填<b>原来的名字</b> + 你的<b>身份码</b>即可取回，名字永远是你的。</p>
+  <input id="nameInput" class="ctInput" maxlength="8" autocomplete="off" placeholder="中文 / 字母 / 数字，最多 8 个字">
+  <input id="codeInput" class="ctInput" maxlength="6" autocomplete="off" placeholder="身份码（新玩家留空；老玩家换网址时填 6 位）" style="letter-spacing:2px;text-transform:uppercase;">
+  <p id="nameErr" class="ctErr"></p>
+  <button id="nameOk" class="ctBtn">✅ 确定</button>
+</div></div>
+<!-- ==================== 【batch126/165】剧情模式「营救蚀日者」 ==================== -->
+<!-- 【batch149】剧情第一章 / 第二章，先选章节再选人 -->
+
+<!-- ============ 局内 HUD（准星 / 血 / 弹药 / 提示 / 小地图；顶部回合条由核心接管）============ -->
+<div id="hud" data-page-node-id="YW6BIlhd3WEdNrEZCisv4F">
+  <div id="crosshair" data-page-node-id="QFroOIrqZ7xGnxiQtaH6UK"><div class="dot" data-page-node-id="dKMSRmlVf3mArd6hxLeaNl"></div></div>
+  <div id="hp-wrap" data-page-node-id="qDxGIwFBOYOrnr2YjNdFLE"><div id="hp-bar" data-page-node-id="ngifB8l07q4itLWDjAehq0"></div></div>
+  <div id="hp-text" data-page-node-id="9iADgOduK0FxQREjwyriyw">❤️ 100/100</div>
+  <div id="wave" data-page-node-id="pcLmz53CcV9mYeznp9wB3g">第1波</div>
+  <div id="ammo" data-page-node-id="iap7WwjWqG39cvD0oDq8HC">30 <span data-page-node-id="Lt9rIUcSDMWu3AmPcuErDD">/30</span></div>
+  <div id="weapon-name" data-page-node-id="xlL0JjXmUTO6GkHL790AyE">🔫 步枪</div>
+  <div id="reload-text" data-page-node-id="1ooMIXneFTtJzEUJbStPxB">装弹中...</div>
+  <div id="msg" data-page-node-id="nBLaGtxqZjsttlfKxUG8yX"></div>
+  <canvas id="minimap" data-page-node-id="JLHEOiqmF0GCDgEnBYjno4"></canvas>
+  <div id="fps" data-page-node-id="DjNxH2h5FeiOzg38utIVbp">FPS: --</div>
+</div>
+<div id="dmg-overlay" data-page-node-id="p8SwPMvVvWf7IzlOkVz7cW"></div>
+<div id="scopeFx"><div class="reticle"><div class="h"></div><div class="v"></div><div class="dot"></div></div></div>
+<div id="redDotFx"><div class="ring" id="redDotRing"></div><div class="dot"></div></div>
+<div id="netBoard"></div>
+<div id="netDeath"><h2>☠️ 阵亡</h2><p>3 秒后自动重生…</p></div>
+
+<!-- 手机：安放 / 拆除共用一个按钮（按住＝长按 F），位置可在「调整按键位置」里调 -->
+<div id="btnSpike" class="tbtn only-touch" style="display:none">安放</div>
+
+<script src="lib/three.r128.min.js"></script>
+<script src="js/00_前置检查.js"></script>
+<script src="js/00_升级与场景.js"></script>
+<script src="js/01_手部与武器建模.js"></script>
+<script src="js/02_状态键位与粒子.js"></script>
+<script src="js/10_地图_经典.js"></script>
+<script src="js/11_方块贴图.js"></script>
+<script src="js/12_地图_日蚀环城.js"></script>
+<script src="js/13_地图_实验室.js"></script>
+<script src="js/14_地图_注册表.js"></script>
+<script src="js/20_敌人与玩家模型.js"></script>
+<script src="js/21_攻击与拾取.js"></script>
+<script src="js/22_输入与手势.js"></script>
+<script src="js/23_触屏与设置面板.js"></script>
+<script src="js/24_玩家与动画.js"></script>
+<script src="js/25_敌人AI.js"></script>
+<script src="js/26_伤害与界面.js"></script>
+<script src="js/30_联机.js"></script>
+<script src="js/40_英雄_数据.js"></script>
+<script src="js/41_英雄_施法与瞄准.js"></script>
+<script src="js/42_英雄_特效一.js"></script>
+<script src="js/43_英雄_特效二.js"></script>
+<script src="js/44_英雄_世界与远端.js"></script>
+<script src="js/50_开局流程.js"></script>
+<script src="js/60_剧情模式.js"></script>
+<script src="js/62_聊天与语音.js"></script>
+<script src="js/63_自定义资产.js"></script>
+<script src="mode/模组加载器.js"></script>
+<script src="mode/瓦罗兰特核心.js"></script>
+
+</body>
+</html>

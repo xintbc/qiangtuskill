@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>长明 · 纪念版 —— 模型预览</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0b0f0d;color:#e8e3d6;
+    font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;overflow:hidden}
+  #cv{display:block;width:100%;height:100%;cursor:grab}
+  #cv:active{cursor:grabbing}
+
+  .panel{position:fixed;background:rgba(14,20,17,.82);border:1px solid rgba(230,196,106,.22);
+    border-radius:12px;backdrop-filter:blur(10px);box-shadow:0 10px 30px rgba(0,0,0,.45)}
+
+  #title{left:18px;top:16px;padding:12px 16px 11px}
+  #title h1{margin:0;font-size:16px;letter-spacing:2px;color:#f0d79a;font-weight:600}
+  #title p{margin:5px 0 0;font-size:11.5px;color:#8d968f;line-height:1.6}
+  #title .sub{color:#6f7a72}
+
+  /* 右侧改动清单：对照检查用 */
+  #list{right:18px;top:16px;width:268px;padding:12px 14px;max-height:calc(100vh - 130px);overflow:auto}
+  #list h2{margin:0 0 8px;font-size:12.5px;color:#e6c46a;letter-spacing:1px;font-weight:600}
+  #list ol{margin:0;padding-left:18px}
+  #list li{font-size:11.5px;line-height:1.75;color:#b9c0b8;margin-bottom:3px}
+  #list li b{color:#f0d79a;font-weight:600}
+  #list .dim{color:#6e7a72;font-size:10.5px}
+  #list code{font-family:Consolas,monospace;font-size:10px;color:#c9a25c;
+    background:rgba(255,255,255,.05);padding:0 3px;border-radius:3px}
+  #list .tip{margin-top:9px;padding-top:8px;border-top:1px dashed rgba(230,196,106,.18);
+    font-size:11px;color:#77817a;line-height:1.7}
+
+  /* 底部工具条 */
+  #bar{left:50%;transform:translateX(-50%);bottom:16px;padding:9px 10px;display:flex;
+    gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:min(96vw,980px)}
+  button{background:rgba(36,50,44,.9);color:#cfd6cd;border:1px solid rgba(230,196,106,.22);
+    border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;font-family:inherit;
+    transition:.15s;white-space:nowrap}
+  button:hover{background:rgba(52,72,62,.95);color:#f0d79a;border-color:rgba(230,196,106,.45)}
+  button.on{background:rgba(230,196,106,.16);color:#f5dfa8;border-color:rgba(230,196,106,.6)}
+  .sep{width:1px;height:22px;background:rgba(230,196,106,.18);margin:0 3px}
+
+  #stat{left:18px;bottom:16px;padding:8px 12px;font-size:11px;color:#8d968f;line-height:1.7;
+    font-variant-numeric:tabular-nums}
+  #stat b{color:#d9c98f;font-weight:600}
+
+  /* 弹药量滑条（验证"弹匣里有子弹"） */
+  #ammo{right:18px;bottom:16px;padding:10px 14px;width:268px}
+  #ammo label{display:flex;justify-content:space-between;font-size:11.5px;color:#b9c0b8;margin-bottom:6px}
+  #ammo label b{color:#f0d79a}
+  #ammo input{width:100%;accent-color:#c9a54a}
+  #ammo .hint{margin-top:6px;font-size:10.5px;color:#707a72;line-height:1.6}
+
+  #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:74px;font-size:11.5px;
+    color:#6f7a72;pointer-events:none;transition:opacity .6s}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="panel" id="title">
+  <h1>长 明 · 纪念版</h1>
+  <p>游戏内真实模型（调的是 <span class="sub">js/01 的 _建纪念枪</span>，不是另画的）<br>
+     <span class="sub">拖拽旋转 · 滚轮缩放 · 双击复位</span></p>
+</div>
+
+<div class="panel" id="list">
+  <h2>这一版（batch214）改了什么</h2>
+  <ol>
+    <li><b>瞄准镜终于贴着枪了</b>：之前为了让枪口不露进镜内，我把光轴一路抬到 0.125，
+        管底离导轨 2.4cm，只能靠两个高座子撑着 —— 看着就是"镜子被架在枪上"。
+        现在光轴压回 <b>0.108</b>：管底离导轨只有 1.4cm，抱箍下面就垫一块 <b>8mm 的夹座</b>，
+        和真枪的镜环一个高度</li>
+    <li><b>代价说清楚</b>：光轴越低，瞄线离枪口越近（只剩 7.4cm），能开的孔径从 5.2° 收到 <b>4.25°</b> ——
+        再大枪口就会从镜内下沿露出来。屏上可见圆 43.2% → <b>34.5%</b>
+        （比最早那版的 27.5% 还是大一截）。想回到 43% 只能把枪管缩短，让枪口退到视锥外</li>
+    <li><b>顺带把物镜收细</b>（0.034→0.0294 @前口）、抱箍做薄并往里挪 ——
+        镜内那圈黑边原来是"后抱箍"撑出来的（它在 9.1° 处顶着，比目镜口 7.6° 还大）</li>
+    <li><b>镜座重做（原来确实没接好）</b>：抱箍底下是两根 16×16mm 的"细立柱"，再垫一块 9cm 长的底板；
+        可底板只到 z=−0.050，而<b>后抱箍在 −0.040 —— 后立柱整个挂在底板外面</b>，夹座还都埋进导轨里。
+        现在每个抱箍下面是一整块<b>实心镜桥</b>（从导轨顶面一直填到抱箍下沿，26×24mm），
+        下面压导轨的夹座 + 金色垫条，两块各自独立 —— 侧面看是"两个座 + 一根镜筒"</li>
+    <li><b>整组镜件后移 4cm</b>：目镜现在落在拉机柄后面一点（真枪的位置），
+        配合开镜机位的补偿，<b>眼距从 0.230 收到 0.210</b> —— 镜子离眼睛更近，
+        镜内可见圆从 40.3% 涨到 <b>43.2% 屏高</b>（孔径角 4.90°→<b>5.20°</b>）</li>
+    <li><b>修掉两个自己埋的坑</b>：① 抱箍上的"贯穿螺栓"整根从镜筒内孔穿过去，
+        把下视野压到 3.35°；② 缩短后仍会在屏幕左右边缘变成两个悬空灰圆头 —— 外露螺栓整个去掉</li>
+    <li><b>镜内视野又调了一次（这次是对的）</b>：batch209 我把眼距从 0.20 拉到 0.145 来放大孔径，
+        亮圈是大了，但<b>整根镜筒同时变大</b>——黑筒遮住的屏高从 58% 涨到 76%，观感反而是"能看到的变少了"。
+        现在眼距退回 0.230（黑筒恢复原尺寸），视野改从<b>物镜口径</b>要（0.0320→0.0340）、
+        去掉那道 25mm 收口（阑1）、镜桥抬到 0.120（枪口仍在视野外）。
+        结果：孔径角 3.35°→<b>4.90°</b>、亮圈 27.5%→<b>40.3%</b> 屏高，<b>黑筒一点没变大</b></li>
+    <li><b>拉栓 / 换弹音效重做</b>：上一版是方波"哔"+单层噪声，而且靠 setTimeout 拼层（主线程一卡就散）。
+        现在每个动作按物理拆三层——<b>冲击</b>（极短带通噪声，决定硬不硬）、<b>金属余鸣</b>
+        （两三个失谐正弦快速衰减，决定是不是钢）、<b>结构闷响</b>（低频下扫，决定重不重），
+        全部用 AudioContext 时钟排程；音高 ±4%、音量 ±12% 随机，连换两次弹不会一模一样。
+        刮擦改成 8 颗带抖动的颗粒（沙沙沙），拉栓是"抓住→刮擦→到后位咔"，松手是"弹簧吁→闭锁撞击→机匣低频"</li>
+    <li><b>换弹不再"一顿一顿"</b>：动作从"九段 if/else 各自缓动"改成<b>单调三次样条</b>（关键帧不变，
+        但段与段之间<b>速度连续</b>）。实测速度突变比从 <b>1.000</b>（老写法：每个段边界速度直接归零）
+        降到 <b>0.14</b>。顺手修了三处硬跳：枪倾在 a=0.68 从 0.20 突降到 0、左手在 0.76 突然挪 5cm、
+        新弹匣在 0.58 翻转角度瞬间回弹</li>
+    <li><b>开镜视野放大</b>：真凶是遮光罩前口（内径 26mm，越往前越细），实测镜内可见圆只有
+        <b>27.5% 屏高</b>、孔径角 3.35°。现在遮光罩改成外扩喇叭口、光阑/中段/物镜一起放大、
+        镜桥抬高 16mm（枪口不再从下沿露出来）→ 可见圆 <b>39.3% 屏高</b>、孔径角 4.75°，
+        能看到的场景<b>翻了一倍</b>。而且 shader 的光学圆第一次和几何孔对齐（以前差一倍多）</li>
+    <li><b>补上拉栓 / 换弹音效</b>：新增振荡器音源（以前只有滤波噪声，做不出金属撞击）。
+        退匣"嗒"+滑出、上匣闷响、拍匣底、拉栓刮擦+到位咔、松手闭锁，各按动作点触发一次</li>
+    <li><b>右手真的抓在栓上了</b>（上一版是假的）。右手在模型里分两层：
+        <code>_右手</code> 是个<b>空原点的组</b>，手本体是组里的一个网格、局部偏 (0.040,−0.075,0.080)。
+        上一版我把<b>组</b>挪到柄点上，等于手还要再加这 11cm 的自身偏移 → 手落在握把下方，
+        离栓 11.2cm，看着就是"根本没拉在栓上"。现在改成把<b>手网格</b>直接送到滚花头上
+        （实测离栓 <b>4mm</b>），再让小臂重新对齐原来的肘端（转向 + 伸缩），小臂不会被整块抬高扫进画面</li>
+    <li><b>「拉栓姿态」按钮</b>（底部工具栏）：抓住 → 后拉 3.4cm → 松手回弹 → 转头再来一遍，
+        循环播放。<b>点它再用鼠标转着看</b>，能亲眼确认手是不是包住栓头。关掉就复位</li>
+    <li><b>弹匣又往前挪 3.2cm</b>（弹匣井、释放钮、空仓挂机柄一起走，magPos.z −0.040 → <b>−0.072</b>）。
+        现在匣后沿到握把前脸 <b>9.4cm</b>，中间正好是扳机护圈的位置，不再挤在一起。
+        <span class="dim">上一轮是按 <code>magType:'rifle'</code> 去替换的，实际是 <code>'memorial'</code>，
+        字符串没匹配上、静默失效，所以你看着还是一样近 —— 这一轮用精确定位改的。</span></li>
+    <li><b>护木终于接上枪管</b>：枪管轴 y=0.012、半径 0.0155（顶到 0.0275），而护木箱体只到 0.023
+        → 枪管顶面比护木高 4.5mm，看着就是"没插进去"。护木整体上抬 7mm 到 y=0.001、高 62mm，
+        再加端盖（带枪管孔）+ 枪管螺母（8 缺口 + 金环）+ 导气箍 + 气管</li>
+    <li><b>镜筒里那块"突起"</b>：其实是镜座顶板 + 一座金饰，做进了镜筒内壁（y=0.077 &gt; 内壁 0.0625）。
+        现在座顶压到 0.0622，金饰改到座侧；再把分划挪到物镜前、加光阑和 5.5cm 遮光罩 ——
+        顺着镜筒斜下去能扫到枪管的那条视线，被物理挡住了</li>
+    <li><b>后握把</b>：主体 46×112×56（原来 40×98×52），后倾角改成 <b>-0.30</b>
+        （原来 +0.34 是"下端朝枪口"，难怪你看着别扭），加掌托/指槽/底盖金线</li>
+    <li><b>扳机组</b>：护圈三段围成 U 形、弧形扳机刀片 + 保险片、右侧弹匣释放钮、左侧空仓挂机柄 ——
+        全部挂在下机匣外面（原来那块扳机埋在下机匣里，根本看不见）</li>
+    <li><b>喂弹口</b>：下机匣中间开了一个 8.5cm 的洞，弹匣从下面插上来，最上面那发就露在口里、正对抛壳窗</li>
+    <li><b>30 发 S 形排布</b>：每 5.8mm 一级、左右交替（一发左一发右），侧窗里看到的就是锯齿形；
+        子弹缩到真 5.56 的比例（壳 7.2mm、弹头 3.6mm）</li>
+    <li><b>从下面往上送</b>：打一发是"上面消耗"，剩下的整摞不下移，<b>托弹板从下面顶上来</b> ——
+        拖下面的弹药量滑条，看窗里的子弹从下往上变少</li>
+    <li><b>枪机往复</b>：点"试射一发"，抛壳窗里那根枪机后退再复进，一枪一次</li>
+    <li><b>枪管</b>：内膛有封底（永远是黑洞）、枪口 45° 倒角、6 道膛线；消焰器改成鸟笼式，条间是真通缝</li>
+  </ol>
+  <div class="tip">这一轮主要是把<b>右手拉栓</b>做成真的（上一版手根本没碰到栓），顺带加了「拉栓姿态」按钮。<br>
+    还觉得哪里不对（比例、穿模、朝向、配色、动作幅度），直接说部位。</div>
+</div>
+
+<div class="panel" id="bar">
+  <button data-view="left">左侧</button>
+  <button data-view="right">右侧</button>
+  <button data-view="front">枪口</button>
+  <button data-view="back">枪托</button>
+  <button data-view="top">俯视</button>
+  <span class="sep"></span>
+  <button data-view="scope">瞄具特写</button>
+  <button data-view="mag">弹匣特写</button>
+  <button data-view="muzzle">枪口特写</button>
+  <span class="sep"></span>
+  <button id="btnRot" class="on">自动旋转</button>
+  <button id="btnWire">线框</button>
+  <button id="btnMag" class="on">弹匣</button>
+  <button id="btnHand">右手</button>
+  <button id="btnRack">拉栓姿态</button>
+  <button id="btnFire">试射一发</button>
+  <button id="btnReset">复位</button>
+</div>
+
+<div class="panel" id="stat">
+  <div>draw call <b id="sCalls">–</b> · 三角面 <b id="sTris">–</b></div>
+  <div>网格 <b id="sMesh">–</b> · 旋转 <b id="sAng">–</b></div>
+</div>
+
+<div class="panel" id="ammo">
+  <label><span>弹药量（观察窗里的子弹）</span><b id="amTxt">30 / 30</b></label>
+  <input id="amRange" type="range" min="0" max="30" value="30" step="1">
+  <div class="hint">弹匣是中空的：拖到 0 就是空弹匣，只剩托弹板和弹簧。</div>
+</div>
+
+<div id="hint">按住左键拖动旋转</div>
+
+<script src="lib/three.r128.min.js"></script>
+<script>
+/* ============================================================
+   ① 先把游戏模型需要的全局准备好 —— js/01 一加载就会往 camera 上挂 recoilPivot，
+      所以 camera 必须在它之前存在。
+   ============================================================ */
+var 画布 = document.getElementById('cv');
+var renderer = new THREE.WebGLRenderer({ canvas: 画布, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.setClearColor(0x0b0f0d, 1);
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.01, 60);
+scene.add(camera);
+</script>
+
+<!-- 游戏自己的武器建模（含 _建纪念枪 / 弹匣 / 纪念贴花），一行不改地拿过来用 -->
+<script src="js/01_手部与武器建模.js"></script>
+
+<script>
+/* ============================================================
+   ② 场景布光 + 背景
+   ============================================================ */
+(function 布光(){
+  /* 径向渐变背景：中间稍亮，边缘压黑 —— 让深绿色的枪身不至于糊在背景里 */
+  var c = document.createElement('canvas'); c.width = c.height = 512;
+  var x = c.getContext('2d');
+  var g = x.createRadialGradient(256, 236, 40, 256, 256, 360);
+  g.addColorStop(0, '#25302a'); g.addColorStop(0.55, '#161d19'); g.addColorStop(1, '#080b09');
+  x.fillStyle = g; x.fillRect(0, 0, 512, 512);
+  scene.background = new THREE.CanvasTexture(c);
+
+  /* ⚠️ 光别开太猛：Lambert 材质在 r128 里是逐顶点漫反射，几盏灯一叠就会把灰绿色的枪管
+     打成死白（第一版就是这样，枪管看着像不锈钢）。总亮度控制在 1.0 左右。 */
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x161e19, 0.42));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.14));
+
+  var 主光 = new THREE.DirectionalLight(0xfff1d6, 0.72);
+  主光.position.set(1.1, 1.7, 1.2); scene.add(主光);
+
+  var 侧光 = new THREE.DirectionalLight(0x9fd8ff, 0.30);
+  侧光.position.set(-1.5, 0.7, -0.9); scene.add(侧光);
+
+  var 轮廓 = new THREE.DirectionalLight(0xe6c46a, 0.22);
+  轮廓.position.set(-0.4, -0.9, 1.6); scene.add(轮廓);   // 下方暖光：把金色刻线勾出来
+
+  var 网格 = new THREE.GridHelper(3, 30, 0x2c3a32, 0x1a231e);
+  网格.position.y = -0.42; scene.add(网格);
+})();
+
+/* ============================================================
+   ③ 建模型（真模型）
+   ============================================================ */
+var 枪组 = new THREE.Group();
+scene.add(枪组);
+
+var 建好 = false, 建错 = '';
+try{
+  _建纪念枪(枪组);                          // ← 游戏里的那个函数
+  建好 = true;
+}catch(e){ 建错 = String(e && e.message || e); }
+
+/* 弹匣：单独建一个再插到弹匣井里（游戏里也是这么干的：rebuildWeaponModel 末尾 buildMagazineGroup） */
+var 弹匣 = null;
+try{
+  弹匣 = buildMagazineGroup(BUILTIN_GUNS[MEMORIAL_SLOT], 0);
+  var mp = (BUILTIN_GUNS[MEMORIAL_SLOT].magPos) || { x: 0, y: -0.052, z: -0.014 };
+  弹匣.position.set(mp.x, mp.y, mp.z);
+  枪组.add(弹匣);
+  刷新弹匣子弹(弹匣, 30, 30);
+}catch(e){ /* 弹匣建失败不影响看枪 */ }
+
+/* 右手：模型里自带的那只（_建纪念枪 把它放进了 _右手 这个 Group），这里只拿引用，不再建第二只。
+   默认藏起来 —— 那只手是为第一人称视角做的（在屏幕右下角），搁在预览台上会糊住半个枪身。 */
+var 右手 = 枪组.userData._右手 || null;
+if (右手) 右手.visible = false;
+
+if(!建好){
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'color:#ff9c9c;font-size:14px;text-align:center;padding:40px;line-height:2;z-index:99;background:#0b0f0d';
+  d.innerHTML = '模型没建起来：<br>' + 建错 + '<br><br>（先看控制台有没有更详细的报错）';
+  document.body.appendChild(d);
+}
+
+/* ============================================================
+   ④ 轨道相机（自己写，不引 examples 里的 OrbitControls，免得再拉一个文件）
+      · 左键拖拽：绕模型转（水平 360°、垂直受限）
+      · 滚轮：远近
+      · 双击：复位
+   ============================================================ */
+var 视 = { r: 1.42, theta: 0.72, phi: 1.16, 目标: new THREE.Vector3(0, 0.005, -0.17) };
+var 视想 = { r: 1.42, theta: 0.72, phi: 1.16, 目标: new THREE.Vector3(0, 0.005, -0.17) };
+var 自动 = true;
+
+function 刷相机(){
+  视.r += (视想.r - 视.r) * 0.18;
+  视.theta += (视想.theta - 视.theta) * 0.18;
+  视.phi += (视想.phi - 视.phi) * 0.18;
+  视.目标.lerp(视想.目标, 0.18);
+  var sp = Math.sin(视.phi);
+  camera.position.set(
+    视.目标.x + 视.r * sp * Math.sin(视.theta),
+    视.目标.y + 视.r * Math.cos(视.phi),
+    视.目标.z + 视.r * sp * Math.cos(视.theta)
+  );
+  camera.lookAt(视.目标);
+}
+
+var 拖 = { on: false, x: 0, y: 0 };
+画布.addEventListener('pointerdown', e => { 拖.on = true; 拖.x = e.clientX; 拖.y = e.clientY; 画布.setPointerCapture(e.pointerId); });
+画布.addEventListener('pointerup', e => { 拖.on = false; try { 画布.releasePointerCapture(e.pointerId); } catch (_) { } });
+画布.addEventListener('pointermove', e => {
+  if (!拖.on) return;
+  视想.theta -= (e.clientX - 拖.x) * 0.0085;
+  视想.phi -= (e.clientY - 拖.y) * 0.0075;
+  视想.phi = Math.max(0.16, Math.min(3.02, 视想.phi));
+  拖.x = e.clientX; 拖.y = e.clientY;
+});
+画布.addEventListener('wheel', e => {
+  e.preventDefault();
+  视想.r *= (1 + Math.sign(e.deltaY) * 0.09);
+  视想.r = Math.max(0.24, Math.min(4.2, 视想.r));
+}, { passive: false });
+画布.addEventListener('dblclick', () => 复位());
+
+function 复位(){
+  视想.r = 1.42; 视想.theta = 0.72; 视想.phi = 1.16;
+  视想.目标.set(0, 0.005, -0.17);
+}
+
+/* 视角预设 */
+var 视角 = {
+  left:   { r: 1.45, theta: Math.PI / 2, phi: 1.2,  目标: [0, 0.005, -0.17] },
+  right:  { r: 1.45, theta: -Math.PI / 2, phi: 1.2, 目标: [0, 0.005, -0.17] },
+  front:  { r: 1.5,  theta: Math.PI, phi: 1.35,     目标: [0, 0.005, -0.17] },
+  back:   { r: 1.5,  theta: 0, phi: 1.35,           目标: [0, 0.005, -0.17] },
+  top:    { r: 1.35, theta: 0.5, phi: 0.28,         目标: [0, 0.02, -0.17] },
+  scope:  { r: 0.46, theta: -0.95, phi: 1.28,       目标: [0, 0.092, -0.085] },
+  mag:    { r: 0.44, theta: -0.55, phi: 1.5,        目标: [0, -0.10, -0.02] },
+  muzzle: { r: 0.30, theta: Math.PI * 0.86, phi: 1.48, 目标: [0, 0.012, -0.66] }
+};
+document.querySelectorAll('[data-view]').forEach(b => {
+  b.addEventListener('click', () => {
+    var v = 视角[b.dataset.view]; if (!v) return;
+    视想.r = v.r; 视想.theta = v.theta; 视想.phi = v.phi;
+    视想.目标.set(v.目标[0], v.目标[1], v.目标[2]);
+  });
+});
+
+/* 开关 */
+var 线框开 = false;
+function 全线框(开){
+  枪组.traverse(o => { if (o.isMesh && o.material) {
+    var ms = Array.isArray(o.material) ? o.material : [o.material];
+    ms.forEach(m => { m.wireframe = 开; });
+  }});
+}
+document.getElementById('btnWire').addEventListener('click', function () {
+  线框开 = !线框开; 全线框(线框开); this.classList.toggle('on', 线框开);
+});
+document.getElementById('btnRot').addEventListener('click', function () {
+  自动 = !自动; this.classList.toggle('on', 自动);
+});
+document.getElementById('btnMag').addEventListener('click', function () {
+  if (弹匣) 弹匣.visible = !弹匣.visible;
+  this.classList.toggle('on', !!(弹匣 && 弹匣.visible));
+});
+document.getElementById('btnHand').addEventListener('click', function () {
+  if (右手) 右手.visible = !右手.visible;
+  this.classList.toggle('on', !!(右手 && 右手.visible));
+});
+document.getElementById('btnReset').addEventListener('click', 复位);
+
+/* 弹药量滑条 */
+var 滑条 = document.getElementById('amRange'), 弹药字 = document.getElementById('amTxt');
+滑条.addEventListener('input', function () {
+  var n = +this.value;
+  弹药字.textContent = n + ' / 30';
+  try{ 刷新弹匣子弹(弹匣, n, 30); }catch(e){}
+});
+
+/* ============================================================
+   ⑤ 渲染循环
+   ============================================================ */
+var 统计 = { calls: 0, tris: 0, mesh: 0 };
+function 数网格(){
+  var n = 0;
+  枪组.traverse(o => { if (o.isMesh) n++; });
+  统计.mesh = n;
+}
+数网格();
+
+/* 【batch206】试射：抛壳窗里那根枪机后退一下再复进（游戏里是每次开火触发）*/
+var 后坐 = { on:false, t0:0 }, 枪机件 = null;
+function 找枪机(){
+  if (枪机件) return 枪机件;
+  枪组.traverse(o => { if (!枪机件 && o.userData && o.userData.animPart === 'bolt') 枪机件 = o; });
+  return 枪机件;
+}
+function 试射(){ 后坐.on = true; 后坐.t0 = performance.now(); }
+function 推进枪机(){
+  var b = 找枪机(); if (!b) return;
+  var k = 0;
+  if (后坐.on) {
+    var t = (performance.now() - 后坐.t0) / 110;
+    if (t >= 1) { 后坐.on = false; }
+    else if (t < 0.40) k = t / 0.40;
+    else k = 1 - (t - 0.40) / 0.60;
+  }
+  b.position.z = (b.userData.原位Z || 0) + k * 0.022;
+}
+document.getElementById('btnFire').addEventListener('click', 试射);
+
+/* 【batch208】「拉栓姿态」：把右手送到拉机柄上、后拉、松手回位，循环播放，
+   方便 360° 转着看手到底有没有真抓住栓头。
+   算法与 js/24 的 `_右手拉栓` 完全一致 —— 那函数依赖游戏全局，这个页面加载不了 js/24，
+   所以是两副本，**改一处必须同改另一处**。 */
+var 拉栓态 = { 现: 0, 目标: 0, 计时: 0 };
+var 栓件 = null, 手件 = null, 臂件 = null, 手原 = null, 手转原 = null, 臂原 = null, 臂四原 = null, 肘端 = null, 臂几何长 = 0;
+function 备手(){
+  if (手件 || !右手) return;
+  右手.traverse(function (o) { if (!o.isMesh) return; if (!手件) 手件 = o; else if (!臂件) 臂件 = o; });
+  if (!手件) return;
+  手原 = 手件.position.clone(); 手转原 = 手件.rotation.clone();
+  if (臂件) {
+    臂原 = 臂件.position.clone(); 臂四原 = 臂件.quaternion.clone();
+    try { 臂几何长 = 臂件.geometry.parameters.depth || 0; } catch (e) { 臂几何长 = 0; }
+    if (臂几何长 > 0.001) 肘端 = 臂件.position.clone().add(
+      new THREE.Vector3(0, 0, 1).applyQuaternion(臂件.quaternion).multiplyScalar(臂几何长 * 0.5));
+  }
+}
+function 找栓(){
+  if (栓件) return 栓件;
+  枪组.traverse(function (o) { if (!栓件 && o.userData && o.userData.animPart === 'charging') 栓件 = o; });
+  return 栓件;
+}
+function 栓点(k){
+  var m = 找栓();
+  var p = (m && m.userData && m.userData.握点) ? m.userData.握点 : { x: 0.056, y: 0.034, z: 0.062 };
+  return { x: p.x, y: p.y, z: p.z + (k || 0) * 0.034 };
+}
+function 摆右手(t, k){
+  备手(); if (!手件 || !手原) return;
+  右手.visible = true;
+  if (t <= 0.0005) {
+    手件.position.copy(手原); 手件.rotation.copy(手转原);
+    if (臂件 && 臂原) { 臂件.position.copy(臂原); 臂件.quaternion.copy(臂四原); 臂件.scale.z = 1; }
+    return;
+  }
+  var 柄 = 栓点(k);
+  var 新H = new THREE.Vector3(
+    手原.x + (柄.x - 手原.x) * t,
+    手原.y + (柄.y - 0.004 - 手原.y) * t,
+    手原.z + (柄.z - 手原.z) * t);
+  手件.position.copy(新H);
+  手件.rotation.set(手转原.x - 0.55 * t, 手转原.y + 0.30 * t, 手转原.z + 0.10 * t);
+  if (臂件 && 臂原 && 肘端 && 臂几何长 > 0.001) {
+    var 起 = new THREE.Vector3(新H.x, 新H.y, 新H.z + 0.05);
+    var 向 = 肘端.clone().sub(起), len = 向.length();
+    if (len > 0.01) {
+      臂件.position.copy(起).add(肘端).multiplyScalar(0.5);
+      臂件.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), 向.normalize());
+      臂件.scale.z = len / 臂几何长;
+    }
+  }
+}
+function 拉栓循环(now){
+  if (!(拉栓态.目标 > 0.5)) return;
+  var m = 找栓();
+  var dt = Math.min(0.1, (now - 拉栓态.计时) / 1000); 拉栓态.计时 = now;
+  var 抓段 = 0.30, 拉段 = 0.18, 松段 = 0.35, 停 = 0.45, 总 = 抓段 + 拉段 + 松段 + 停;
+  拉栓态.现 = (拉栓态.现 + dt) % 总;
+  var tt = 拉栓态.现, 抓 = 0, k = 0;
+  if (tt < 抓段) { 抓 = tt / 抓段; k = 0; }
+  else if (tt < 抓段 + 拉段) { 抓 = 1; k = (tt - 抓段) / 拉段; }
+  else if (tt < 抓段 + 拉段 + 松段) { 抓 = 1; k = 1 - (tt - 抓段 - 拉段) / 松段; }
+  摆右手(抓, k);
+  if (m) m.position.z = k * 0.034;
+}
+document.getElementById('btnRack').addEventListener('click', function () {
+  var 开 = !(拉栓态.目标 > 0.5);
+  拉栓态.目标 = 开 ? 1 : 0; 拉栓态.现 = 0; 拉栓态.计时 = performance.now();
+  if (!开) { 摆右手(0, 0); var m = 找栓(); if (m) m.position.z = 0; }
+  this.classList.toggle('on', 开);
+});
+
+function 循环(){
+  requestAnimationFrame(循环);
+  if (自动 && !拖.on) 视想.theta += 0.0042;
+  刷相机();
+  推进枪机();
+  拉栓循环(performance.now());
+
+  renderer.info.autoReset = false;
+  renderer.info.reset();
+  renderer.render(scene, camera);
+  统计.calls = renderer.info.render.calls;
+  统计.tris = renderer.info.render.triangles;
+
+  document.getElementById('sCalls').textContent = 统计.calls;
+  document.getElementById('sTris').textContent = 统计.tris.toLocaleString();
+  document.getElementById('sMesh').textContent = 统计.mesh;
+  document.getElementById('sAng').textContent = Math.round((视.theta * 180 / Math.PI) % 360) + '°';
+}
+循环();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight, false);
+});
+
+/* 提示条淡出 */
+setTimeout(() => { var h = document.getElementById('hint'); if (h) h.style.opacity = 0; }, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手机版：一个只加载本地游戏本体的 WebView 壳。
+     · 强制横屏（sensorLandscape：两个方向都横，随重力翻）
+     · 全屏沉浸（代码里隐藏状态栏/导航栏）
+     · 不联网也能玩：整个「多文件版」被打进 assets/ -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.qiangtu.game">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="枪战突击"
+        android:icon="@mipmap/ic_launcher"
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

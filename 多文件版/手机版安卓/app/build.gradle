@@ -1,0 +1,25 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.qiangtu.game'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.qiangtu.game"
+        minSdk 24            // Android 7.0 起（WebView 才稳定支持 WebGL2）
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {
+    // WebViewAssetLoader：把 assets 映射成 https 虚拟站点（file:// 下 fetch 会被挡）
+    implementation 'androidx.webkit:webkit:1.8.0'
+}

@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh" data-page-node-id="tG1qgkB5MafGnLsRPrflsZ">
+<head data-page-node-id="hh1Dj2uhacAc1EgaNotURj">
+<meta charset="UTF-8" data-page-node-id="WXZ0S6LCzHavIBp00wUyxf">
+<title>3D枪战-终极建模版</title>
+<link rel="icon" type="image/png" href="图标.png">
+<link rel="shortcut icon" href="图标.ico">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+/* 关掉浏览器手势：下拉刷新 / 触控板与触摸屏的滑动返回 / 边到边橡皮筋回弹 */
+html{overscroll-behavior:none;height:100%}
+body{overflow:hidden;background:#0a0a15;font-family:'Segoe UI',Arial,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline:none;cursor:crosshair;overscroll-behavior:none}
+canvas{display:block;position:fixed;top:0;left:0;z-index:0;touch-action:none;-webkit-user-drag:none}
+/* overflow 很关键：小屏 / 横屏手机上菜单比屏幕高，不能滚就会把「开始游戏」等按钮顶到屏幕外 */
+#blocker,#wave-shop,#go{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:100;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#blocker{background:rgba(5,5,15,.95)}
+#wave-shop{background:rgba(5,5,15,.85);z-index:80;display:none;cursor:default}
+#weapon-select{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(6,8,18,.92);z-index:110;display:none;cursor:default;align-items:flex-start;justify-content:center;overflow-y:auto;}
+#weapon-select .wsel-inner{width:94%;max-width:900px;margin:auto;padding:26px 0 44px;color:#fff;}
+#weapon-select h2{text-align:center;font-size:30px;margin-bottom:4px;color:#fff;text-shadow:0 0 18px rgba(120,200,255,.5)}
+#weapon-select .wsel-sub{text-align:center;color:#9ab;margin-bottom:20px;font-size:14px}
+#wsel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.wsel-card{background:linear-gradient(180deg,rgba(24,28,44,.96),rgba(12,15,24,.98));border:2px solid rgba(120,160,220,.28);border-radius:14px;padding:16px;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;position:relative;overflow:hidden}
+.wsel-card:hover{transform:translateY(-3px);border-color:rgba(120,200,255,.7);box-shadow:0 8px 26px rgba(0,0,0,.5)}
+.wsel-card.cur{border-color:#ffd23c;box-shadow:0 0 0 2px rgba(255,210,60,.35),0 8px 26px rgba(0,0,0,.5)}
+.wsel-card .wsel-ico{font-size:42px;text-align:center;margin-bottom:8px}
+.wsel-card .wsel-name{font-size:19px;font-weight:bold;text-align:center;margin-bottom:10px}
+.wsel-card .wsel-stats{font-size:13px;color:#bcd;line-height:1.8}
+.wsel-card .wsel-stats b{color:#fff;font-weight:600}
+.wsel-card .wsel-tag{position:absolute;top:8px;right:8px;font-size:11px;color:#0a0;background:rgba(0,255,140,.15);border:1px solid rgba(0,255,140,.4);border-radius:6px;padding:1px 6px}
+.wsel-card.melee .wsel-tag{color:#f80;background:rgba(255,140,0,.15);border-color:rgba(255,140,0,.4)}
+.wsel-card.spike{border-color:rgba(255,140,40,.45)}
+.wsel-card.spike:hover{border-color:rgba(255,170,60,.9)}
+.wsel-card.spike.cur{border-color:#ff9a3c;box-shadow:0 0 0 2px rgba(255,150,50,.35),0 8px 26px rgba(0,0,0,.5)}
+/* 【batch203】纪念枪卡片：暖金描边 + 顶部一条金线，一眼能从一堆灰蓝卡片里认出来。
+   未解锁时整张卡压暗并盖一层锁条（点它只会弹提示，不会换枪）。 */
+.wsel-card.memorial{border-color:rgba(214,176,86,.55);background:linear-gradient(180deg,rgba(38,31,16,.97),rgba(14,12,8,.99))}
+.wsel-card.memorial:hover{border-color:rgba(240,206,120,.9);box-shadow:0 8px 30px rgba(180,140,50,.22),0 8px 26px rgba(0,0,0,.55)}
+.wsel-card.memorial.cur{border-color:#f0ce78;box-shadow:0 0 0 2px rgba(240,206,120,.35),0 8px 26px rgba(0,0,0,.5)}
+.wsel-card.memorial::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;
+  background:linear-gradient(90deg,rgba(214,176,86,0),#f0ce78,rgba(214,176,86,0))}
+.wsel-card.memorial .wsel-name{color:#f4dc9a;text-shadow:0 0 12px rgba(232,188,92,.35)}
+.wsel-card .wsel-note{margin-top:8px;font-size:11.5px;color:#a99a78;text-align:center;letter-spacing:.5px}
+.wsel-card.lock{opacity:.62;filter:grayscale(.35)}
+.wsel-card.lock:hover{transform:none;border-color:rgba(120,160,220,.28);box-shadow:none}
+.wsel-card .wsel-lock{position:absolute;left:0;right:0;bottom:0;padding:5px 0;text-align:center;font-size:11.5px;
+  color:#ffd166;background:linear-gradient(180deg,rgba(10,10,14,0),rgba(10,10,14,.92) 40%);letter-spacing:.5px}
+.wsel-card.spike .wsel-tag{color:#fd6;background:rgba(255,140,0,.15);border-color:rgba(255,140,0,.4)}
+.wsel-close{display:block;margin:24px auto 0;padding:11px 40px;font-size:16px;color:#fff;background:linear-gradient(135deg,#3a6,#282);border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.wsel-close:hover{transform:scale(1.04)}
+#go{background:rgba(0,0,0,.92);z-index:200;display:none}
+#menu{text-align:center;color:#fff;max-width:700px;width:92%;margin:auto;max-height:100%;padding:10px 0}
+#menu h1{font-size:38px;color:#f44;text-shadow:0 0 30px #f00;margin-bottom:4px}
+#menu .subtitle{font-size:13px;color:#666;margin-bottom:8px}
+.tabs{display:flex;gap:4px;margin-bottom:10px;justify-content:center}
+.tab{padding:10px 26px;background:rgba(255,255,255,.05);color:#8a93a3;border:1px solid rgba(255,255,255,.1);border-radius:6px 6px 0 0;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:1px;transition:.2s}
+.tab:hover{background:rgba(255,255,255,.1);color:#c9d3e2}
+.tab.active{background:linear-gradient(180deg,rgba(255,70,85,.20),rgba(255,70,85,.06));color:#ff4655;border-color:#ff4655;border-bottom-color:transparent}
+.panel{display:none;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:0 0 12px 12px;padding:16px;text-align:left}
+.panel.active{display:block}
+/* 【batch175】主菜单一屏放得下：内容区自己滚，**开始/多人这些按钮永远露在外面**，
+   不用每次进来都往下翻半天找按钮。 */
+#menu{max-height:96vh;overflow-y:auto;overscroll-behavior:contain}   /* 兜底：窗口极矮时整个菜单还能滚，不会把按钮裁掉 */
+/* ==================== 【batch229】主菜单三栏：宽屏把功能摊到左右两边，省中间空间 ====================
+   窄屏（<1200px）左右栏整体隐藏，中间全宽 —— 手机横屏 / 小笔记本不受影响。 */
+.menuSide{display:none}
+@media (min-width:1200px){
+  #blocker{align-items:flex-start}
+  #menu{display:grid;grid-template-columns:216px minmax(0,700px) 216px;gap:16px;align-items:start;max-width:1180px;margin:auto}
+  #menuMid{min-width:0}
+  .menuSide{display:flex;flex-direction:column;gap:10px;position:sticky;top:12px}
+}
+.sideCard{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:10px 12px;text-align:left}
+.sideTitle{font-size:12px;color:#8fd6ff;font-weight:bold;margin-bottom:7px;letter-spacing:1px}
+.sideRow{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;color:#aaa;padding:3px 0}
+.sideRow b{color:#fff;font-weight:bold;text-align:right;word-break:break-all;max-width:130px}
+.sideHint{font-size:11px;color:#899;line-height:1.65}
+.sideBtn{display:block;width:100%;text-align:left;margin-top:6px;padding:7px 10px;font-size:12px;color:#cdeaff;background:rgba(40,90,140,.35);border:1px solid rgba(120,200,255,.22);border-radius:8px;cursor:pointer;transition:background .15s}
+.sideBtn:hover{background:rgba(60,130,200,.55);color:#fff}
+.sideBtn:first-of-type{margin-top:2px}
+.panel.active{max-height:min(48vh,460px);overflow-y:auto;overscroll-behavior:contain}
+#menuHomeBtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+#menuHomeBtns .start-btn,#menuHomeBtns #netBtn{margin-top:0;padding:11px 18px;font-size:15px;letter-spacing:1px;flex:1 1 160px;max-width:250px}
+#menuSetBtn{margin:8px 5px 0 !important;padding:8px 16px !important;font-size:13px !important}
+#relockBtn{margin:8px 5px 0 !important;padding:8px 16px !important;font-size:13px !important}
+/* ⚠️ 别给 #relockBtn 加 display !important —— 它默认 display:none，由 JS 在「指针没锁上」时才显示；
+   强行 !important 会连 JS 的隐藏一起盖掉，按钮就永远挂在那儿了（batch175 踩过）。 */
+#menuTips{margin:0 auto 6px;max-width:640px;text-align:left}
+#menuTips summary{cursor:pointer;color:#8fd6ff;font-size:12px;list-style:none}
+#menuTips summary::-webkit-details-marker{display:none}
+#menuTips .tip-body{font-size:12px;color:#fa0;line-height:1.6;margin-top:4px}
+.upgrade-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.upgrade-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;transition:.2s}
+.upgrade-card:hover{background:rgba(255,255,255,.07)}
+.upgrade-card.maxed{border-color:rgba(255,204,0,.3);background:rgba(255,204,0,.05)}
+.upgrade-icon{font-size:28px;margin-bottom:8px}
+.upgrade-name{font-size:15px;font-weight:bold;color:#eee;margin-bottom:4px}
+.upgrade-desc{font-size:12px;color:#888;margin-bottom:10px}
+.upgrade-level{display:flex;gap:4px;margin-bottom:10px}
+.level-pip{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.1)}
+.level-pip.filled{background:linear-gradient(90deg,#f44,#f66)}
+.level-pip.filled.maxed{background:linear-gradient(90deg,#fc0,#fd0)}
+.upgrade-btn{width:100%;padding:8px;border:none;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;transition:.2s;color:#fff}
+.upgrade-btn.can-buy{background:linear-gradient(135deg,#f44,#c00)}
+.upgrade-btn.can-buy:hover{transform:scale(1.03)}
+.upgrade-btn.locked{background:rgba(255,255,255,.08);color:#555;cursor:not-allowed}
+.upgrade-btn.max-level{background:linear-gradient(135deg,#fc0,#da0);color:#000;cursor:default}
+.gold-display{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px;font-size:22px;color:#fc0;font-weight:bold}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.info-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px}
+/* 【batch124 世界观】阵营小标 / 选人分组标题 / 本季剧情卡 */
+.vl-fac{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,255,255,.10);vertical-align:middle}
+.vl-group{display:flex;align-items:center;gap:8px;margin:7px 2px 1px;font:800 11px/1.6 system-ui;letter-spacing:1px}
+.vl-group::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.12)}
+.vl-dfac{font-size:11px;font-weight:700;letter-spacing:1px;margin-top:3px;color:#8ea3c0}
+.info-card.story{grid-column:1 / -1;border-color:rgba(255,200,110,.42);
+  background:linear-gradient(180deg,rgba(255,200,110,.08),rgba(255,255,255,.03))}
+.info-card.story h3{color:#ffd75e}
+.info-card.story .fac{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.info-card.story .fac>div{flex:1 1 210px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.7;color:#cfe0f2}
+.info-card.story .fac b{color:#fff}
+.info-card h3{font-size:14px;color:#f44;margin-bottom:8px}
+.info-card p{font-size:12px;color:#aaa;line-height:1.6}
+/* ==================== 特工 / 地图选择（瓦罗兰特风，batch117）====================
+   要点：深色底 + 强调色细分割线；标题大写 + 大字距；左边一列特工（色条+头像+名字+定位+技能图标），
+   右边一大块详情（主色径向渐变的"立绘位" + 巨型图标 + 名字水印 + ✓已选择角标，下面 3 条技能）。
+   全部用 CSS 画，不引外部图片（单文件、离线可用）。强调色 #ff4655＝瓦罗兰特的标志红。
+   【注意】.hero-card 的 class 必须**原样**保留（t_hero.js 会数 `class="hero-card"` 恰好 4 个），
+   所以"选中"靠内联 box-shadow + 卡片里的角标来表示，不能靠加 class。 */
+.vl-panel{background:linear-gradient(180deg,rgba(13,16,26,.94),rgba(7,9,15,.97)) !important;
+  border:1px solid rgba(255,70,85,.30) !important;border-radius:0 0 12px 12px !important}
+.vl-head{display:flex;align-items:baseline;gap:10px;padding:0 2px 9px;border-bottom:2px solid rgba(255,70,85,.55);margin-bottom:11px}
+.vl-title{font-size:19px;font-weight:800;color:#fff;letter-spacing:3px}
+.vl-sub{font-size:10px;font-weight:700;color:#ff4655;letter-spacing:3px;opacity:.9}
+.vl-note{font-size:11px;color:#93a3ba;line-height:1.6;margin-bottom:11px;padding-left:8px;border-left:3px solid rgba(255,70,85,.5)}
+.vl-note b{color:#ffd166}
+/* ---- 特工：左列 + 右详情 ---- */
+.vl-hero{display:grid;grid-template-columns:190px 1fr;gap:14px;align-items:start}
+.vl-list{display:flex;flex-direction:column;gap:7px;
+  /* 【batch180】角色一多（尤其是装了模组角色）或名字一长，列表就撑得比面板还高，
+     超出可视区后**后面的角色直接看不见**。限高 + 自带滚动，保证再多角色也都能翻到。 */
+  max-height:min(56vh,520px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
+.hero-card{--c:#8ea3c0;position:relative;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:center;
+  background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:2px solid rgba(255,255,255,.10);
+  border-left:5px solid var(--c);border-radius:4px 10px 10px 4px;padding:8px 9px;cursor:pointer;transition:.16s;text-align:left}
+.hero-card:hover{background:linear-gradient(90deg,rgba(255,255,255,.11),rgba(255,255,255,.03));transform:translateX(2px)}
+.hero-card .vl-face{grid-row:1 / span 2;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;border-radius:50%;background:rgba(0,0,0,.38);border:1px solid var(--c)}
+.hero-card .vl-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:1px;
+  /* 【batch180】名字 + 后面内联挂的「阵营 / 🔒锁定 / 🧩模组」标签会把卡片撑成两三行
+     （🧩 模组原来压根没有样式，直接继承 14px 粗体，特别占宽）→ 列表更高、后面的角色被挤出可视区。
+     改成弹性行：**名字自己单行省略**，三个标签 flex:none 永不压缩，长名收起来（完整名在右侧详情看）。 */
+  display:flex;align-items:center;min-width:0}
+.hero-card .vl-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-card .vl-fac,.hero-card .vl-lock,.hero-card .vl-mod{flex:none;white-space:nowrap}
+.hero-card .vl-mod{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  color:#9ad8ff;border:1px solid rgba(120,200,255,.45);background:rgba(120,200,255,.12)}
+.hero-card .vl-role{font-size:10px;font-weight:700;color:var(--c);letter-spacing:1px}
+.hero-card .vl-keys{grid-column:1 / span 2;display:flex;gap:4px;margin-top:4px}
+.hero-card .hs{width:22px;height:20px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;border-radius:4px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14)}
+.hero-card .hd{grid-column:1 / span 2;margin-top:4px;font-size:10px;line-height:1.4;color:#8ea3c0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 【batch171】熟练度条（英雄卡内） */
+.hero-card .vl-xp{grid-column:1 / span 2;margin-top:5px}
+.hero-card .vl-xplv{font-size:10px;font-weight:700;color:#9ab;letter-spacing:.5px}
+.hero-card .vl-sptag{margin-left:6px;font-size:10px;font-weight:800;color:#ffd166;border:1px solid rgba(255,209,102,.5);
+  border-radius:4px;padding:0 5px;background:rgba(255,209,102,.12)}
+.hero-card .vl-xpbar{margin-top:3px;height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden}
+.hero-card .vl-xpbar i{display:block;height:100%;background:#49b6ff;border-radius:3px;transition:width .2s}
+/* 【batch171】SP 切换盒（详情区） */
+.vl-spbox{margin-top:10px;padding:9px 11px;border-radius:8px;border:1px dashed rgba(255,209,102,.45);background:rgba(255,209,102,.06)}
+.vl-spbox.on{border-style:solid;background:rgba(255,209,102,.12)}
+.vl-sptitle{font-size:13px;font-weight:800;color:#ffd166;letter-spacing:1px}
+.vl-spdesc{font-size:11px;color:#c9d3e2;line-height:1.5;margin:4px 0 8px}
+.vl-spbtn{display:block;width:100%;padding:8px;font-size:13px;font-weight:800;color:#10131c;cursor:pointer;
+  background:linear-gradient(135deg,#ffd166,#ffb454);border:none;border-radius:7px;letter-spacing:1px}
+.vl-spbtn:hover{filter:brightness(1.08)}
+.vl-spflag{font-size:11px;font-weight:800;color:#ffd166;border:1px solid rgba(255,209,102,.55);border-radius:4px;padding:1px 6px;vertical-align:2px}
+.vl-detail{position:relative;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px}
+.vl-big{position:relative;height:104px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.12);
+  background:radial-gradient(circle at 24% 20%,var(--c),rgba(8,10,18,.97) 66%)}
+.vl-bigicon{position:absolute;left:20px;top:50%;transform:translateY(-50%);font-size:50px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.65))}
+.vl-watermark{position:absolute;right:12px;bottom:-8px;font-size:42px;font-weight:900;letter-spacing:5px;color:rgba(255,255,255,.10);white-space:nowrap}
+.vl-sel{position:absolute;right:8px;top:8px;font-size:11px;font-weight:700;color:#ff4655;border:1px solid rgba(255,70,85,.75);
+  border-radius:4px;padding:2px 7px;background:rgba(255,70,85,.14)}
+.vl-dname{font-size:17px;font-weight:800;color:#fff;letter-spacing:2px;margin:10px 0 2px}
+.vl-drole{font-size:11px;font-weight:700;color:var(--c);letter-spacing:2px}
+.vl-sk{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)}
+.vl-skico{grid-row:1 / span 2;position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;border-radius:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15)}
+.vl-skico b{position:absolute;right:-4px;bottom:-4px;padding:0 3px;font-size:9px;color:#fff;background:#ff4655;border-radius:3px}
+.vl-skname{font-size:13px;font-weight:700;color:#fff}
+.vl-skcd{margin-left:6px;font-size:10px;font-weight:400;color:#7fd6ff}
+.vl-skdesc{font-size:11px;color:#a9b6cc;line-height:1.5}
+.vl-passive{margin-top:9px;padding:7px 9px;border-radius:7px;background:rgba(255,70,85,.09);
+  border:1px solid rgba(255,70,85,.30);font-size:11px;color:#ffd7da;line-height:1.55}
+/* ---- 地图：一条一条横着排 ---- */
+.vl-maps{display:flex;flex-direction:column;gap:10px}
+.map-card{--c:#6ea8ff;position:relative;display:grid;grid-template-columns:118px 1fr;gap:12px;
+  background:rgba(255,255,255,.035);border:2px solid rgba(255,255,255,.10);border-radius:8px;padding:9px;
+  transition:.16s;cursor:pointer;text-align:left}
+.map-card:hover{background:rgba(255,255,255,.075);transform:translateX(2px)}
+.map-card.on{border-color:#ff4655;box-shadow:inset 0 0 0 1px rgba(255,70,85,.45)}
+.map-card .vl-thumb{display:flex;align-items:center;justify-content:center;font-size:36px;border-radius:6px;
+  border:1px solid rgba(255,255,255,.12);background:radial-gradient(circle at 50% 40%,var(--c),rgba(7,9,15,.96) 72%)}
+.map-card .vl-mtop{display:flex;align-items:center}
+.map-card .vl-mname{font-size:16px;font-weight:800;color:#fff;letter-spacing:2px}
+.map-card .vl-mtag{margin-left:8px;padding:1px 6px;font-size:10px;font-weight:700;color:#ff4655;
+  border:1px solid rgba(255,70,85,.75);border-radius:4px;background:rgba(255,70,85,.14)}
+.map-card .md{margin-top:5px;font-size:11px;color:#a9b6cc;line-height:1.55}
+.map-card .mc{margin-top:5px;font-size:11px;color:#7fd6ff}
+/* 狙击开镜时技能栏压淡：镜片正下方就是技能栏，不淡掉会横穿镜片把视野切两半。
+   只是压淡（0.32）不是隐藏 —— 冷却还能看，键位照常能用。收镜立刻恢复。 */
+body.scope-on #skillHud{opacity:.32;transition:opacity .18s linear}
+#skillHud{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:220;display:none;align-items:flex-end;gap:8px;padding:7px 12px;border-radius:12px;background:rgba(16,18,28,.72);border:2px solid rgba(255,255,255,.18);color:#e8eefc;font-size:12px;pointer-events:none}
+#skillHud .skSlot{display:flex;flex-direction:column;align-items:center;gap:2px;width:82px;padding:4px 2px;border-radius:9px;opacity:.55;transition:.15s}
+#skillHud .skSlot.ready{opacity:1;box-shadow:0 0 10px rgba(123,255,168,.30)}
+#skillHud .skSlot .skIcon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:bold}
+#skillHud .skSlot .skName{font-size:10px;color:#cfd8ea;white-space:nowrap}
+#skillHud .skSlot .skKey{font-size:10px;color:#8ea3c0}
+#skillHud .skSlot .skBarWrap{width:66px;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
+#skillHud .skSlot .skBar{height:100%;width:0}
+#btnSkill{right:214px;bottom:152px;width:86px;height:54px;background:rgba(150,90,220,.62);}
+#btnSkill2{right:214px;bottom:216px;width:86px;height:54px;background:rgba(150,90,220,.62);}
+#btnSkill3{right:214px;bottom:280px;width:86px;height:54px;background:rgba(150,90,220,.62);}
+
+.start-btn{margin-top:24px;padding:16px 60px;font-size:24px;font-weight:bold;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:10px;cursor:pointer;transition:.3s;letter-spacing:2px}
+.start-btn:hover{transform:scale(1.05)}
+#hud{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none !important;z-index:50;display:none}
+/* 【batch197】准星重做：四段短线 + 中心点。间隙 --gap 由 JS 按**真实散布**每帧写入
+   （走起来张开、停下收拢、开枪弹一下、开镜收到最小），眼睛能直接读出"这一枪会不会偏"。
+   黑描边（box-shadow）保证在亮墙 / 强光 / 白天空底下仍然看得见 —— 原来 70% 白线在亮处几乎消失。 */
+#crosshair{position:absolute;top:50%;left:50%;width:0;height:0;--gap:5px;--len:8px;transition:opacity .12s linear}
+#crosshair i{position:absolute;display:block;background:#f4f8ff;border-radius:1px;box-shadow:0 0 0 1px rgba(0,0,0,.82),0 0 5px rgba(0,0,0,.45)}
+#crosshair i.u,#crosshair i.d{width:2px;height:var(--len);left:-1px}
+#crosshair i.l,#crosshair i.r{height:2px;width:var(--len);top:-1px}
+#crosshair i.u{top:calc(-1*(var(--gap) + var(--len)))}
+#crosshair i.d{top:var(--gap)}
+#crosshair i.l{left:calc(-1*(var(--gap) + var(--len)))}
+#crosshair i.r{left:var(--gap)}
+#crosshair .dot{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 0 1px rgba(0,0,0,.65)}
+/* ============ 【batch203】纪念枪「长明」专属准星 ============
+   为什么要另做一套：通用准星是白色四段线 + 红点，任何枪都一样。纪念枪要"一眼认得出"：
+   暖金刻线（和老兵勋章一个色系）+ 中心一颗暖光点 + 四角 45° 斜芒（像星芒收束）。
+   尺寸与开合完全沿用同一套散布数据（js/24 _准星刷新 写 --gap），所以"走起来张开、
+   停下收拢"的手感与通用准星一模一样，只是看起来不一样。 */
+#memCross{position:absolute;top:50%;left:50%;width:0;height:0;--gap:5px;--len:9px;opacity:1;transition:opacity .12s linear;pointer-events:none}
+#memCross i{position:absolute;display:block;background:#ffd88a;border-radius:1px;
+  box-shadow:0 0 0 1px rgba(46,30,0,.88),0 0 6px rgba(255,198,86,.62)}
+#memCross i.u,#memCross i.d{width:2px;height:var(--len);left:-1px}
+#memCross i.l,#memCross i.r{height:2px;width:var(--len);top:-1px}
+#memCross i.u{top:calc(-1*(var(--gap) + var(--len)))}
+#memCross i.d{top:var(--gap)}
+#memCross i.l{left:calc(-1*(var(--gap) + var(--len)))}
+#memCross i.r{left:var(--gap)}
+/* 四角斜芒：先居中 → 绕自身转 45° → 沿旋转后的 Y 轴推出去，正好落在对角线方向 */
+#memCross i.k1,#memCross i.k2,#memCross i.k3,#memCross i.k4{
+  width:1px;height:7px;left:0;top:0;background:rgba(255,214,132,.60);
+  box-shadow:0 0 0 1px rgba(40,26,0,.55)}
+#memCross i.k1{transform:translate(-50%,-50%) rotate(45deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross i.k2{transform:translate(-50%,-50%) rotate(135deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross i.k3{transform:translate(-50%,-50%) rotate(225deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross i.k4{transform:translate(-50%,-50%) rotate(315deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross .dot{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;
+  background:#ffeab4;box-shadow:0 0 0 1px rgba(48,30,0,.72),0 0 7px rgba(255,192,84,.95),0 0 15px rgba(255,146,40,.55)}
+/* 开镜时（含镜内视野）纪念准星让位给分划 */
+body.scope-on #memCross{opacity:0}
+/* ============ 联机「感谢陪伴」横幅 ============ */
+#memThanks{position:fixed;left:50%;top:9%;transform:translate(-50%,-22px);z-index:520;pointer-events:none;opacity:0;transition:opacity .5s ease,transform .5s ease}
+#memThanks.on{opacity:1;transform:translate(-50%,0)}
+#memThanks .card{position:relative;padding:13px 30px 14px;border-radius:12px;text-align:center;
+  background:linear-gradient(180deg,rgba(28,22,10,.90),rgba(16,13,7,.94));
+  border:1px solid rgba(214,176,86,.55);
+  box-shadow:0 10px 34px rgba(0,0,0,.62),0 0 0 1px rgba(0,0,0,.5) inset,0 0 26px rgba(214,176,86,.16)}
+#memThanks .card::before{content:'';position:absolute;left:14px;right:14px;top:6px;height:1px;
+  background:linear-gradient(90deg,rgba(214,176,86,0),rgba(240,206,120,.85),rgba(214,176,86,0))}
+#memThanks .line1{font-size:20px;font-weight:700;letter-spacing:4px;color:#f4dc9a;
+  text-shadow:0 0 14px rgba(232,188,92,.55),0 2px 6px #000}
+#memThanks .line2{margin-top:6px;font-size:12.5px;letter-spacing:1.5px;color:#c9b489}
+#memThanks .line2 b{color:#ffe9b6;font-weight:700}
+body.is-touch #memThanks{top:6%;transform:translate(-50%,-14px) scale(.9)}
+body.is-touch #memThanks.on{transform:translate(-50%,0) scale(.9)}
+/* ============ 【batch215】纪念枪「长明」专属击杀计数 ============
+   黑金竖卡，贴在屏幕右侧中部：不挡准星、不撞右下弹药/左下血条、也不和上方横幅打架。
+   每次击杀滑入 → 数字弹一下 + "+1" 上飘 → 2.2 秒后自动收回。 */
+#memKill{position:fixed;right:34px;top:44%;z-index:515;pointer-events:none;
+  opacity:0;transform:translateX(20px);
+  transition:opacity .16s ease,transform .24s cubic-bezier(.2,.9,.3,1.18)}
+#memKill.on{opacity:1;transform:translateX(0)}
+#memKill .mk{position:relative;min-width:138px;padding:9px 14px 10px;text-align:right;
+  background:linear-gradient(180deg,rgba(28,23,11,.91),rgba(9,8,5,.94));
+  border:1px solid rgba(214,176,86,.52);border-radius:3px;
+  box-shadow:0 9px 28px rgba(0,0,0,.62),0 0 24px rgba(214,176,86,.10),inset 0 0 0 1px rgba(0,0,0,.65)}
+/* 左上 / 右下两个金色角标（像仪表盘的定位角） */
+#memKill .mk::before,#memKill .mk::after{content:'';position:absolute;width:10px;height:10px;
+  border:1px solid #e6c46a;opacity:.85}
+#memKill .mk::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+#memKill .mk::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+#memKill .t{font-size:9px;letter-spacing:2.4px;color:#8d7538;font-family:Consolas,'Courier New',monospace;white-space:nowrap}
+#memKill .n{font-size:38px;line-height:1.04;font-weight:800;letter-spacing:1px;
+  color:#f6e2a8;font-family:Consolas,'Courier New',monospace;
+  text-shadow:0 0 16px rgba(232,188,92,.5),0 2px 0 rgba(0,0,0,.55)}
+#memKill .u{font-size:10px;letter-spacing:5px;color:#c9b489;margin-top:1px}
+#memKill .b{margin-top:7px;height:2px;background:rgba(214,176,86,.16);overflow:hidden}
+#memKill .b i{display:block;height:100%;width:100%;
+  background:linear-gradient(90deg,rgba(214,176,86,0),#e6c46a);animation:mkBar 2.2s linear forwards}
+#memKill .p{position:absolute;right:13px;top:-15px;font-size:15px;font-weight:800;opacity:0;
+  color:#ffe9b6;font-family:Consolas,'Courier New',monospace;text-shadow:0 0 10px rgba(255,214,120,.7)}
+#memKill.go .n{animation:mkPop .34s cubic-bezier(.2,1.4,.4,1)}
+#memKill.go .p{animation:mkPlus .95s ease-out forwards}
+@keyframes mkPop{0%{transform:scale(1.45);color:#fff9e6}100%{transform:scale(1)}}
+@keyframes mkPlus{0%{opacity:0;transform:translateY(7px) scale(.9)}16%{opacity:1}100%{opacity:0;transform:translateY(-18px) scale(1)}}
+@keyframes mkBar{0%{width:100%}100%{width:0}}
+/* 手机版：缩小并往内挪，别压住右侧的摇杆/开火键 */
+body.is-touch #memKill{right:14px;top:38%;transform:translateX(14px) scale(.82)}
+body.is-touch #memKill.on{transform:translateX(0) scale(.82)}
+/* 开镜时压暗（镜内视野是中心圆，这张卡在黑筒上，压暗一点不抢戏） */
+body.scope-on #memKill{opacity:.44}
+.dot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:#f44}
+#hp-wrap{position:absolute;bottom:30px;left:30px;width:220px;height:18px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.15);border-radius:9px;overflow:hidden}
+#hp-bar{height:100%;width:100%;background:linear-gradient(90deg,#4f4,#6f6);transition:width .2s;border-radius:9px}
+#hp-text{position:absolute;bottom:52px;left:30px;color:#fff;font-size:13px;font-weight:bold;text-shadow:0 0 4px #000}
+#gold-hud{position:absolute;bottom:30px;left:270px;color:#fc0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #000}
+#score{position:absolute;top:16px;right:24px;color:#fff;font-size:22px;font-weight:bold;text-shadow:0 0 8px #000}
+#wave{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#fc0;font-size:17px;font-weight:bold;text-shadow:0 0 8px #000}
+#ammo{position:absolute;bottom:30px;right:30px;color:#fff;font-size:32px;font-weight:bold;text-shadow:0 0 8px #000}
+#ammo span{font-size:16px;color:#aaa}
+#weapon-name{position:absolute;bottom:68px;right:30px;color:#aaa;font-size:14px;font-weight:bold;text-shadow:0 0 4px #000}
+#reload-text{position:absolute;bottom:68px;right:30px;color:#fa0;font-size:14px;opacity:0;transition:opacity .2s}
+#msg{position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);font-size:36px;font-weight:bold;text-shadow:0 0 16px #000;opacity:0;transition:opacity .4s;color:#fff}
+#dmg-overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none !important;z-index:45;border:6px solid transparent;transition:border-color .1s}
+#minimap{position:absolute;top:55px;right:16px;width:120px;height:120px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);border-radius:50%;overflow:hidden}
+#fps{position:absolute;top:16px;left:16px;color:#0f0;font-size:11px;font-family:monospace}
+.gold-popup{position:fixed;pointer-events:none;z-index:60;color:#fc0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #000;animation:goldFloat 1.2s forwards}
+@keyframes goldFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
+.ws-btn{padding:12px 40px;font-size:18px;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.ws-btn:hover{transform:scale(1.05)}
+#go h1{font-size:56px;color:#f44;text-shadow:0 0 24px #f00;margin-bottom:16px}
+#go p{color:#fff;font-size:18px;margin:6px}
+#go .btn{margin-top:24px;padding:14px 44px;font-size:20px;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:8px;cursor:pointer}
+#touchUI{position:fixed;inset:0;z-index:40;pointer-events:none;display:none;user-select:none;-webkit-user-select:none;touch-action:none;}
+#joyBase{position:absolute;left:22px;bottom:22px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.10);border:2px solid rgba(255,255,255,.30);pointer-events:auto;touch-action:none;z-index:60;}
+#joyKnob{position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.45);}
+#lookPad{position:absolute;right:0;top:0;width:56%;height:100%;pointer-events:auto;touch-action:none;z-index:50;}
+.tbtn{position:absolute;pointer-events:auto;touch-action:none;z-index:60;border-radius:14px;background:rgba(40,40,60,.55);border:2px solid rgba(255,255,255,.35);color:#fff;font-size:16px;font-weight:bold;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;}
+#btnFire{right:22px;bottom:24px;width:104px;height:104px;border-radius:50%;background:rgba(200,40,40,.62);font-size:22px;}
+#btnRescue{right:24px;bottom:150px;width:88px;height:88px;border-radius:50%;background:rgba(255,170,40,.78);font-size:20px;color:#3a2000;}   /* 【batch159】手机营救按钮：靠近营救点才出现（按住＝长按 F） */
+#btnReload{right:22px;bottom:140px;width:86px;height:54px;}
+#btnJump{right:118px;bottom:24px;width:86px;height:54px;}
+#btnClimb{right:118px;bottom:88px;width:86px;height:54px;}
+#btnCrouch{right:118px;bottom:280px;width:86px;height:54px;}
+#btnWeapon{right:118px;bottom:216px;width:86px;height:54px;}
+#btnPeekL{right:214px;bottom:24px;width:86px;height:54px;}
+#btnPeekR{right:214px;bottom:88px;width:86px;height:54px;}
+#btnAim{right:22px;bottom:256px;width:86px;height:54px;background:rgba(60,120,200,.62);}
+#btnSettings{position:absolute;left:14px;top:38px;width:46px;height:46px;border-radius:12px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;z-index:70;}
+
+/* 【batch229】手机版界面图标缩小：HUD 触屏钮原先按电脑大屏写的（开火 104、技能 86、摇杆 130），
+   手机上显得又大又占地方。统一收 20% 左右，位置按比例往内挪，别压到屏幕边缘。 */
+body.is-touch #joyBase{left:16px;bottom:16px;width:104px;height:104px}
+body.is-touch #joyKnob{left:32px;top:32px;width:40px;height:40px}
+body.is-touch #btnFire{right:16px;bottom:18px;width:84px;height:84px;font-size:18px}
+body.is-touch #btnRescue{right:18px;bottom:118px;width:70px;height:70px;font-size:16px}
+body.is-touch #btnReload{right:16px;bottom:110px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnJump{right:92px;bottom:18px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnClimb{right:92px;bottom:70px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnCrouch{right:92px;bottom:218px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnWeapon{right:92px;bottom:168px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnPeekL{right:168px;bottom:18px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnPeekR{right:168px;bottom:70px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnAim{right:16px;bottom:196px;width:68px;height:44px;font-size:14px}
+body.is-touch #btnSettings{left:10px;top:30px;width:38px;height:38px;font-size:18px;border-radius:10px}
+/* 技能①②③ 钮 */
+body.is-touch #btnSkill{right:168px;bottom:122px;width:68px;height:44px;font-size:13px}
+body.is-touch #btnSkill2{right:168px;bottom:168px;width:68px;height:44px;font-size:13px}
+body.is-touch #btnSkill3{right:168px;bottom:214px;width:68px;height:44px;font-size:13px}
+
+/* ==================== 多比例 / 多尺寸屏幕适配 ====================
+   三类问题：① 手机横屏 / 小笔记本上菜单比屏幕高 → 按钮被顶出可视区（已用 overflow:auto 兜住）
+             ② HUD 左右两端的元素在窄屏上互相压住 → 按宽度收缩字号与位置
+             ③ 技能 HUD 居中在底部，窄屏上会和摇杆/开火键抢位置 → 抬高 + 缩小 */
+@media (max-width:900px){
+  #menu h1{font-size:34px;margin-bottom:6px}
+  #menu .subtitle{font-size:12px;margin-bottom:12px}
+  .tab{padding:8px 14px;font-size:13px}
+  .panel{padding:14px}
+  .gold-display{font-size:17px;margin-bottom:12px}
+  .upgrade-grid{grid-template-columns:1fr 1fr;gap:9px}
+  .info-grid{grid-template-columns:1fr 1fr;gap:9px}
+  /* 窄屏：特工"左列 + 右详情"排不下 → 变成"上面一排特工卡、下面详情" */
+  .vl-hero{grid-template-columns:1fr;gap:10px}
+  .vl-list{flex-direction:row;flex-wrap:wrap}
+  .hero-card{flex:1 1 42%}
+  .map-card{grid-template-columns:88px 1fr;gap:9px}
+  .map-card .vl-thumb{font-size:28px}
+  .start-btn{padding:13px 40px;font-size:20px;margin-top:14px}
+  #score{font-size:17px;right:12px;top:10px}
+  #wave{font-size:14px;top:10px}
+  #fps{top:10px;left:10px}
+  #minimap{width:92px;height:92px;top:44px;right:10px}
+  #hp-wrap{width:150px;left:12px;bottom:26px;height:16px}
+  #hp-text{left:12px;bottom:46px;font-size:12px}
+  #gold-hud{left:172px;bottom:26px;font-size:15px}
+  #ammo{font-size:24px;right:12px;bottom:26px}
+  #weapon-name,#reload-text{bottom:56px;right:12px;font-size:12px}
+  #skillHud{bottom:74px;padding:5px 8px;gap:5px}
+  #skillHud .skSlot{width:66px}
+  #skillHud .skSlot .skBarWrap{width:52px}
+  #skillHud .skSlot .skName{font-size:9px}
+  #go h1{font-size:38px}
+  #go p{font-size:15px}
+  #btnPause{width:40px;height:40px;font-size:17px;left:10px;top:78px}
+  #btnSettings{width:40px;height:40px;font-size:19px;left:10px;top:32px}
+}
+@media (max-height:640px){
+  #menu h1{font-size:26px;margin-bottom:4px}
+  #menu .subtitle{font-size:11px;margin-bottom:8px}
+  .tabs{margin-bottom:10px}
+  .tab{padding:7px 14px;font-size:12px}
+  .panel{padding:12px}
+  .gold-display{font-size:15px;margin-bottom:8px}
+  .upgrade-card{padding:10px}
+  .upgrade-desc{font-size:11px;margin-bottom:6px}
+  .hero-card{padding:7px}
+  .vl-detail{padding:9px}
+  .map-card .md{font-size:10px}
+  .start-btn{padding:11px 34px;font-size:18px;margin-top:10px}
+  #netBtn{padding:9px 20px;font-size:13px;margin-top:8px}
+  #menuSetBtn{padding:8px 16px;font-size:13px;margin-top:8px}
+  #skillHud{bottom:66px;transform:translateX(-50%) scale(.88);transform-origin:bottom center}
+  #msg{font-size:26px}
+}
+@media (max-height:520px){
+  #menu h1{font-size:21px}
+  .tab{padding:6px 11px;font-size:11px}
+  .upgrade-desc{display:none}
+  .info-card p{font-size:11px;line-height:1.4}
+  .start-btn{padding:9px 26px;font-size:16px;margin-top:8px}
+  #go h1{font-size:30px}
+  #skillHud{transform:translateX(-50%) scale(.8)}
+}
+#layoutBar{position:fixed;left:50%;top:10px;transform:translateX(-50%);display:none;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(20,20,32,.92);border:2px solid rgba(255,255,255,.3);color:#fff;font-size:13px;pointer-events:auto;touch-action:none;z-index:600;}
+#layoutBar.on{display:flex;}
+.lbTip{white-space:nowrap;}
+.lbtn{pointer-events:auto;background:rgba(60,120,200,.85);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:bold;}
+.lbDone{background:rgba(40,170,90,.9);}
+#touchUI.editing .tbtn,#touchUI.editing #joyBase,#touchUI.editing #lookPad{outline:2px dashed rgba(255,210,60,.95);outline-offset:2px;}
+#touchUI.editing #lookPad{background:rgba(255,210,60,.07);}
+#touchUI.editing #btnSettings{display:none;}
+#touchUI.editing .dragging{outline:3px solid #ffd23c !important;opacity:.9;}
+#lookPad .padLabel{display:none;position:absolute;left:8px;top:8px;color:#ffd23c;font-size:12px;font-weight:bold;}
+#touchUI.editing #lookPad .padLabel{display:block;}
+#settingsPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);pointer-events:auto;touch-action:none;z-index:600;}
+#settingsPanel.on{display:flex;}
+.spCard{width:86%;max-width:360px;background:rgba(22,22,34,.97);border:2px solid rgba(255,255,255,.28);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:88vh;overflow-y:auto;touch-action:auto;}
+.spCard h3{margin:2px 0 12px;font-size:18px;}
+.spRow{font-size:13px;color:#9fb4d6;margin:6px 0 8px;}
+.spBtn{display:block;width:100%;margin:8px 0;padding:11px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;pointer-events:auto;}
+.spClose{background:rgba(90,90,110,.85);}
+.spHint{font-size:12px;color:#9aa;line-height:1.5;margin:10px 2px;}
+#spKeysRow{display:none;}
+body:not(.is-touch) #spKeysRow{display:block;}
+#keyPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);z-index:645;touch-action:auto;}
+#keyPanel.on{display:flex;}
+#keyList{max-height:52vh;overflow-y:auto;margin:6px 0 10px;padding-right:4px;}
+.kRow{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px;color:#dfe8f7;}
+.kRow>span:first-child{flex:1;text-align:left;}
+.kCode{min-width:78px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);color:#7fd4ff;font-weight:bold;font-size:12px;}
+.kCode.wait{background:rgba(255,180,60,.28);border-color:#ffb43c;color:#ffd27f;}
+.kBtn{padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:12px;cursor:pointer;}
+#netBtn{display:inline-block;margin:12px 0 0;padding:11px 26px;border-radius:10px;border:1px solid rgba(120,220,255,.5);background:rgba(30,110,170,.9);color:#cdeaff;font-size:15px;font-weight:bold;cursor:pointer;}
+#netBtn:hover{background:rgba(40,140,210,.95);}
+#netPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:660;touch-action:auto;}
+#netPanel.on{display:flex;}
+/* ============ 【batch222】服务器连接条（非遮罩） ============
+   用户口径：打开游戏就先问服务器地址；不填＝离线（能单人、不能多人）；
+   连接失败要提示，反复失败继续提示，直到主动选"离线模式"。
+   ⚠️ 关键：**绝对不能用 position:fixed 全屏遮罩** —— 原来点"多人"弹的是 #netPanel
+      （z-index 660 的全屏 modal），把设置面板（600）压死在下面，玩家以为"没服务器就改不了设置"。
+      这条是文档流里的普通块，只占自己那块地方，点哪都不会挡。 */
+#srvBar{width:min(780px,94%);margin:0 auto 10px;padding:10px 12px;border-radius:12px;
+  background:rgba(18,24,36,.94);border:1px solid rgba(120,200,255,.38);text-align:left;
+  box-shadow:0 6px 20px rgba(0,0,0,.35);}
+#srvBar.hide{display:none;}
+#srvBar.ok{border-color:rgba(110,240,150,.55);}
+#srvBar.bad{border-color:rgba(255,110,110,.6);}
+#srvBar .svTitle{font:800 13px/1.5 system-ui;color:#cfe6ff;margin-bottom:6px;}
+#srvBar .svRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+#srvBar input{flex:1;min-width:170px;padding:8px 10px;border-radius:8px;font-size:14px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#eaf2ff;outline:none;}
+#srvBar button{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+  border:1px solid rgba(120,220,255,.5);background:rgba(30,110,170,.9);color:#cdeaff;}
+#srvBar button.svOff{border-color:rgba(255,255,255,.3);background:rgba(80,86,100,.9);color:#dfe8f7;}
+#srvBar .svSt{font-size:12px;line-height:1.6;margin-top:7px;color:#9fb4d6;}
+#srvBar.bad .svSt{color:#ffb4b4;}
+#netAddr{width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;outline:none;letter-spacing:1px;margin-top:4px;}
+#netHint.ok{color:#7fe3a0;}
+#netHint.bad{color:#ff6b6b;}
+/* 【batch139】原来是 display:none + 只有 body.is-touch 才显示 —— 判定改成认操作系统之后，
+   电脑上这个"设置"按钮也被一起藏掉了（用户："设置界面不见了，按键映射也调不了"）。
+   灵敏度 / 开镜方式 / 键盘键位对电脑一样需要，所以改成两边都显示。 */
+#menuSetBtn{display:inline-block;margin:14px auto 0;padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;}
+/* 只给触屏端看的行（全屏、陀螺仪、摇杆大小、触屏按键布局）—— 电脑上自动隐藏 */
+body:not(.is-touch) .only-touch{display:none !important;}
+#relockBtn{display:none;margin:10px auto 0;padding:9px 18px;border-radius:10px;border:1px solid rgba(255,210,60,.6);background:rgba(120,80,20,.9);color:#ffd84a;font-size:14px;font-weight:bold;cursor:pointer;}
+#touchUI.layoutTop{z-index:400;}
+#btnPause{position:absolute;left:14px;top:92px;width:46px;height:46px;border-radius:12px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;z-index:70;}
+/* 鼠标未锁定提示（电脑端）：只要"在打游戏 + 指针没锁"就一直挂着，点一下就能重新锁定 */
+/* ==================== 【batch126】剧情模式 / 英雄锁定 ==================== */
+.vl-lock{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,180,84,.18);color:#ffb454;border:1px solid rgba(255,180,84,.5);vertical-align:middle}
+.vl-dlock{margin:8px 0 2px;padding:8px 10px;border-radius:8px;font:700 12px/1.6 system-ui;
+  background:rgba(255,180,84,.12);border:1px solid rgba(255,180,84,.4);color:#ffb454}
+.story-launch{background:linear-gradient(135deg,#3b1a63,#6b2ea0);border:1px solid rgba(169,140,255,.55)}
+.story-launch.storyDone{background:linear-gradient(135deg,#16351f,#1f6b3a);border-color:rgba(110,240,150,.55)}
+.story-launch em{display:block;font-style:normal;font-size:11px;font-weight:600;opacity:.88;margin-top:3px;letter-spacing:0}
+.stCard{max-width:560px;text-align:left}
+.stGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0 4px}
+.stCardItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  padding:10px 6px;text-align:center;cursor:pointer;transition:.15s;border-top:3px solid var(--c,#888)}
+.stCardItem[data-on="1"]{background:rgba(169,140,255,.18);border-color:#a98cff;box-shadow:0 0 0 2px rgba(169,140,255,.45)}
+.stCardItem .stIcon{font-size:24px;line-height:1.2}
+.stCardItem .stName{font:800 14px/1.5 system-ui;color:#fff;margin-top:2px}
+.stCardItem .stTag{font:600 11px/1.4 system-ui;color:#9fb4d6}
+.stCardItem .stSk{font-size:13px;letter-spacing:1px;margin-top:3px}
+.stTip{font-size:12px;line-height:1.7;color:#9fb4d6;margin:6px 0 0}
+#storyCut{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.82);z-index:800;cursor:pointer;padding:0 8%;text-align:center;
+  pointer-events:auto;touch-action:auto}      /* 【batch129】必须可点：点击＝跳下一段 */
+#storyCutTxt{color:#fff;font:700 22px/1.9 system-ui;max-width:760px;text-shadow:0 2px 14px rgba(0,0,0,.9);
+  opacity:0;transition:opacity .5s}
+#storyCutTxt.in{opacity:1}
+#storyCutHint{color:#8ea3c0;font:600 12px/1.6 system-ui;margin-top:22px;letter-spacing:2px}
+#storyHud{position:fixed;left:50%;top:56px;transform:translateX(-50%);display:none;z-index:420;
+  background:rgba(10,14,22,.82);border:1px solid rgba(120,220,255,.45);border-radius:10px;
+  padding:6px 16px;color:#cfe0f2;font:700 14px/1.6 system-ui;letter-spacing:1px}
+#bossWrap{position:fixed;left:50%;top:14px;transform:translateX(-50%);display:none;z-index:430;width:min(560px,74vw);text-align:center}
+#bossName{color:#6ff0ff;font:800 14px/1.8 system-ui;letter-spacing:2px;text-shadow:0 0 12px rgba(0,230,255,.7)}
+#bossBarOut{height:12px;border-radius:7px;background:rgba(0,0,0,.6);border:1px solid rgba(0,230,255,.55);overflow:hidden}
+#bossBar{height:100%;width:100%;background:linear-gradient(90deg,#00e5ff,#6ff0ff,#bdf7ff);transition:width .12s}
+#trainHpWrap{position:fixed;left:50%;top:52px;transform:translateX(-50%);display:none;z-index:429;width:min(420px,60vw);text-align:center;pointer-events:none}
+#trainHpName{color:#ffb347;font:800 13px/1.8 system-ui;letter-spacing:2px;text-shadow:0 0 12px rgba(255,150,60,.7)}
+#trainHpBarOut{height:10px;border-radius:6px;background:rgba(0,0,0,.6);border:1px solid rgba(255,170,80,.55);overflow:hidden}
+#trainHpBar{height:100%;width:100%;background:linear-gradient(90deg,#ff7a2a,#ffb347,#ffd9a0);transition:width .12s}
+.stLine{font:700 14px/1.9 system-ui;color:#fff;margin:5px 0}
+.stLine.dim{font-weight:600;color:#9fb4d6}
+.stUnlock{margin:12px 0;padding:11px 12px;border-radius:10px;background:rgba(111,240,255,.10);
+  border:1px solid rgba(111,240,255,.5);color:#c8f6ff;font:700 13px/1.7 system-ui}
+.stUnlock b{color:#6ff0ff}
+/* ==================== 【batch149】剧情章节选择 + 第二章营救进度 ==================== */
+.stChap{display:grid;grid-template-columns:repeat(2,1fr);gap:11px;margin:12px 0 6px}
+.stChapItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  padding:12px 10px;cursor:pointer;transition:.15s;border-top:3px solid rgba(73,224,255,.75)}
+.stChapItem[data-on="1"]{background:rgba(73,224,255,.16);border-color:#49e0ff;box-shadow:0 0 0 2px rgba(73,224,255,.4)}
+.stChapItem .stIcon{font-size:26px;line-height:1.2}
+.stChapItem .stName{font:800 14px/1.5 system-ui;color:#fff;margin-top:3px}
+.stChapItem .stTag{font:600 11px/1.5 system-ui;color:#9fb4d6;margin-top:2px}
+.stChapItem .stDesc{font:600 11px/1.6 system-ui;color:#8ea3c0;margin-top:5px}
+#rescueWrap{position:fixed;left:50%;top:96px;transform:translateX(-50%);display:none;z-index:425;
+  width:min(430px,80vw);background:rgba(10,14,22,.86);border:1px solid rgba(255,160,61,.5);
+  border-radius:11px;padding:8px 14px 10px;text-align:center}
+#rescueTitle{color:#ffc98a;font:800 13px/1.7 system-ui;letter-spacing:1px}
+#rescueBarOut{height:11px;border-radius:7px;background:rgba(0,0,0,.62);border:1px solid rgba(255,160,61,.5);
+  overflow:hidden;margin-top:5px}
+#rescueBar{height:100%;width:0%;background:linear-gradient(90deg,#ff7a2d,#ffc04d,#ffe9a8);transition:width .1s}
+#rescueHint{color:#9fb4d6;font:600 11px/1.7 system-ui;margin-top:5px;letter-spacing:.5px}
+/* 【batch129】剧情专用阵亡提示（红色的另一态；剧情里**不弹**通用的「游戏结束」结算面板） */
+.ctCard.stDead{border-color:rgba(255,90,90,.7);
+  background:linear-gradient(180deg,rgba(120,20,20,.35),rgba(20,22,34,.98))}
+.ctCard.stDead h3{color:#ff6b6b}
+.ctCard.stDead .ctBtn{background:rgba(150,40,40,.9);border-color:rgba(255,120,120,.5)}
+#lockHint{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:95;display:none;padding:11px 22px;border-radius:12px;background:rgba(20,22,34,.94);border:2px solid rgba(255,210,60,.75);color:#ffd84a;font-size:15px;font-weight:bold;cursor:pointer;pointer-events:auto;text-align:center;box-shadow:0 6px 22px rgba(0,0,0,.55);animation:lockPulse 1.4s ease-in-out infinite;}
+#lockHint.on{display:block;}
+@keyframes lockPulse{0%,100%{box-shadow:0 6px 22px rgba(0,0,0,.55)}50%{box-shadow:0 6px 30px rgba(255,210,60,.45)}}
+body.is-touch #lockHint{display:none !important;}
+/* 闪光弹致盲：整屏泛白，透明度由 heroBlindSync() 按剩余致盲时间驱动 */
+#blindFx{position:fixed;inset:0;z-index:4000;background:#fff;opacity:0;pointer-events:none;}
+/* 【batch107】身处烟雾中时的"屏幕雾"：几何上烟已经有 6 米厚（t_smoke.js 量的），这层是
+   "保证不漏"的第二道保险 —— 开镜放大也透不过去。z-index 30：盖住 3D 画面与第一人称枪，
+   但让 HUD(50) / 触屏按键(40) / 准星仍然看得见。 */
+#smokeFx{position:fixed;inset:0;z-index:30;background:#dfe6ec;opacity:0;pointer-events:none;}
+/* 【batch120】闪电「过载/触电」：满屏电弧干扰（不能开镜，视野被糊住） */
+#zapFx{position:fixed;inset:0;z-index:32;opacity:0;pointer-events:none;
+  background:repeating-linear-gradient(115deg,rgba(160,240,255,0) 0 9px,rgba(160,240,255,.22) 9px 10px,rgba(160,240,255,0) 10px 26px);}
+/* 【枪械包·狙击枪】开镜时显示「镜框暗角」：中间透亮、四周压黑，模拟透过瞄准镜看，且不挡视野。
+   z-index 46：盖在 3D 画面与 smokeFx(30) 之上，但在 HUD(50)/准星 之下（开镜时准星本就会被隐藏）。 */
+/* 【batch197】狙击镜重做。原来的实现是「一圈 radial-gradient 压黑 + 42px 红十字」，问题很直观：
+   暗角渐变没有边界（像拿喷枪喷的）、红十字又短又粗没有分划感、镜片完全没有"玻璃"层次。
+   现在拆成三层，全部纯 CSS（不加任何图片 / 不增加绘制开销）：
+     ① #scopeFx 背景：镜片外的一圈黑，边界比原来硬——它是"镜筒"，不该是雾；
+     ② .tube：一个圆，用 inset 阴影做出镜壁的厚度 + 内缘细高光，再补一点左上角反光当玻璃质感；
+     ③ .reticle：四段细线（中心留 4px 缺口）+ 每段末端的 T 型刻度 + 2px 红点，
+        细白线 + 黑描边 —— 在亮背景（雪地/白墙）和暗背景上都读得出来。 */
+#scopeFx{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;
+  background:radial-gradient(circle closest-side at 50% 50%,rgba(0,0,0,0) 0 74.5%,rgba(0,0,0,.55) 76.5%,rgba(0,0,0,.97) 80%,#000 86%);}
+/* 镜筒圆直径 = 76vmin（比原来 90vmin 收一圈：留出真正的黑边，才像"透过镜子看"）。
+   inset 阴影做镜壁厚度，中心留亮 → 明暗过渡不再是"一片雾" */
+#scopeFx .tube{position:absolute;left:50%;top:50%;width:76vmin;height:76vmin;transform:translate(-50%,-50%);border-radius:50%;
+  box-shadow:inset 0 0 34px 12px rgba(0,0,0,.86),inset 0 0 2px 1px rgba(200,225,255,.26),0 0 0 3px rgba(0,0,0,.95),0 0 30px 12px rgba(0,0,0,.55);
+  background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.06),rgba(255,255,255,0) 46%);}
+#scopeFx .reticle{position:absolute;left:50%;top:50%;width:0;height:0;}
+#scopeFx .reticle i{position:absolute;display:block;background:rgba(232,240,250,.80);box-shadow:0 0 2px rgba(0,0,0,.9);}
+#scopeFx .reticle .n,#scopeFx .reticle .s{width:1px;left:-0.5px;}
+#scopeFx .reticle .w,#scopeFx .reticle .e{height:1px;top:-0.5px;}
+#scopeFx .reticle .n{height:14vmin;bottom:0;}
+#scopeFx .reticle .s{height:14vmin;top:0;}
+#scopeFx .reticle .w{width:14vmin;right:0;}
+#scopeFx .reticle .e{width:14vmin;left:0;}
+/* 每段线末端一个 T 型短杠：这就是狙击分划的"刻度"，一眼能看出是镜而不是贴的十字 */
+#scopeFx .reticle .n::after,#scopeFx .reticle .s::after{content:'';position:absolute;left:-4px;width:9px;height:2px;background:rgba(236,242,250,.9);box-shadow:0 0 2px rgba(0,0,0,.85);}
+#scopeFx .reticle .w::after,#scopeFx .reticle .e::after{content:'';position:absolute;top:-4px;width:2px;height:9px;background:rgba(236,242,250,.9);box-shadow:0 0 2px rgba(0,0,0,.85);}
+#scopeFx .reticle .n::after{bottom:0;}
+#scopeFx .reticle .s::after{top:0;}
+#scopeFx .reticle .w::after{right:0;}
+#scopeFx .reticle .e::after{left:0;}
+#scopeFx .reticle .dot{position:absolute;left:-1.5px;top:-1.5px;width:3px;height:3px;border-radius:50%;transform:none;background:#ff3b3b;box-shadow:0 0 4px rgba(255,60,60,.9);}
+/* ============ 【batch203】纪念枪开镜：遮罩要和**几何镜筒**严丝合缝 ============
+   开镜时眼睛里真的塞了一根半径 0.033、距离 0.062 的镜筒（js/24 的 adsScope），
+   它的边缘在屏幕上正好落在 69.3% 半屏半径处。CSS 这层必须贴着它收：
+     · 透明区收到 66.5%（比几何略小一点点）→ 镜筒内壁最外圈被压暗一点，像真的管壁阴影；
+     · 69.2% 起迅速转黑 → 管壁之外全是黑，看不到"镜子外面的世界"；
+     · 分划改暖金（纪念配色），与专属准星同一色系。 */
+body.mem-scope #scopeFx{
+  background:radial-gradient(circle closest-side at 50% 50%,rgba(0,0,0,0) 0 66.2%,rgba(0,0,0,.42) 68.6%,rgba(0,0,0,.97) 72.5%,#000 80%);}
+body.mem-scope #scopeFx .tube{width:69vmin;height:69vmin;
+  box-shadow:inset 0 0 26px 10px rgba(0,0,0,.72),inset 0 0 2px 1px rgba(232,196,106,.20),0 0 0 2px rgba(0,0,0,.95),0 0 26px 10px rgba(0,0,0,.5);}
+body.mem-scope #scopeFx .reticle i{background:rgba(246,224,168,.88);box-shadow:0 0 2px rgba(0,0,0,.95),0 0 5px rgba(232,188,92,.35);}
+body.mem-scope #scopeFx .reticle .n::after,body.mem-scope #scopeFx .reticle .s::after,
+body.mem-scope #scopeFx .reticle .w::after,body.mem-scope #scopeFx .reticle .e::after{background:rgba(246,224,168,.95);}
+body.mem-scope #scopeFx .reticle .dot{background:#ffcf6a;box-shadow:0 0 6px rgba(255,188,80,.95);}
+/* 【枪械包·红点镜】开镜时显示「红点」准星：仅中心一个小点（外圈极淡细环），绝无遮挡，不挡视野 */
+#redDotFx{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;}
+#redDotFx .ring{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px solid rgba(255,60,60,.8);border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.4);}/* 圆尺寸由 JS 按当前散布动态设置；transform 居中保证与红点严格同心 */
+#redDotFx .dot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:4px;height:4px;background:#ff2a2a;border-radius:50%;box-shadow:0 0 5px rgba(255,40,40,.95),0 0 2px #000;}/* 用 transform 居中：全局 .dot 规则自带 translate(-50%,-50%)，不能再叠 margin 否则双重居中会偏 2px */
+/* 【手机版】狙击镜框 / 红点准星：整层降到触屏 UI（#touchUI z-index 40）**之下** ——
+   否则开镜时全屏暗角（边缘纯黑）会把摇杆和所有触屏按钮糊住、看不见（它 pointer-events:none 所以还能点，但看不见等于没法用）。
+   只给 body.is-touch（手机版）降级，电脑版层级完全不变。 */
+body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
+/* 【batch120】球形闪电：自己倒地时的遮罩 + 倒计时 */
+#downedFx{position:fixed;inset:0;z-index:118;display:none;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;background:radial-gradient(ellipse at center,rgba(120,0,0,0) 34%,rgba(120,0,0,.58) 100%);}
+#downedFx h2{margin:0;font-size:32px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:3px}
+#downedFx p{margin:10px 0 0;color:#ffd7d7;font-size:15px}
+/* 【batch145】虚化（日蚀之门）：紫色边光 + 底部操作提示 */
+#ghostFx{position:fixed;inset:0;z-index:117;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:15vh;pointer-events:none;background:radial-gradient(ellipse at center,rgba(96,44,168,0) 44%,rgba(96,44,168,.5) 100%);}
+#ghostFx h2{margin:0;font-size:26px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#ghostFx p{margin:8px 0 0;color:#e6d4ff;font-size:15px;text-shadow:0 2px 8px #000}
+/* 【batch160】遁入暗影：整圈暗紫黑边光 + 倒计时提示（比虚化更暗——整个人没进影子里去了） */
+#shadowFx{position:fixed;inset:0;z-index:117;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:15vh;pointer-events:none;background:radial-gradient(ellipse at center,rgba(10,4,26,.20) 28%,rgba(10,4,26,.74) 100%);}
+#shadowFx h2{margin:0;font-size:26px;color:#cfc2ff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#shadowFx p{margin:8px 0 0;color:#a99ad6;font-size:15px;text-shadow:0 2px 8px #000}
+/* 【batch100 被动】天狼「敌情预警」：准星外圈的红色方向箭头（转到敌人方向；越近越亮） */
+#scoutAlert{position:fixed;left:50%;top:50%;width:0;height:0;z-index:405;pointer-events:none !important;display:none;opacity:0;transition:opacity .12s}
+#scoutArrow{position:absolute;left:-14px;top:-72px;width:28px;height:32px;line-height:32px;text-align:center;font-size:26px;color:#ff5a5a;text-shadow:0 0 10px #ff2a2a,0 0 20px #ff0000;transform-origin:14px 72px;opacity:1}
+#scoutRing{position:absolute;left:-14px;top:-72px;width:28px;height:32px;border-radius:50%;box-shadow:0 0 22px 6px rgba(255,50,50,.35);opacity:.9}
+.spRange{display:block;width:100%;height:26px;margin:0 0 12px;touch-action:auto;pointer-events:auto;accent-color:#5aa0ff;}
+.spVal{color:#7fd4ff;font-weight:bold;}
+.ctLayer{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:640;touch-action:auto;}
+.ctLayer.on{display:flex;}
+.ctCard{width:84%;max-width:340px;background:rgba(20,22,34,.98);border:2px solid rgba(255,210,60,.55);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:86vh;overflow-y:auto;touch-action:auto;}
+.ctCard h3{margin:2px 0 12px;font-size:17px;color:#ffd23c;}
+.ctInput{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;letter-spacing:3px;outline:none;}
+.ctErr{font-size:12px;color:#ff6b6b;min-height:16px;margin:8px 0 0;}
+.ctBtn{display:block;width:100%;margin:9px 0 0;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;}
+.ctBtn.ctCancel{background:rgba(255,255,255,.12);}
+.ctRow{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#9fb4d6;margin:11px 0 5px;}
+.ctVal{color:#ffd23c;font-weight:bold;}
+.ctSw{width:52px;height:28px;border-radius:14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);position:relative;cursor:pointer;flex:0 0 auto;}
+.ctSw i{position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#8a8a8a;transition:left .15s,background .15s;}
+.ctSw.on{background:rgba(0,200,120,.35);border-color:#0c8;}
+.ctSw.on i{left:27px;background:#0f8;}
+.ctRange{width:100%;}
+.ctMsg{font-size:11px;color:#7d8ba3;margin-top:12px;line-height:1.55;}
+/* ==================== 多人对战 UI ==================== */
+#netBoard{position:fixed;top:12px;right:12px;z-index:60;background:rgba(12,16,24,.8);border:1px solid #2b3446;
+  border-radius:10px;padding:8px 10px;font-size:13px;color:#dfe7f5;min-width:168px;display:none;line-height:1.6}
+#netBoard h4{margin:0 0 6px;font-size:12px;color:#8ea3c0;font-weight:600;letter-spacing:1px}
+#netBoard .nb-row{display:flex;justify-content:space-between;gap:14px}
+#netBoard .nb-me{color:#ffd166;font-weight:700}
+#netDeath{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;
+  flex-direction:column;background:rgba(70,0,0,.42);pointer-events:none}
+#netDeath h2{margin:0;font-size:34px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#netDeath p{margin:10px 0 0;color:#ffd7d7;font-size:15px}
+#netMode{margin-top:8px;font-size:12px;color:#7fd6ff;text-align:center;line-height:1.7}
+/* ==================== 主菜单 / 游戏内菜单 ==================== */
+#menuPauseBtns{display:none}
+#blocker.pause-mode #menuHomeBtns{display:none}
+#blocker.pause-mode #menuPauseBtns{display:block}
+/* 【batch117】局内（暂停菜单）不许换地图 / 换英雄：
+   页签栏整个藏掉，四个面板也一律藏掉（含新增的 #tab-hero / #tab-map）——
+   否则用户在主菜单停在「特工」页时按 Esc，那个面板会跟着暂停菜单一起露出来。 */
+#blocker.pause-mode .tabs,#blocker.pause-mode #tab-upgrades,#blocker.pause-mode #tab-info,
+#blocker.pause-mode #tab-hero,#blocker.pause-mode #tab-map,
+#blocker.pause-mode .gold-display,#blocker.pause-mode #netMode{display:none !important}
+#btnQuit{display:block;margin:14px auto 0;padding:11px 30px;border-radius:10px;
+  border:1px solid rgba(255,120,120,.6);background:rgba(150,40,40,.9);color:#ffd7d7;
+  font-size:15px;font-weight:bold;cursor:pointer;}
+#btnQuit:hover{background:rgba(190,55,55,.95);}
+#namePanel .ctCard{border-color:rgba(120,220,255,.6);}
+#namePanel h3{color:#7fd6ff;}
+#nameInput{letter-spacing:1px;text-align:center;}
+</style>
+</head>
+<body tabindex="0" data-page-node-id="Zs89goIXHI37yRyM0D51w5">
+<div id="skillHud"></div>
+<div id="touchUI">
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <div id="lookPad"><span class="padLabel">视角区</span></div>
+  <div id="btnFire" class="tbtn">开火</div>
+  <div id="btnReload" class="tbtn">换弹</div>
+  <div id="btnJump" class="tbtn">跳</div>
+  <div id="btnClimb" class="tbtn">上梯</div>
+  <div id="btnCrouch" class="tbtn">蹲</div>
+  <div id="btnWeapon" class="tbtn">换枪</div>
+  <div id="btnSkill" class="tbtn">技能①</div>
+  <div id="btnSkill2" class="tbtn">技能②</div>
+  <div id="btnSkill3" class="tbtn">技能③</div>
+  <div id="btnRescue" class="tbtn only-touch" style="display:none">救援</div>
+    <div id="btnPeekL" class="tbtn">左探头</div>
+  <div id="btnPeekR" class="tbtn">右探头</div>
+  <div id="btnAim" class="tbtn">开镜</div>
+  <div id="btnPause">⏸</div>
+  <div id="btnSettings">⚙</div>
+</div>
+<div id="layoutBar"><span class="lbTip">拖动按键调整位置</span><button id="lbReset" class="lbtn">重置</button><button id="lbDone" class="lbtn lbDone">完成</button></div>
+<div id="settingsPanel"><div class="spCard">
+    <h3>⚙ 设置</h3>
+    <div class="spRow">🖱️ 镜头灵敏度 <span id="spSensVal" class="spVal">1.00x</span></div>
+    <input id="spSens" class="spRange" type="range" min="0.4" max="2.6" step="0.05" value="1">
+    <div class="spRow">🗺️ 小地图大小 <span id="spMMVal" class="spVal">120</span></div>
+    <input id="spMM" class="spRange" type="range" min="90" max="240" step="10" value="120">
+    <div class="spRow only-touch">🕹️ 摇杆大小 <span id="spJoyVal" class="spVal">1.00x</span></div>
+    <input id="spJoy" class="spRange only-touch" type="range" min="0.7" max="1.6" step="0.05" value="1">
+    <!-- 【batch139】手机专有：全屏 + 陀螺仪灵敏度（0＝关）。
+         电脑上 F11 就能全屏、鼠标也不需要陀螺仪，所以这两项只给触屏端（用户要求） -->
+    <div class="spRow only-touch">🖥️ 全屏 <span id="spFsVal" class="spVal">关</span></div>
+    <button id="spFullscreen" class="spBtn only-touch">⛶ 切换全屏（手机横过来更爽）</button>
+    <div class="spRow only-touch">🌀 陀螺仪灵敏度 <span id="spGyroVal" class="spVal">关</span></div>
+    <input id="spGyro" class="spRange only-touch" type="range" min="0" max="100" step="1" value="0">
+    <p class="spHint only-touch">陀螺仪＝把"手机怎么拿"当微调：0 就是关闭，100 最灵敏。<br>用法：正常拿着手机，开启后**左右/前后倾斜手机**就能补瞄（相对式，不用重新校准）。<br>iOS 第一次开会在屏幕上弹一次权限申请，点「允许」。</p>
+    <!-- 【batch220】后处理阴影（屏幕空间 AO）的开关。用户要求：加开关、**默认关闭**。
+         注意它和"真正的太阳投影"是两件事：这里关掉的只是那层"接触暗边"（墙角/箱底/人脚接缝），
+         太阳投出来的影子照旧（那个在设置里没有开关，靠 LIGHT 档位管）。 -->
+    <div class="spRow">🌑 后处理阴影 <span id="spAoVal" class="spVal">关</span></div>
+    <button id="spAoToggle" class="spBtn">开启后处理阴影（接触处更立体）</button>
+    <p class="spHint">后处理阴影＝屏幕空间环境光遮蔽（AO）：墙角、箱子底下、人和地面的接缝会压出一圈暗边，画面更立体。<b>默认关闭</b>（省性能）。关着也不影响太阳投影出来的影子。</p>
+    <div class="spRow">🎯 开镜方式 <span id="spAdsVal" class="spVal">按住右键</span></div>
+    <button id="spAdsMode" class="spBtn">🔄 切换为「点一下开镜」（防浏览器鼠标手势）</button>
+    <p class="spHint">Edge 114+ 自带「鼠标手势」：按住右键移动鼠标会被浏览器当成手势（左滑后退、下划刷新…），而「按住右键开镜」正好是这个动作。改成「点一下开镜」后不必长按右键，手势就不会被触发；也可以在 Edge 里「设置 → 外观 → 鼠标手势」直接关掉。开镜＝点右键开、再点一下关。</p>
+    <div id="spKeysRow">
+      <div class="spRow">⌨️ 键盘键位</div>
+      <button id="spKeys" class="spBtn">🖮 自定义键盘按键</button>
+      <button id="spKeysReset" class="spBtn">↺ 恢复默认键位</button>
+    </div>
+    <div class="spRow only-touch">触屏按键布局</div>
+    <button id="spEdit" class="spBtn only-touch">🎮 调整按键位置</button>
+    <button id="spReset" class="spBtn only-touch">↺ 恢复默认布局</button>
+    <button id="spClose" class="spBtn spClose">关闭</button>
+    <p class="spHint">进入调整模式后，直接拖动屏幕上的摇杆与各个按键到顺手的位置，点“完成”即保存，下次打开自动记住。</p>
+  </div></div>
+<div id="keyPanel"><div class="ctCard">
+  <h3>⌨️ 键盘键位</h3>
+  <p class="spHint">点某一行的「改」，然后按下你想用的键；按 Esc 取消。改完即时生效并自动保存。</p>
+  <div id="keyList"></div>
+  <button id="keyReset" class="spBtn">↺ 恢复默认键位</button>
+  <button id="keyClose" class="spBtn spClose">关闭</button>
+</div></div>
+<div id="netPanel"><div class="ctCard">
+  <h3>🌐 进入多人对战</h3>
+  <p class="spHint">填开服那台电脑的地址（服务器黑窗口里能看到，形如 192.168.1.5:8765），连上后所有人共处同一个世界、互为敌人。</p>
+  <input id="netAddr" spellcheck="false" autocomplete="off" placeholder="192.168.1.5:8765">
+  <p id="netHint" class="spHint">本机测试：localhost:8765 ｜ 局域网：192.168.x.x:8765 ｜ 远程隧道：粘贴 https:// 开头的完整地址</p>
+  <!-- 【batch167】玩法模式选择**不在这里**：原版页面只打原版对战；
+       瓦罗兰特（爆能器）是**另一份独立页面** spike.html，从服务端的模式选择页 /modes 进。 -->
+  <button id="netGo" class="spBtn">🔌 连接并进入</button>
+  <button id="netCancel" class="spBtn spClose">取消</button>
+</div></div>
+
+<div id="namePanel" class="ctLayer on"><div class="ctCard">
+  <h3>🪪 起个名字</h3>
+  <p class="spHint">给自己起个名字再开打。这个名字在<b>单人</b>和<b>多人对战</b>里都会一直沿用，换局也不会丢；存在本机时是<b>加密</b>的。</p>
+  <p class="spHint">所有人的名字<b>不能重复</b>：如果服务器上已经有人用了这个名字，会提醒你换一个。</p>
+  <p class="spHint">换过网址（隧道 / 局域网 / 本地文件三选一）？名字不用重取：填<b>原来的名字</b> + 你的<b>身份码</b>即可取回，名字永远是你的。</p>
+  <input id="nameInput" class="ctInput" maxlength="8" autocomplete="off" placeholder="中文 / 字母 / 数字，最多 8 个字">
+  <input id="codeInput" class="ctInput" maxlength="6" autocomplete="off" placeholder="身份码（新玩家留空；老玩家换网址时填 6 位）" style="letter-spacing:2px;text-transform:uppercase;">
+  <p id="nameErr" class="ctErr"></p>
+  <button id="nameOk" class="ctBtn">✅ 确定</button>
+</div></div>
+<!-- ==================== 【batch126/165】剧情模式「营救蚀日者」 ==================== -->
+<!-- 【batch149】剧情第一章 / 第二章，先选章节再选人 -->
+<div id="storyChapter" class="ctLayer"><div class="ctCard stCard">
+  <h3>🎬 剧情模式 · 选择章节</h3>
+  <p class="stTip">第一章是城里的追猎；第二章要钻进暗月的地下实验室，把蚀日者抢回来。<br>
+     两章都可以反复重打，通关记录会永久保留。</p>
+  <div class="stChap" id="storyChapGrid"></div>
+  <div class="ctRow" style="justify-content:center;gap:10px">
+    <button class="ctBtn ctCancel" id="storyChapCancel" style="width:auto;padding:9px 22px">取消</button>
+    <button class="ctBtn" id="storyChapNext" style="width:auto;padding:9px 26px">下一步：选人 ➤</button>
+  </div>
+</div></div>
+<div id="storyPick" class="ctLayer"><div class="ctCard stCard">
+  <h3 id="storyPickTitle">🎬 营救蚀日者</h3>
+  <p class="stTip" id="storyPickTip">你是正规军「未来」的一员。半个月前，太阳之下诞生了能吸收阳光的「蚀日者」；
+    佣兵团「暗月」派出的斥候已经先一步封锁了这座城，而「闪电」正亲自赶来抢人。<br>
+    先清掉斥候，再面对她。从下面四位特工里挑一位出战。</p>
+  <div class="stGrid" id="storyPickGrid"></div>
+  <div class="ctRow" style="justify-content:center;gap:10px">
+    <button class="ctBtn ctCancel" id="storyPickCancel" style="width:auto;padding:9px 22px">取消</button>
+    <button class="ctBtn" id="storyPickGo" style="width:auto;padding:9px 26px">出战 ➤</button>
+  </div>
+</div></div>
+
+<div id="storyCut"><div id="storyCutTxt"></div><div id="storyCutHint">点击继续</div></div>
+<div id="storyHud"><span id="storyHudTxt">剧情模式</span></div>
+<div id="rescueWrap"><div id="rescueTitle">🌀 营救「蚀日者」</div><div id="rescueBarOut"><div id="rescueBar"></div></div><div id="rescueHint"></div></div>
+<div id="bossWrap"><div id="bossName">⚡ 闪电 · 暗月佣兵团</div><div id="bossBarOut"><div id="bossBar"></div></div></div>
+<div id="trainHpWrap"><div id="trainHpName">🚆 列车结构</div><div id="trainHpBarOut"><div id="trainHpBar"></div></div></div>
+
+<div id="storyDone" class="ctLayer"><div class="ctCard stCard" id="storyDoneCard">
+  <h3 id="storyDoneTitle">🎬 剧情通关</h3>
+  <p id="storyDoneSub" class="stTip"></p>
+  <div id="storyDoneBody"></div>
+  <button class="ctBtn" id="storyDoneHome">返回主菜单</button>
+</div></div>
+
+<div id="lockHint">🖱️ 鼠标未锁定 —— 点击画面即可重新锁定鼠标</div>
+<div id="blindFx"></div>
+<div id="smokeFx"></div>
+<div id="zapFx"></div>
+<div id="downedFx"><h2>⚡ 你已倒地</h2><p id="downedTip">被治疗即可站起 · 再挨一下就是死</p></div>
+<div id="ghostFx"><h2>🌀 虚化中（无敌）</h2><p id="ghostTip">WASD 飘 · 空格升 / 蹲下键降 · 左键 或 再按技能键 = 放下门</p></div>
+<div id="shadowFx"><h2>🌑 遁入暗影（无敌）</h2><p id="shadowTip">不能攻击 / 开枪 / 开镜 · 再按 N 化回实体</p></div>
+<div id="scoutAlert"><div id="scoutRing"></div><div id="scoutArrow">▲</div></div>
+<div id="blocker" data-page-node-id="h7ddyNKkrpKSTMizdAtClu"><div id="menu" data-page-node-id="P0xepCkVHjcXmrB6AghI8A">
+  <aside id="menuLeft" class="menuSide">
+    <div class="sideCard">
+      <div class="sideTitle">🎮 玩家</div>
+      <div class="sideRow"><span>名字</span><b id="sideName">—</b></div>
+      <div class="sideRow"><span>金币</span><b id="sideGold" style="color:#fc0">0</b></div>
+      <div class="sideRow"><span>身份码</span><b id="sideCode" style="font-size:10px;letter-spacing:0">—</b></div>
+    </div>
+    <div class="sideCard">
+      <div class="sideTitle">🚀 快捷入口</div>
+      <button class="sideBtn" id="sideHeroBtn">🦸 选择特工</button>
+      <button class="sideBtn" id="sideMapBtn">🗺 选择地图</button>
+      <button class="sideBtn" id="sideModBtn">🧩 模组管理</button>
+      <button class="sideBtn" id="sideInfoBtn">📖 游戏说明</button>
+      <button class="sideBtn" id="sideSetBtn">⚙ 设置</button>
+    </div>
+    <div class="sideCard">
+      <div class="sideTitle">🎨 自定义资产</div>
+      <div class="sideHint">文件放进 <b>mode/模组/</b> 即生效：<br>· 任意 mp4 ＝ 闪光弹特效（带音频）<br>· 背景.png/jpg/mp4 ＝ 菜单背景<br>· 音乐.mp3/ogg/wav ＝ 菜单音乐</div>
+    </div>
+  </aside>
+  <div id="menuMid">
+  <h1 id="menuTitle" data-page-node-id="TzhwNssf8RGgYjqH6PWXwF">🔫 枪战突击</h1>
+  <p class="subtitle" data-page-node-id="CCC7kd2l5g3EV3Tcv46flN">WASD移动 · Space跳跃 · 左键射击 · 右键开镜 · R换弹 · V/B/N 英雄技能</p>
+  <details id="menuTips"><summary>💡 鼠标转向 / 开镜的那些坑（点开看）</summary><div class="tip-body">锁定鼠标成功后直接移动鼠标即可转向，不必按住任何键；按住右键＝开镜。若瞄准时浏览器弹出鼠标手势（Edge 自带）：把游戏设置里的「开镜方式」改成「点一下开镜」，或在 Edge「设置→外观」关掉鼠标手势。完整操作说明见下面「📖 游戏说明」。</div></details>
+  <p id="myIdLine" class="subtitle" style="font-size:12px;color:#8fd6ff;margin-top:2px;"></p>
+  <div class="gold-display" data-page-node-id="tYek8qD1Z8eVGREc6tvBMe"><span data-page-node-id="MJAVYZIOnrCETZWijBFw7l">🪙</span> 金币: <span id="shop-gold" data-page-node-id="RLoUkAzVtwjHTUHgeXRSsi">0</span></div>
+  <div class="tabs" data-page-node-id="JAq8NEKyn2DNegZN8aFhTq">
+    <div class="tab active" data-tab="upgrades" onclick="switchTab('upgrades')" data-page-node-id="Da9LxsXiacAXOx0Ri0c2iM">🔧 枪械改装</div>
+    <div class="tab" data-tab="info" onclick="switchTab('info')" data-page-node-id="BD67EbD8GmRDiEHBAyQuk6">📖 游戏说明</div>
+    <div class="tab" data-tab="hero" onclick="switchTab('hero')" data-page-node-id="H3R0TAB00000000000001">🦸 英雄</div>
+    <div class="tab" data-tab="map" onclick="switchTab('map')" data-page-node-id="H3R0TAB00000000000002">🗺 地图</div>
+  </div>
+  <div id="tab-upgrades" class="panel vl-panel active" data-page-node-id="RDP0AeonpyM9QCgZBoxZAq"><div class="upgrade-grid" id="upgrade-grid" data-page-node-id="G8ilL3NNWPzdNcBh0Fzwxv"></div></div>
+  <div id="tab-info" class="panel vl-panel" data-page-node-id="X1QCiDZpERtPT6voD7rTOO">
+    <div class="info-grid" data-page-node-id="Ki6L5nsWBJHlIbhflktbUf">
+      <div class="info-card story" data-page-node-id="SEASONSTORYCARD00001"><h3 data-page-node-id="SEASONSTORYHEAD00001">🌑 本季剧情 · 营救蚀日者</h3><p data-page-node-id="SEASONSTORYTEXT00001">从太阳之下诞生的「蚀日者」能吸收太阳的力量 —— 他被暗月掳进了地下实验室，准备拿他做非人道实验。本季任务只有一条：**把他救回来**。</p><div class="fac" data-page-node-id="SEASONSTORYFAC00001"><div data-page-node-id="SEASONSTORYFAC00002"><b style="color:#4fc3ff">未来 · 正规军</b><br>天狼 / 流火 / 镇岳 / 白泽 / 蚀日者<br>蚀日者已被暗月掳走 —— 打通救援线，把战友抢回来。</div><div data-page-node-id="SEASONSTORYFAC00003"><b style="color:#a98cff">暗月 · 佣兵团</b><br>闪电 / 影月<br>把蚀日者关进地下实验室，死守不交人 —— 暗月的实验不能停。</div><div data-page-node-id="SEASONSTORYFAC00004"><b style="color:#b07dff">蚀日者 · 未来</b><br>控场<br>被关在暗月的收容舱里，等「未来」把他救出去。</div></div></div>
+      <div class="info-card" data-page-node-id="1O8Z9Z6pOvUUGfJNldgiBq"><h3 data-page-node-id="uNSTvpynADTW5GIE6ntNq2">🎯 操作</h3><p data-page-node-id="OkV90T89vQIHCM0bwv5uRo">WASD - 移动 | Space - 跳跃<br data-page-node-id="Xd5q4oAWGyFoTaNKyRf4rL">右键 - 开镜瞄准(ADS)<br data-page-node-id="lwFDjYT03YDGPsMphRQnl5">左键 - 射击/突刺<br data-page-node-id="emk32Djndyr0XS5nAjEtyB">R - 换弹 | 双击 W - 冲刺 | 按一下 Shift - 蹲下/站起<br data-page-node-id="5Pe36t2cTjinT8FSHJH0zo">滚轮/1/2 - 切换武器 | V/B/N - 英雄技能①②③<br data-page-node-id="DiQKr7pgNGeZg2qEP0W7Eg">🪜 靠近哨塔梯子按 F 抓梯攀爬<br data-page-node-id="Dyr2ISUA9uRG6SwGv1Pm28">Q/E - 左右探头</p></div>
+      <div class="info-card" data-page-node-id="lMtgYZjrj7ufjWP2EFTvz2"><h3 data-page-node-id="6Jj71cggVWh21jEuQUuWtz">🤲 双手系统</h3><p data-page-node-id="tlR4DSaB73PqQyKxrX5Rdi">左手绑定枪体局部坐标<br data-page-node-id="phuGHV8LfZxmgvsQGu40nG">精确对齐前握把<br data-page-node-id="WvD2xpwbwdHS5OEM7E2KCU">换弹左手取出并装入弹匣<br data-page-node-id="MB0IwD75cZrv7DCPlqeMI1">移动/呼吸晃动自然</p></div>
+      <div class="info-card" data-page-node-id="DyxhSKETeUcRSvuBF1gQ3c"><h3 data-page-node-id="d6WVcS7RfccHR1TeRwDpp5">👾 敌人AI</h3><p data-page-node-id="bHHQjm5chY0YkYIUyCITnE">🔴 普通兵：中距步枪<br data-page-node-id="mMsjbDl39fR90MWtSLO8Ab">🟠 快速兵：纯近战冲锋<br data-page-node-id="CwPP4OnX31v2mzxXIkQiqC">🟣 重甲兵：远程霰弹<br data-page-node-id="qHsCt1HOc1rx5gDxDqs5Hw">🩷 精英兵：精准狙击<br data-page-node-id="J1YCdNlYiPS63gpaWx2IHZ">👁 仅前方117°视野内且视线无遮挡才会追击，否则随机巡逻</p></div>
+      <div class="info-card" data-page-node-id="phwVNKrSt4SHT7S65Uw14a"><h3 data-page-node-id="biMzeOVFcbX8OvbB7ziRkU">🪙 经济</h3><p data-page-node-id="j57XCHARICtBRyBMEJbRJG">击杀获金，爆头双倍<br data-page-node-id="Iq8o00K1sdISbxArKGlLaH">每波结束可进商店</p></div>
+    </div>
+  </div>
+  <div id="tab-hero" class="panel vl-panel">
+    <div class="vl-head"><div class="vl-title">选择特工</div><div class="vl-sub">AGENT SELECT</div></div>
+    <div class="vl-note">⚠️ <b>局内不能更换英雄</b>：想换先把这一局打完 / 退出对局。左边点一个特工，右边看他的 3 个技能；电脑端按 <b>V / B / N</b> 释放技能，手机端用右下角的「技能①②③」。</div>
+    <div class="vl-hero" id="hero-grid"></div>
+  </div>
+  <div id="tab-map" class="panel vl-panel">
+    <div class="vl-head"><div class="vl-title">选择地图</div><div class="vl-sub">MAP SELECT</div></div>
+    <div class="vl-note"><b>单人游戏</b>＝直接进这张图；<b>多人游戏按地图分房间</b>，大厅里会显示每张图各有几个人。选中的地图会记住，下次进游戏还是它。</div>
+    <div class="vl-maps" id="map-grid"></div>
+  </div>
+  <!-- 【batch222】服务器连接条：文档流里的普通块，不是遮罩（遮罩会挡设置） -->
+  <div id="srvBar" class="hide">
+    <div class="svTitle">🌐 连接服务器（多人对战）</div>
+    <div class="svRow">
+      <input id="srvInput" spellcheck="false" autocomplete="off" placeholder="例如 192.168.1.5:8765（留空就是离线）">
+      <button id="srvGo">连接</button>
+      <button id="srvOffline" class="svOff">离线玩单人</button>
+    </div>
+    <div class="svSt" id="srvSt"></div>
+  </div>
+  <div id="menuHomeBtns">
+    <button class="start-btn" id="startBtn" data-page-node-id="R3tKGFyAgM74OEC7ERHiN2">⚔️ 单人游戏</button>
+    <button class="start-btn story-launch" id="storyBtn" data-page-node-id="STORYLAUNCHBTN00001">🎬 剧情模式（第一章 / 第二章）<em id="storyTag" data-page-node-id="STORYLAUNCHTAG00001">第一章击败闪电 / 第二章救出蚀日者，各解锁一位英雄</em></button>
+    <button id="netBtn">🌐 多人游戏（局域网联机）</button>
+  </div>
+  <div id="menuPauseBtns">
+    <button class="start-btn" id="btnResume">▶️ 继续游戏</button>
+    <button id="btnQuit">🚪 退出游戏（回到主菜单）</button>
+  </div>
+  <div id="netMode"></div>
+  <button id="menuSetBtn">⚙ 设置（灵敏度 / 小地图 / 键位）</button>
+  <button id="relockBtn">🔒 重新尝试锁定鼠标</button>
+</div>
+<aside id="menuRight" class="menuSide">
+  <div class="sideCard">
+    <div class="sideTitle">🌐 联机状态</div>
+    <div class="sideRow"><span>状态</span><b id="sideNet">离线</b></div>
+    <div class="sideRow"><span>服务器</span><b id="sideSrv" style="font-size:11px">—</b></div>
+    <div class="sideRow"><span>版本</span><b id="sideVer">—</b></div>
+    <button class="sideBtn" id="sideNetBtn">🌐 多人游戏</button>
+  </div>
+  <div class="sideCard">
+    <div class="sideTitle">📢 本季公告</div>
+    <div class="sideHint">剧情「营救蚀日者」进行中：打通暗月的地下实验室把战友抢回来，章节通关各解锁一位英雄。</div>
+  </div>
+  <div class="sideCard">
+    <div class="sideTitle">💡 小贴士</div>
+    <div class="sideHint">游戏内按 <b>Enter</b> 聊天，按住 <b>G</b> 说话；被闪光弹致盲时会全屏播放你的自定义视频。</div>
+  </div>
+</aside>
+</div></div>
+
+<div id="wave-shop" data-page-node-id="OqAq4qol8CDI5NlBG9XsYY"><div class="ws-inner" style="max-width:700px;width:90%" data-page-node-id="EAeBF2uffNW48HWBubJ4Dn">
+  <h2 style="color:#fff;margin-bottom:10px;" data-page-node-id="wGyDo4sGcX5y5xJiKXpAZV">⚔️ 战斗间歇</h2>
+  <p style="color:#aaa;margin-bottom:20px;" data-page-node-id="Paz8lHa6SOfuS2bJHDqKhY">第 <span id="ws-wave" data-page-node-id="knpYGwrSpkemZpNzleCeBg">1</span> 波已清除！</p>
+  <div class="gold-display" data-page-node-id="jELn5tXUiTP4yAzBHMaz90"><span data-page-node-id="49a9CAEGK77o2Ez29TGDKl">🪙</span> 金币: <span id="ws-gold" data-page-node-id="lBaQ6tdFaqchzAeINXBc9v">0</span></div>
+  <div class="upgrade-grid" id="ws-upgrade-grid" style="margin-bottom:20px;" data-page-node-id="nSFDmmfZD0EXLSMhwfyckw"></div>
+  <button class="ws-btn" id="wsContinue" data-page-node-id="3xNxGYat5dczZGWO2cntg9">继续战斗 ➤</button>
+</div></div>
+<div id="weapon-select"><div class="wsel-inner">
+  <h2>🎯 选择武器</h2>
+  <div class="wsel-sub">点击武器即可替换当前手持枪 · 按 B 或 Esc 关闭</div>
+  <div id="wsel-grid"></div>
+  <button class="wsel-close" id="wselClose">关闭</button>
+</div></div>
+
+<div id="hud" data-page-node-id="YW6BIlhd3WEdNrEZCisv4F">
+  <div id="crosshair" data-page-node-id="QFroOIrqZ7xGnxiQtaH6UK"><i class="u"></i><i class="d"></i><i class="l"></i><i class="r"></i><div class="dot" data-page-node-id="dKMSRmlVf3mArd6hxLeaNl"></div></div>
+  <!-- 【batch203】纪念枪「长明」专属准星：金色刻线 + 中心暖光 + 四角斜芒。
+       与通用准星同在，由 js/24 的 _准星刷新 按当前武器切换显示（同一套散布数据驱动）。 -->
+  <div id="memCross">
+    <i class="u"></i><i class="d"></i><i class="l"></i><i class="r"></i>
+    <i class="k1"></i><i class="k2"></i><i class="k3"></i><i class="k4"></i>
+    <b class="dot"></b>
+  </div>
+  <div id="hp-wrap" data-page-node-id="qDxGIwFBOYOrnr2YjNdFLE"><div id="hp-bar" data-page-node-id="ngifB8l07q4itLWDjAehq0"></div></div>
+  <div id="hp-text" data-page-node-id="9iADgOduK0FxQREjwyriyw">❤️ 100/100</div>
+  <div id="gold-hud" data-page-node-id="EoMt2gGmbRaTipgI6sM14u">🪙 0</div>
+  <div id="score" data-page-node-id="8UeyfWj7GZqNVWyoMGVd6I">得分: 0</div>
+  <div id="wave" data-page-node-id="pcLmz53CcV9mYeznp9wB3g">第1波</div>
+  <div id="ammo" data-page-node-id="iap7WwjWqG39cvD0oDq8HC">30 <span data-page-node-id="Lt9rIUcSDMWu3AmPcuErDD">/30</span></div>
+  <div id="weapon-name" data-page-node-id="xlL0JjXmUTO6GkHL790AyE">🔫 步枪</div>
+  <div id="reload-text" data-page-node-id="1ooMIXneFTtJzEUJbStPxB">装弹中...</div>
+  <div id="msg" data-page-node-id="nBLaGtxqZjsttlfKxUG8yX"></div>
+  <canvas id="minimap" data-page-node-id="JLHEOiqmF0GCDgEnBYjno4"></canvas>
+  <div id="fps" data-page-node-id="DjNxH2h5FeiOzg38utIVbp">FPS: --</div>
+</div>
+<div id="dmg-overlay" data-page-node-id="p8SwPMvVvWf7IzlOkVz7cW"></div>
+<div id="scopeFx"><div class="tube"></div><div class="reticle"><i class="n"></i><i class="s"></i><i class="w"></i><i class="e"></i><div class="dot"></div></div></div>
+<!-- 【batch203】联机感谢横幅：持纪念枪皮的玩家进服时，别人的屏幕上方升起一条暖金色横幅。
+     自己看不到自己的（服务端只广播给别人）。 -->
+<div id="memThanks"><div class="card"><div class="line1">感谢您这么久的陪伴</div><div class="line2"><b id="memThanksName">一位老兵</b> 带着「长明」回到了战场</div></div></div>
+<!-- 【batch215】纪念枪专属击杀计数（只在本枪击杀时出现） -->
+<div id="memKill"><div class="mk"><div class="t">MERIDIAN // KILL COUNT</div><div class="n"><span id="memKillNum">0</span></div><div class="u">累计击杀</div><div class="b"><i id="memKillBar"></i></div><div class="p" id="memKillPlus">+1</div></div></div>
+<div id="redDotFx"><div class="ring" id="redDotRing"></div><div class="dot"></div></div>
+<div id="netBoard"></div>
+<div id="netDeath"><h2>☠️ 阵亡</h2><p>3 秒后自动重生…</p></div>
+<div id="go" data-page-node-id="DqwUcqBlNQv7sIbCj4PzRR"><h1 data-page-node-id="PAAcCAGrdQIuFvKccPz0J8">游戏结束</h1><p id="fs" data-page-node-id="vVQNfdHrDUfGSRUmGgj8ib"></p><p id="fw" data-page-node-id="OKYi9WpUJccSytFRQNolxB"></p><p id="fk" data-page-node-id="j62jnVuOtfYcNa7xIURUWB"></p><p id="fg" data-page-node-id="RC7PEwupheqCwNHHlOhEEE"></p><button class="btn" onclick="location.reload()" data-page-node-id="sFkx9kGfBXJsuhnMIeTjFI">再来一局</button></div>
+
+<script src="lib/three.r128.min.js"></script>
+<script src="js/00_前置检查.js"></script>
+<script src="js/00_升级与场景.js"></script>
+<script src="js/01_手部与武器建模.js"></script>
+<script src="js/02_状态键位与粒子.js"></script>
+<script src="js/10_地图_经典.js"></script>
+<script src="js/11_方块贴图.js"></script>
+<script src="js/12_地图_日蚀环城.js"></script>
+<script src="js/13_地图_实验室.js"></script>
+<script src="js/14_地图_注册表.js"></script>
+<script src="js/20_敌人与玩家模型.js"></script>
+<script src="js/21_攻击与拾取.js"></script>
+<script src="js/22_输入与手势.js"></script>
+<script src="js/23_触屏与设置面板.js"></script>
+<script src="js/24_玩家与动画.js"></script>
+<script src="js/25_敌人AI.js"></script>
+<script src="js/26_伤害与界面.js"></script>
+<script src="js/27_纪念击杀特效.js"></script>
+<script src="js/30_联机.js"></script>
+<script src="js/40_英雄_数据.js"></script>
+<script src="js/41_英雄_施法与瞄准.js"></script>
+<script src="js/42_英雄_特效一.js"></script>
+<script src="js/43_英雄_特效二.js"></script>
+<script src="js/44_英雄_世界与远端.js"></script>
+<script src="js/50_开局流程.js"></script>
+<script src="js/60_剧情模式.js"></script>
+<script src="js/61_模组管理.js"></script>
+<script src="js/62_聊天与语音.js"></script>
+<script src="js/63_自定义资产.js"></script>
+<script src="mode/模组加载器.js"></script>
+
+</body>
+</html>
