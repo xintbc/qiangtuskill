@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>枪战突击 · 版本与模组中心</title>
+<style>
+  :root{ --bg:#0b0e17; --card:#151a2b; --card2:#1a2034; --line:#2a3350;
+         --txt:#e8ecf5; --dim:#8b94ad; --acc:#ff4d4d; --acc2:#4da6ff; --gold:#ffc94d; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1200px 700px at 50% -10%, #1b2440 0%, var(--bg) 60%);color:var(--txt);
+       font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;min-height:100vh;line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 60px}
+  header{padding:56px 0 28px;text-align:center}
+  header h1{font-size:40px;letter-spacing:2px;color:#fff;text-shadow:0 0 40px rgba(255,77,77,.35)}
+  header .sub{color:var(--dim);margin-top:10px;font-size:14px}
+  header .ver-chip{display:inline-block;margin-top:16px;padding:6px 18px;border-radius:20px;
+    background:linear-gradient(135deg,rgba(255,77,77,.25),rgba(255,201,77,.15));border:1px solid rgba(255,77,77,.4);
+    color:#ffd9d9;font-size:13px;letter-spacing:1px}
+  nav{position:sticky;top:0;background:rgba(11,14,23,.85);backdrop-filter:blur(10px);z-index:10;
+    border-bottom:1px solid var(--line);display:flex;gap:8px;padding:12px 20px;justify-content:center}
+  nav button{background:none;border:1px solid transparent;color:var(--dim);padding:8px 18px;border-radius:8px;
+    cursor:pointer;font-size:14px;transition:.2s}
+  nav button.on{color:#fff;background:rgba(255,77,77,.15);border-color:rgba(255,77,77,.4)}
+  nav button:hover{color:#fff}
+  section{margin-top:28px}
+  h2{font-size:20px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  h2::after{content:'';flex:1;height:1px;background:var(--line)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;
+    transition:.2s;position:relative}
+  .card:hover{border-color:#3d4a70;transform:translateY(-2px)}
+  .card.latest{border-color:rgba(255,77,77,.55);box-shadow:0 0 24px rgba(255,77,77,.12)}
+  .badge{position:absolute;top:14px;right:14px;font-size:11px;padding:3px 10px;border-radius:12px;
+    background:rgba(255,77,77,.18);color:#ffb3b3;border:1px solid rgba(255,77,77,.4)}
+  .card .v{font-size:26px;font-weight:700;color:#fff;letter-spacing:1px}
+  .card .date{color:var(--dim);font-size:12px;margin-top:4px}
+  .card .desc{color:var(--txt);font-size:13px;margin:12px 0;min-height:40px}
+  .card .meta{color:var(--dim);font-size:11px;display:flex;gap:12px;flex-wrap:wrap}
+  .card a{display:inline-block;margin-top:14px;padding:9px 22px;border-radius:8px;text-decoration:none;
+    background:linear-gradient(135deg,var(--acc),#c22);color:#fff;font-weight:600;font-size:14px;transition:.2s}
+  .card a:hover{filter:brightness(1.15)}
+  .mod{background:var(--card2)}
+  .mod .name{font-size:16px;font-weight:600;color:#fff;word-break:break-all}
+  .mod .compat{color:var(--gold);font-size:12px;margin-top:6px}
+  .mod .meta{color:var(--dim);font-size:11px;margin-top:6px}
+  .mod a{background:linear-gradient(135deg,var(--acc2),#2a6fd0)}
+  .hint{background:rgba(77,166,255,.08);border:1px solid rgba(77,166,255,.25);border-radius:12px;
+    padding:16px 20px;color:#bcd8ff;font-size:13px;margin-top:20px}
+  .hint b{color:#fff}
+  .foot{text-align:center;color:var(--dim);font-size:12px;margin-top:60px}
+  #loading{text-align:center;color:var(--dim);padding:40px}
+  .hide{display:none!important}
+  .ai{color:#ffb3b3}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔫 枪战突击</h1>
+  <div class="sub">版本与模组中心 · 启动器 / 手动下载都从这里取</div>
+  <div class="ver-chip" id="latestChip">加载中…</div>
+</header>
+<nav>
+  <button class="on" data-t="ver">📦 版本</button>
+  <button data-t="mod">🧩 模组</button>
+  <button data-t="about">ℹ️ 说明</button>
+</nav>
+<div class="wrap">
+  <div id="loading">正在读取清单…</div>
+
+  <section id="sec-ver" class="hide"><h2>📦 所有版本</h2><div class="grid" id="verGrid"></div></section>
+  <section id="sec-mod" class="hide"><h2>🧩 模组</h2><div class="grid" id="modGrid"></div></section>
+  <section id="sec-about" class="hide"><h2>ℹ️ 说明</h2>
+    <div class="hint">
+      <b>这是什么？</b> 这里是《枪战突击》的版本与模组分发中心。每个版本独立打包，互不影响；
+      模组是玩家自己往游戏 <b>mode/模组/</b> 目录里放的扩展（新英雄 / 新枪 / 新地图）。
+      <br><br>
+      <b>怎么用？</b> ① 下载「启动器」，打开后自动从本页拉取清单，点版本即可多线程下载、解压到独立目录、一键启动；
+      ② 也可以手动下载下面的 zip 解压，浏览器打开 <b>index.html</b> 即玩；联机再单独跑 <b>服务端.js</b>。
+      <br><br>
+      <b>模组放哪？</b> 下载的 <b>.js</b> 模组丢进对应版本目录下的 <b>mode/模组/</b> 即可生效（启动器会帮你放）。
+      <br><br>
+      <span class="ai">⚠️ 本项目由 AI 创作。</span>
+    </div>
+  </section>
+
+  <div class="foot">枪战突击 · 由 AI 创作 · 版本清单：<span id="manifestSrc">manifest.json</span></div>
+</div>
+
+<script>
+(function(){
+  var data=null;
+  var 格式大小=function(b){if(b>=1048576)return (b/1048576).toFixed(1)+' MB';if(b>=1024)return (b/1024).toFixed(0)+' KB';return b+' B';};
+
+  function 渲染(){
+    document.getElementById('loading').classList.add('hide');
+    var ver=data['版本']||[], mod=data['模组']||[];
+    // 最新版
+    if(ver.length){var n=ver[0];document.getElementById('latestChip').textContent='最新版本 v'+n['版本']+' · '+格式大小(n['大小']);}
+
+    var vg=document.getElementById('verGrid');vg.innerHTML='';
+    ver.forEach(function(v,i){
+      var c=document.createElement('div');c.className='card'+(i===0?' latest':'');
+      c.innerHTML='<div class="v">v'+v['版本']+'</div>'+
+        '<div class="date">'+v['日期']+(i===0?'　·　<font class="ai">最新</font>':'')+'</div>'+
+        '<div class="desc">'+(v['说明']||'')+'</div>'+
+        '<div class="meta"><span>'+格式大小(v['大小'])+'</span><span>MD5 '+(v['md5']||'').slice(0,8)+'</span></div>'+
+        '<a href="版本/'+encodeURIComponent(v['文件'])+'" download>⬇ 下载</a>';
+      vg.appendChild(c);
+    });
+
+    var mg=document.getElementById('modGrid');mg.innerHTML='';
+    if(!mod.length)mg.innerHTML='<div style="color:var(--dim)">暂无模组</div>';
+    mod.forEach(function(m){
+      var c=document.createElement('div');c.className='card mod';
+      c.innerHTML='<div class="name">🧩 '+m['名字']+'</div>'+
+        '<div class="compat">'+(m['兼容']||'通用')+'</div>'+
+        '<div class="meta">'+格式大小(m['大小'])+'　·　MD5 '+(m['md5']||'').slice(0,8)+'</div>'+
+        '<a href="模组/'+encodeURIComponent(m['名字'])+'" download>⬇ 下载模组</a>';
+      mg.appendChild(c);
+    });
+  }
+
+  // 拉清单（用时间戳破缓存，GitHub Pages 强缓存）
+  fetch('manifest.json?t='+Date.now()).then(function(r){return r.json();}).then(function(d){
+    data=d;渲染();
+  }).catch(function(e){
+    document.getElementById('loading').textContent='清单加载失败：'+e+'（请确认 manifest.json 可访问）';
+  });
+
+  // tab 切换
+  document.querySelectorAll('nav button').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('nav button').forEach(function(x){x.classList.remove('on');});
+      b.classList.add('on');
+      var t=b.dataset.t;
+      ['ver','mod','about'].forEach(function(k){document.getElementById('sec-'+k).classList.toggle('hide',k!==t);});
+    });
+  });
+  document.getElementById('sec-ver').classList.remove('hide');
+})();
+</script>
+</body>
+</html>
