@@ -541,6 +541,9 @@ function netOnMsg(m){
   if(m.t==='hitsk'){var _hp2=NET.players[m.i];if(_hp2)heroRemoteHit(_hp2);return;}   // 别人被打中技能（橙色环反馈）
   /* 【batch173】别人放的区域（火路/电网/穹顶/治疗云/墙）：本地只播画面，不结算伤害
      （伤害由施法者上报服务端，避免两边各扣一次血） */
+  /* 【batch236】别人的「天陨」：ph=0 只能在他那边看到他举起，落点圈得等 ph=0 广播过来才画；
+     ph=1 落地只播特效（真人伤害由服务端 killPlayerSrv 判，客户端别再扣一遍）。 */
+  if(m.t==='meteor'){ if(typeof heroMeteorRemote==='function'){try{heroMeteorRemote(m);}catch(e){}} return; }
   if(m.t==='spzone'){
     /* 【batch176】**全部内联**，不碰 41 分片的任何函数。
        上一版调 spZoneAdd / spZoneMesh / spWallBoxAt（都在 js/41），只要对面浏览器缓存了旧分片，
@@ -1164,6 +1167,11 @@ function netUpdateRemote(e){
       else if(typeof HOLD_POSE!=='undefined'&&HOLD_POSE[_k]&&typeof HOLD_POSE[_k].spin==='number')_sp=HOLD_POSE[_k].spin;
     }catch(_eSp){}
     e.nadeRig.rotation.y+=dt*_sp;
+    /* 【batch236】手持时轻微浮动 + 举起来时再抬高一点：静止死贴的模型像贴纸 */
+    var _hp2=e.holdP||0,_ap2=e.naP||0;
+    var _by=(typeof e._nadeBaseY==='number')?e._nadeBaseY:-0.15;
+    e.nadeRig.position.y=_by+0.012*Math.sin(performance.now()*0.004)+0.05*_ap2;
+    e.nadeRig.position.z=-0.30+0.04*_ap2;                // 举起时往前送一点，看得出"要用了"
   }
   e.rec=Math.max(0,(e.rec||0)-dt*RECOIL_DECAY);                  // 【batch102】开火后坐逐帧回弹
   if(e.flash>0)e.flash-=dt;                                      // 闪光只负责染色，血条已在命中瞬间更新
@@ -1284,11 +1292,19 @@ function netRemoteShot(e,yaw,pitch){
    电荷陷阱 trap / 球形闪电 ball / 影月两件 ssmoke·sbomb）在别人眼里**手上什么都没有**
    —— 因为它们根本没有编号，nv 上报出来是 0。现在补齐编号与建模函数。 */
 var NADE_KIND=['','frag','flash','smoke','medsmoke','medkit','pulse','mine',
-               'solar','portal','orb','trap','ball','ssmoke','sbomb'];
+               'solar','portal','orb','trap','ball','ssmoke','sbomb',
+               /* 【batch236】SP 形态的「手持技能」也占编号：15~19。
+                  以前这几种 nv 上报是 0 → 别人眼里你**空着手**，举墙 / 举无人机 / 举小太阳
+                  在第三人称一点动作都没有（用户："所有的手持技能几乎都没有第三人称动画"）。 */
+               'sp_drone','sp_net','sp_wall','sp_sunfall','sp_meteor'];
 var NADE_CODE={frag:1,flash:2,smoke:3,medsmoke:4,medkit:5,pulse:6,mine:7,
-               solar:8,portal:9,orb:10,trap:11,ball:12,ssmoke:13,sbomb:14};
-/* 手里握着的尺寸：黑日/传送门是"大招级"，第一人称都要缩到 0.34/0.40，第三人称同理 */
-var NADE_SCALE={solar:0.34,portal:0.40,ball:0.9,orb:1.0,trap:1.0,sbomb:1.0};
+               solar:8,portal:9,orb:10,trap:11,ball:12,ssmoke:13,sbomb:14,
+               sp_drone:15,sp_net:16,sp_wall:17,sp_sunfall:18,sp_meteor:19};
+/* 手里握着的尺寸：黑日/传送门/掩体墙是"大招级"，第一人称就缩得很小，第三人称同理。
+   【batch236】这张表以前定义了却没人用（代码里写死 code>=8?0.85:0.48），
+   于是掩体墙挂到别人手上是 4.8×2.7 的**整面墙**。现在统一按表取。 */
+var NADE_SCALE={solar:0.34,portal:0.40,ball:0.9,orb:1.0,trap:1.0,sbomb:1.0,
+                sp_wall:0.16,sp_drone:0.55,sp_net:0.55,sp_sunfall:0.5,sp_meteor:0.5};
 function netNadeMesh(code){
   var k=NADE_KIND[code]||'';
   /* 【batch219】模组投掷物：先在 ModLoader.throwables 里找，找到就用模组自己的 mesh()。
@@ -1312,6 +1328,14 @@ function netNadeMesh(code){
   if(k==='ball')return heroMeshBall();
   if(k==='ssmoke')return heroMeshShadowSmoke();
   if(k==='sbomb')return heroMeshShadowBomb();
+  /* 【batch236】SP 手持技能：直接用第一人称那套模型（形状一致，尺寸靠 NADE_SCALE 缩） */
+  try{
+    if(k==='sp_drone')return heroMeshSpDrone();
+    if(k==='sp_net')return heroMeshSpNet();
+    if(k==='sp_wall')return heroMeshSpWall();
+    if(k==='sp_sunfall')return heroMeshSun();
+    if(k==='sp_meteor')return heroMeshSpMeteor();
+  }catch(_eSPN){}
   return null;
 }
 /* 按 tw / nv 切换对手手上的东西：投掷物 > 刀 > 枪 */
@@ -1324,7 +1348,13 @@ function netUpdateHeld(e){
     var m=code?netNadeMesh(code):null;
     /* 【batch216】手里的投掷物按真人比例缩：第一人称那套为了看得清放大到 1.25 倍，
        直接挂到第三人称手上会是一颗"篮球那么大的手雷"。0.62 ≈ 真手雷尺寸。 */
-    if(m){m.scale.setScalar(code>=8?0.85:0.48);e.nadeRig.add(m);}
+    if(m){
+      var _k=NADE_KIND[code]||'';
+      var _sc=(NADE_SCALE[_k]!=null)?NADE_SCALE[_k]:(code>=8?0.85:0.48);
+      m.scale.setScalar(_sc);
+      e.nadeRig.add(m);
+      e._nadeBaseY=(e.nadeRig.position.y||-0.15);        /* 记一个基准高度，下面做呼吸浮动 */
+    }
   }
   if(e.gunRig)e.gunRig.visible=(!held&&!knife);
   if(e.knifeRig)e.knifeRig.visible=(!held&&knife);
@@ -1364,7 +1394,7 @@ function netThrowFx(m){
   var mesh=null;
   try{ mesh=netNadeMesh(m.c|0); }catch(e){ mesh=null; }
   if(!mesh)return;
-  try{ mesh.scale.setScalar((m.c|0)>=15?0.55:0.48); }catch(e){}
+  try{ mesh.scale.setScalar((m.c|0)>=40?0.55:0.48); }catch(e){}
   mesh.position.set(+m.x||0,+m.y||0,+m.z||0);
   scene.add(mesh);
   netThrowFxList.push({
@@ -1442,7 +1472,7 @@ function netTick(){
     yaw:Math.round(yaw*1000)/1000,pitch:Math.round(pitch*1000)/1000,an:netAnimState(),w:currentWeapon,wk:((currentWeapon===WEAPON_KNIFE)?('k:'+currentKnife):curGun),ln:Math.round(S.lean*100)/100,
     h:SK.idx,sh:netShotSeq,
     nv:(SK.hold?(NADE_CODE[SK.hold.kind]||0):0),
-    na:(SK.aimThrow?1:0),
+    na:((SK.aimThrow||(SK.hold&&(SK.hold.kind==='sp_meteor'||SK.hold.kind==='sp_wall')))?1:0),   /* 【batch236】举墙/举陨石也是"举起"姿态 */
     /* 【batch216】换弹 / 检视进度（0~1，0=没在做）——
        别人靠这两个数在第三人称播"退弹匣→上弹匣→拉栓"和"转枪检视"。 */
     rl:(function(){try{

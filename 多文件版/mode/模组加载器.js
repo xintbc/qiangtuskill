@@ -383,14 +383,16 @@
      *  约定：mesh() 每次都要**新建**一个（不要返回单例），原点在物体中心、直径约 0.2 米。
      * ----------------------------------------------------------------- */
     throwables: {},
-    _tNext: 15,
+    /* 【batch236】编号从 40 起：1~14 是内置投掷物，15~19 被 SP 形态的"手持技能"
+       （无人机 / 电磁网 / 掩体墙 / 小太阳 / 陨石）占了，模组从 40 开始，别撞车。 */
+    _tNext: 40,
     addThrowable: function (def) {
       if (!def || !def.id) { warn('addThrowable：缺少 id'); return -1; }
       try {
         def.name = def.name || def.id;
         if (!this.throwables) this.throwables = {};
         this.throwables[def.id] = def;
-        var code = (typeof this._tNext === 'number' && this._tNext >= 15) ? this._tNext : 15;
+        var code = (typeof this._tNext === 'number' && this._tNext >= 40) ? this._tNext : 40;
         this._tNext = code + 1;
         if (typeof NADE_CODE !== 'undefined' && !NADE_CODE[def.id]) NADE_CODE[def.id] = code;
         if (typeof NADE_KIND !== 'undefined' && !NADE_KIND[code]) NADE_KIND[code] = def.id;

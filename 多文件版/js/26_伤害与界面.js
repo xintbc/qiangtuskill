@@ -3,9 +3,13 @@
    以前是无条件 return —— 而 takeDmg 的调用方全是**本地 AI 敌人 / 火车 / 剧情 BOSS**，
    服务端明确"不产生任何敌人"、根本不会替这些伤害兜底，
    于是从服务器网页打开（自动联机）玩单人/剧情时，敌人打玩家**完全不扣血**（用户实测）。 */
-function takeDmg(n,src){if(netIsMulti()&&src&&src.isNet)return;
-  if(typeof SK!=='undefined'&&SK&&SK.ghost>0)return;      // 【batch145】虚化中：无敌（联机由服务端权威，见 ghostUntil）
-  if(typeof SK!=='undefined'&&SK&&SK.shadowT>0)return;    // 【batch158】遁入暗影：无敌（联机走 gh 标记 → 服务端 ghostUntil）
+function takeDmg(n,src,穿透){if(netIsMulti()&&src&&src.isNet)return;
+  /* 【batch236】穿透＝无视"虚化 / 遁入暗影"这类无敌。陨石是从天上砸下来的范围秒杀，
+     按了 V 也不能免疫（联机同样绕过：服务端 killPlayerSrv 直接判死，不看 ghostUntil）。 */
+  if(!穿透){
+    if(typeof SK!=='undefined'&&SK&&SK.ghost>0)return;      // 【batch145】虚化中：无敌（联机由服务端权威，见 ghostUntil）
+    if(typeof SK!=='undefined'&&SK&&SK.shadowT>0)return;    // 【batch158】遁入暗影：无敌（联机走 gh 标记 → 服务端 ghostUntil）
+  }
   /* 【batch120】球形闪电倒地后再挨一下（枪 / 刀 / 技能）＝ 秒杀（联机由服务端结算） */
   if(SK.downed>0){
     S.hp=0;updateHp();

@@ -83,7 +83,9 @@ var _holdObj=null,_holdHand=null, HOLD_POSE={
   /* 【batch179】掩体墙：缩小并挪到**右下角**，别糊住准星。
      原来缩放 0.34（≈1.63×0.92 米）配 x:0.34，半宽 0.82 > 0.34，横着跨过屏幕中线 → 挡视野。
      现在缩到 0.14（≈0.67×0.38 米，半宽 0.34）配 x:0.42，最左边缘 0.08 仍在中线右侧，怎么转都不挡准星。 */
-  sp_wall: {x:0.42,y:-0.38,z:-0.56, ry:-0.35, rise:0.50, spin:0.5, sway:0.02}
+  sp_wall: {x:0.42,y:-0.38,z:-0.56, ry:-0.35, rise:0.50, spin:0.5, sway:0.02},
+  /* 【batch236】天陨：烧红的陨石核托在掌心（和墙一样，举着只是"瞄准"，左键才召唤） */
+  sp_meteor:{x:0.30,y:-0.24,z:-0.56, ry:0.20, rise:0.56, spin:0.9, sway:0.03}
 };
 function heroHoldShow(kind){
   heroHoldHide();
@@ -102,6 +104,7 @@ function heroHoldShow(kind){
        :(kind==='sp_drone')?heroMeshSpDrone()                                             /* 【batch172】蜂鸟无人机 */
        :(kind==='sp_net')?heroMeshSpNet():(kind==='sp_wall')?heroMeshSpWall()                                                 /* 【batch177】电磁网发生器 */
        :(kind==='sp_sunfall')?heroMeshSun()                                               /* 【batch181】堕日的小太阳 */
+       :(kind==='sp_meteor')?heroMeshSpMeteor()                                           /* 【batch236】天陨：手里的陨石核 */
        :heroMeshSmoke(kind==='medsmoke');
   /* 【batch120】黑日（直径 1.7 米）与传送门（直径 2 米）是"大招级"尺寸，拿在手里必须缩到能握住，
      否则整块屏幕被糊住。其余小道具照旧 1.25。掩体墙模型已按真墙比例生成（4.8×2.7），缩到 0.34 即"小一号真墙"。 */
@@ -110,7 +113,7 @@ function heroHoldShow(kind){
   /* 【batch216】普通投掷物 1.25 → 0.55：原来为了"看得清"放大到 1.25，
      结果镜头前 0.58 米处一颗 0.21 米半径的球占掉半屏，**加再多手也被球挡住**。
      0.55 ≈ 直径 19cm（真手雷 6cm，游戏里偏大一点点刚好），手能从后下方露出来握住它。 */
-  var _hs=(kind==='solar')?0.34:(kind==='portal')?0.40:(kind==='sp_wall')?0.14:(kind==='sp_sunfall')?0.5:0.55;
+  var _hs=(kind==='solar')?0.34:(kind==='portal')?0.40:(kind==='sp_wall')?0.14:(kind==='sp_sunfall')?0.5:(kind==='sp_meteor')?0.5:0.55;
   if(_模组扔&&typeof _模组扔.scale==='number')_hs=_模组扔.scale;   /* 【batch219】模组投掷物自带缩放 */
   m.scale.set(_hs,_hs,_hs);
   m.traverse(function(o){o.raycast=function(){};});
@@ -133,7 +136,7 @@ function heroHoldShow(kind){
       var 名表={frag:'破片手雷',flash:'闪光弹',smoke:'烟雾弹',medsmoke:'医疗烟',medkit:'急救箱',
                 pulse:'战术探测器',mine:'感应雷',solar:'黑日',portal:'日蚀之门',orb:'电球',
                 trap:'电荷陷阱',ball:'球形闪电',ssmoke:'影烟',sbomb:'影雷',
-                sp_drone:'蜂鸟无人机',sp_net:'电磁网',sp_wall:'掩体墙',sp_sunfall:'小太阳'};
+                sp_drone:'蜂鸟无人机',sp_net:'电磁网',sp_wall:'掩体墙',sp_sunfall:'小太阳',sp_meteor:'陨石'};
       SK.hold.名称=(名表[kind]||'投掷物');      /* 存一份：万一别处重建了武器模型，右下角还能还原成这个名字 */
       ne.textContent=SK.hold.名称;
     }
@@ -148,6 +151,7 @@ function heroHoldHide(){
   /* 【batch216】手里的东西收起来 → 那只手也一起收（不然它会一直举在半空） */
   if(_holdHand)_holdHand.visible=false;
   heroWallGhostHide();
+  heroMeteorGhostHide();          /* 【batch236】天陨的落点预览也跟着收 */
   SK.holdHideGun=false;
   if(typeof weaponGroup!=='undefined'&&weaponGroup)weaponGroup.visible=true;   // 放下投掷物 → 枪/刀回来
   if(typeof leftHandCamGroup!=='undefined'&&leftHandCamGroup)leftHandCamGroup.visible=(currentWeapon===WEAPON_KNIFE);
@@ -589,7 +593,7 @@ function heroCast(i){
   if(k==='sshadow'&&SK.shadowT>0){heroShadowExit();return true;}
   if(SK.cds[i]>0){showMsg(s.name+' 冷却中（还剩 '+SK.cds[i].toFixed(1)+' 秒）','#ffd166');return false;}
   var _prevCd=SK.cds[i];   // 【batch158】遁入暗影"再按退出"要还原冷却，不能重新计满 90 秒
-  if(k!=='sp_wall')SK.cds[i]=s.cd;
+  if(k!=='sp_wall'&&k!=='sp_nova')SK.cds[i]=s.cd;   /* 【batch236】墙和陨石都是"举起不扣、落地才扣" */
   if(typeof rangeMode==='function'&&rangeMode()){SK.cds[i]=0;SK.cds[0]=0;SK.cds[1]=0;SK.cds[2]=0;}   /* 【batch180】靶场：技能无冷却，随便放 */   // 【batch178】墙：举起不扣冷却，放下才扣
   /* 【模组·自定义技能钩子】模组注册的 k 会先在这里被拦截：fn(i, s, H) 返回 false 才交给下面的原版分支。
      这样模组就能做出"原版没有的"技能效果，而不必复用 dash/shield/eye 等原版技能。 */
@@ -613,7 +617,8 @@ function heroCast(i){
         var _spx=camera.position.x,_spz=camera.position.z,_spy=standSurfY();
         netSend({t:'skill',k:H.k,s:i,x:_spx,y:_spy,z:_spz});
       }
-      if(k!=='sp_wall')showMsg('释放：'+s.name,H.css);
+      /* 【batch235】sp_nova 自己会提示落点/倒计时，别让通用提示把它顶掉 */
+      if(k!=='sp_wall'&&k!=='sp_nova')showMsg('释放：'+s.name,H.css);
       heroHudUpdate(true);
       return true;
     }
@@ -1111,25 +1116,293 @@ function _spBurnProc(point){
     try{spawnParticle(ep.clone().setY(ep.y+1.0),0xff8a3d,10,0.35,true);}catch(_){}
   }
 }
-/* ③ 焚天新星：以自身为中心 8 米 —— 70 伤 + 点燃 4 秒（灼烧跟着敌人走） */
-SP_SKILLS['sp_nova']=function(i,s,H){
-  var px=camera.position.x,pz=camera.position.z,py=(typeof standSurfY==='function')?standSurfY():0;
-  spZoneAdd({kind:'nova',x:px,z:pz,y:py,r:8,dur:0.9,dps:0});
-  spZoneNet('nova',px,pz,8,900,0,py);
-  var n=0;
-  for(var j=enemies.length-1;j>=0;j--){
-    var e=enemies[j];
-    if(e.isNet?(!e.alive):(e.hp<=0))continue;
-    var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
-    var dx=ep.x-px,dz=ep.z-pz;
-    if(dx*dx+dz*dz>64)continue;                                        // 8 米
-    if(Math.abs(ep.y-py)>3.2)continue;
-    e.burnT=Math.max(e.burnT||0,4.0);
-    spHitEnemy(e,70,ep.clone(),0);n++;
-    try{spawnParticle(ep.clone().setY(ep.y+1.2),0xff8a3d,12,0.4,true);}catch(_){}
+/* ============================================================================
+   【batch235】流火 · 烈焰先锋 ③「焚天新星」改「天陨」
+   ----------------------------------------------------------------------------
+   用户要求：从"以自身为原点迸发"改成"从天上砸一颗陨石到准星处"——
+     · 落点＝**准星**（圆形预览跟着准星走，机制参考镇岳 SP 掩体墙的地面预览）；
+     · 释放后 **3 秒**落地；圈内**不分 1 楼 2 楼**（只看水平距离）**一律秒杀**；
+     · 释放后，站在圈里的人会看到"已在陨石范围内，请尽快撤出"的红色提示。
+
+   四层实现（从下往上，改的时候按层找）：
+     ① 落点  heroMeteorTarget()
+        与墙同一套：射线步进 + heroWallSurfAt() 取「不高于出发高度」的最高可站面。
+        ★ 不能用 groundHeightAt：它只认脚底 STEP_UP 以内的面，站二楼往下看会把楼板整块漏掉
+          （batch179/180 已经在墙上踩过这个坑）。
+     ② 预览  _meteors[]：外圈 + 半透明圆盘 + 倒计时环 + 天空光柱 + 下落中的陨石本体。
+        所有预览网格 raycast 都置空 —— 圈是画给人看的，不能挡子弹。
+     ③ 判定  heroMeteorImpact()：**只算水平距离** √(dx²+dz²) ≤ r，故意不看 y，
+        这就是"人在 1 楼、圈画在 2 楼也照样被砸中"。
+        本地只结算「自己这边的 AI + 单机时的自己」；真人玩家由服务端权威杀。
+     ④ 联机  施法者发 {t:'meteor',ph:0,落点,半径} → 服务端自己掐 3 秒 →
+        到点广播 ph:1（不回发施法者，他本地已经播过）并权威判死。见 服务端.js handleMeteor。
+   ==========================================================================*/
+var METEOR_R=8;          // 圆形范围半径（米）—— 与旧版新星一致
+var METEOR_DELAY=3;      // 起手到落地（秒）
+var METEOR_H=46;         // 陨石起始高度（米）
+var _meteors=[];         // 场上所有陨石（自己放的 + 别人广播来的）
+
+/* 准星落点：射线找「不高于出发高度」的最高可站面（1 楼地面 / 2 楼楼板 / 箱顶 / 墙顶） */
+function heroMeteorTarget(){
+  var dir=camera.getWorldDirection(new THREE.Vector3()).normalize();
+  var px=camera.position.x,py=camera.position.y,pz=camera.position.z;
+  var maxD=90,step=0.4;
+  var L=((typeof worldLimit==='function')?worldLimit():76)-1;
+  var hx=px,hz=pz,surf=0,hit=false;
+  for(var t=0.4;t<=maxD;t+=step){
+    var x=px+dir.x*t,y=py+dir.y*t,z=pz+dir.z*t;
+    if(Math.abs(x)>L||Math.abs(z)>L){                       // 打到图外：夹回边界，别把圈画到墙外
+      hx=Math.max(-L,Math.min(L,x));hz=Math.max(-L,Math.min(L,z));
+      surf=heroWallSurfAt(hx,hz,py);hit=true;break;
+    }
+    var g=heroWallSurfAt(x,z,py);                           // 该处不高于眼高的最高面
+    if(y<=g){hx=x;hz=z;surf=g;hit=true;break;}
   }
-  heroFxRingAt(px,pz,0xff8a3d,8,0.7,0.6);
-  showMsg('焚天新星：'+n+' 个敌人被点燃（70 伤 + 4 秒灼烧）',H.css);
+  if(!hit){                                                 // 朝天瞄：退化成"正前方 28 米"
+    var fl=Math.sqrt(dir.x*dir.x+dir.z*dir.z)||1;
+    hx=Math.max(-L,Math.min(L,px+dir.x/fl*28));
+    hz=Math.max(-L,Math.min(L,pz+dir.z/fl*28));
+    surf=heroWallSurfAt(hx,hz,py);
+  }
+  return {x:hx,z:hz,surf:surf};
+}
+/* 陨石本体：亮核 + 半透明外壳 + 向上张开的尾焰锥（落地前越近越亮） */
+function heroMeshMeteor(){
+  var g=new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(1.05,14,10),
+    new THREE.MeshBasicMaterial({color:0xffe0a0})));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(1.45,14,10),
+    new THREE.MeshBasicMaterial({color:0xff5a1a,transparent:true,opacity:0.55,depthWrite:false})));
+  var tail=new THREE.Mesh(new THREE.ConeGeometry(1.35,11,14,1,true),
+    new THREE.MeshBasicMaterial({color:0xff7a2a,transparent:true,opacity:0.26,side:THREE.DoubleSide,depthWrite:false}));
+  tail.rotation.x=Math.PI;tail.position.y=5.6;g.add(tail);
+  g.traverse(function(o){o.raycast=function(){};});         // 不挡子弹
+  return g;
+}
+/* 举在手里的陨石核（第一人称）：烧红的石头 + 外层火光 + 一圈火星 */
+function heroMeshSpMeteor(){
+  var g=new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.17,0),
+    new THREE.MeshLambertMaterial({color:0x3a2118,emissive:0xff5a1a,emissiveIntensity:0.9})));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.25,10,8),
+    new THREE.MeshBasicMaterial({color:0xff7a2a,transparent:true,opacity:0.32,depthWrite:false})));
+  var ring=new THREE.Mesh(new THREE.TorusGeometry(0.28,0.02,8,20),
+    new THREE.MeshBasicMaterial({color:0xffc46a,transparent:true,opacity:0.55,depthWrite:false}));
+  ring.rotation.x=Math.PI/2;g.add(ring);
+  return g;
+}
+/* 【batch236】落点预览：和镇岳墙一个套路 —— 举着技能时每帧跟着准星画圈，左键才真正召唤。
+   预览网格全部 raycast=空：圈是画给人看的，不能挡子弹。 */
+var _meteorGhost=null;
+function heroMeteorGhostShow(){
+  if(_meteorGhost)return;
+  _meteorGhost=new THREE.Group();
+  var fill=new THREE.Mesh(new THREE.CircleGeometry(METEOR_R,56),
+    new THREE.MeshBasicMaterial({color:0xff5a1a,transparent:true,opacity:0.12,side:THREE.DoubleSide,depthWrite:false}));
+  fill.rotation.x=-Math.PI/2;fill.position.y=0.05;_meteorGhost.add(fill);
+  var ring=new THREE.Mesh(new THREE.RingGeometry(METEOR_R-0.22,METEOR_R,72),
+    new THREE.MeshBasicMaterial({color:0xff8a3d,transparent:true,opacity:0.9,side:THREE.DoubleSide,depthWrite:false}));
+  ring.rotation.x=-Math.PI/2;ring.position.y=0.07;_meteorGhost.add(ring);
+  var dot=new THREE.Mesh(new THREE.CircleGeometry(0.32,20),
+    new THREE.MeshBasicMaterial({color:0xffd166,transparent:true,opacity:0.95,side:THREE.DoubleSide,depthWrite:false}));
+  dot.rotation.x=-Math.PI/2;dot.position.y=0.09;_meteorGhost.add(dot);
+  _meteorGhost.traverse(function(o){o.raycast=function(){};});
+  scene.add(_meteorGhost);
+}
+function heroMeteorGhostUpdate(){
+  if(!(SK.hold&&SK.hold.kind==='sp_meteor')){heroMeteorGhostHide();return;}
+  heroMeteorGhostShow();
+  var tgt=heroMeteorTarget();
+  SK.meteorTgt=tgt;
+  _meteorGhost.position.set(tgt.x,tgt.surf,tgt.z);
+}
+function heroMeteorGhostHide(){
+  if(!_meteorGhost)return;
+  try{
+    _meteorGhost.traverse(function(o){if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});
+    scene.remove(_meteorGhost);
+  }catch(e){}
+  _meteorGhost=null;
+}
+/* 左键确认：这一刻才召唤（也才进冷却 + 才广播），举着的时候只是预览 */
+function heroMeteorPlace(){
+  var h=SK.hold;if(!h||h.kind!=='sp_meteor')return false;
+  var tgt=SK.meteorTgt||heroMeteorTarget();
+  var H=heroNow(),s=heroSkill(h.si);
+  SK.hold=null;SK.aimThrow=false;
+  heroHoldHide();heroMeteorGhostHide();               // 手放下、预览收掉
+  SK.cds[h.si]=s.cd;
+  heroMeteorSpawn({x:tgt.x,z:tgt.z,y:tgt.surf,r:METEOR_R,t:METEOR_DELAY,local:true});
+  try{
+    if(typeof netIsMulti==='function'&&netIsMulti())
+      netSend({t:'meteor',ph:0,x:tgt.x,y:tgt.surf,z:tgt.z,r:METEOR_R,d:METEOR_DELAY*1000});
+  }catch(_){}
+  heroFxRingAt(tgt.x,tgt.z,0xff8a3d,1.4,0.9,0.45,tgt.surf+0.1);
+  showMsg('☄️ 陨石已召唤：'+METEOR_DELAY+' 秒后砸落（'+METEOR_R+' 米内秒杀）',H.css);
+  heroHudUpdate(true);
+  return true;
+}
+/* 起一条陨石：画圈 + 建陨石 + 进 _meteors */
+function heroMeteorSpawn(o){
+  o=o||{};
+  var m={x:+o.x||0,z:+o.z||0,y:(typeof o.y==='number'?o.y:0),
+         r:(+o.r>0?+o.r:METEOR_R),
+         t:(typeof o.t==='number'?o.t:METEOR_DELAY),
+         local:!!o.local,parts:[]};
+  m.T=m.t||METEOR_DELAY;
+  var 加=function(mesh){m.parts.push(mesh);scene.add(mesh);mesh.traverse(function(x){x.raycast=function(){};});return mesh;};
+  /* ① 半透明圆盘：整块范围有多大，一眼看清 */
+  var fill=加(new THREE.Mesh(new THREE.CircleGeometry(m.r,56),
+    new THREE.MeshBasicMaterial({color:0xff5a1a,transparent:true,opacity:0.14,side:THREE.DoubleSide,depthWrite:false})));
+  fill.rotation.x=-Math.PI/2;fill.position.set(m.x,m.y+0.05,m.z);
+  /* ② 外圈：清晰的边界（就是杀伤线） */
+  var ring=加(new THREE.Mesh(new THREE.RingGeometry(m.r-0.22,m.r,72),
+    new THREE.MeshBasicMaterial({color:0xff8a3d,transparent:true,opacity:0.95,side:THREE.DoubleSide,depthWrite:false})));
+  ring.rotation.x=-Math.PI/2;ring.position.set(m.x,m.y+0.07,m.z);
+  /* ③ 倒计时环：从外圈缩到圆心，3 秒一到正好缩没 */
+  m.cd=加(new THREE.Mesh(new THREE.RingGeometry(m.r-0.85,m.r-0.6,72),
+    new THREE.MeshBasicMaterial({color:0xffd166,transparent:true,opacity:0.6,side:THREE.DoubleSide,depthWrite:false})));
+  m.cd.rotation.x=-Math.PI/2;m.cd.position.set(m.x,m.y+0.09,m.z);
+  /* ④ 天空光柱：告诉所有人"东西是从天上来的"，粗细＝杀伤半径 */
+  var beam=加(new THREE.Mesh(new THREE.CylinderGeometry(m.r*0.92,m.r*0.92,24,32,1,true),
+    new THREE.MeshBasicMaterial({color:0xff7a2a,transparent:true,opacity:0.055,side:THREE.DoubleSide,depthWrite:false})));
+  beam.position.set(m.x,m.y+12,m.z);
+  /* ⑤ 陨石本体 + 跟随的灯（越接近地面越亮） */
+  m.obj=加(heroMeshMeteor());m.obj.position.set(m.x,m.y+METEOR_H,m.z);
+  m.light=new THREE.PointLight(0xff7a2a,1.8,32);
+  m.light.position.set(m.x,m.y+METEOR_H,m.z);scene.add(m.light);m.parts.push(m.light);
+  _meteors.push(m);
+  return m;
+}
+function heroMeteorDispose(m){
+  if(!m)return;
+  for(var i=0;i<m.parts.length;i++){
+    var o=m.parts[i];
+    try{scene.remove(o);}catch(e){}
+    try{if(o.geometry)o.geometry.dispose();}catch(e){}
+    try{if(o.material)o.material.dispose();}catch(e){}
+  }
+  m.parts.length=0;m.obj=null;m.cd=null;m.light=null;
+}
+function heroMeteorClearAll(){
+  for(var i=_meteors.length-1;i>=0;i--)heroMeteorDispose(_meteors[i]);
+  _meteors.length=0;heroMeteorWarn(null);
+}
+/* 落地特效：三层冲击环 + 碎石粒子 + 会淡出的焦痕 */
+function heroMeteorFx(x,y,z,r){
+  try{
+    heroFxRingAt(x,z,0xffe0a0,0.8,r*1.35,0.6,y+0.10);
+    heroFxRingAt(x,z,0xff6a1a,r*0.45,r*1.15,0.9,y+0.07);
+    heroFxRingAt(x,z,0xffb347,r*0.62,r*0.95,1.25,y+0.12);
+    for(var i=0;i<4;i++){
+      var a=Math.random()*6.283,rr=r*0.6*Math.random();
+      spawnParticle(new THREE.Vector3(x+Math.cos(a)*rr,y+0.35,z+Math.sin(a)*rr),0xffc46a,12,1.15,true);
+    }
+    spawnParticle(new THREE.Vector3(x,y+1.4,z),0xff6a1a,18,1.7,true);
+    var scorch=new THREE.Mesh(new THREE.CircleGeometry(r*0.6,40),
+      new THREE.MeshBasicMaterial({color:0x1a0d06,transparent:true,opacity:0.6,side:THREE.DoubleSide,depthWrite:false}));
+    scorch.rotation.x=-Math.PI/2;scorch.position.set(x,y+0.045,z);scorch.raycast=function(){};
+    scene.add(scorch);
+    var t0=performance.now();
+    (function 淡出(){
+      var k=(performance.now()-t0)/6000;
+      if(k>=1){try{scene.remove(scorch);scorch.geometry.dispose();scorch.material.dispose();}catch(e){}return;}
+      scorch.material.opacity=0.6*(1-k);
+      requestAnimationFrame(淡出);
+    })();
+  }catch(e){}
+}
+/* 落地结算：**只看水平距离**（这就是"1/2 楼都砸中"），本地只杀自己这边的 AI + 单机时的自己 */
+function heroMeteorImpact(m){
+  heroMeteorFx(m.x,m.y,m.z,m.r);
+  if(!m.local)return;                        // 别人的陨石：真人伤害由服务端权威结算
+  var n=0,R2=m.r*m.r;
+  for(var i=enemies.length-1;i>=0;i--){
+    var e=enemies[i];
+    if(!e||(e.isNet?(!e.alive):(e.hp<=0)))continue;
+    var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
+    var dx=ep.x-m.x,dz=ep.z-m.z;
+    if(dx*dx+dz*dz>R2)continue;
+    if(e.isNet)continue;                     // 真人走服务端，别在本地各扣一遍
+    spHitEnemy(e,999999,ep.clone(),0);n++;   // 秒杀：伤害给到离谱，任何血量都归零
+  }
+  if(!(typeof netIsMulti==='function'&&netIsMulti())){
+    var sx=camera.position.x-m.x,sz=camera.position.z-m.z;
+    if(sx*sx+sz*sz<=R2&&S.hp>0)takeDmg(999999,null,true);   // 第三个参数＝穿透无敌（陨石不讲道理）
+  }
+  if(n)showMsg('☄️ 焚天新星：'+n+' 个敌人被陨石砸死','#ff8a3d');
+}
+/* 每帧推进：倒计时 / 陨石下落 / 圈内警告 */
+function heroMeteorTick(dt){
+  if(!_meteors.length){heroMeteorWarn(null);return;}
+  if(!S.playing||S.over){heroMeteorClearAll();return;}      // 退出对局：连圈带陨石一起收
+  var inside=false,left=0;
+  for(var i=_meteors.length-1;i>=0;i--){
+    var m=_meteors[i];
+    m.t-=dt;
+    if(m.t<=0){heroMeteorImpact(m);heroMeteorDispose(m);_meteors.splice(i,1);continue;}
+    var k=1-m.t/m.T;                                        // 0=刚放 1=落地
+    if(m.obj){
+      var e=Math.pow(k,1.7);                                // 越接近地面越快
+      m.obj.position.set(m.x,m.y+METEOR_H*(1-e),m.z);
+      m.obj.rotation.x+=dt*3.4;m.obj.rotation.y+=dt*2.2;
+      m.obj.scale.setScalar(0.85+0.4*e);
+      if(m.light)m.light.position.copy(m.obj.position);
+    }
+    if(m.light)m.light.intensity=1.6+3.2*k;
+    if(m.cd){var s=Math.max(0.001,1-k);m.cd.scale.set(s,s,1);}
+    var dx=camera.position.x-m.x,dz=camera.position.z-m.z;
+    if(dx*dx+dz*dz<=m.r*m.r){inside=true;if(m.t>left)left=m.t;}
+  }
+  heroMeteorWarn(inside?left:null);
+}
+/* 别人放的陨石：ph=0 画圈起手 / ph=1 只播落地特效（伤害服务端算） */
+function heroMeteorRemote(msg){
+  if(!msg)return;
+  if(msg.ph){heroMeteorFx(+msg.x||0,(typeof msg.y==='number'?msg.y:0),+msg.z||0,+msg.r||METEOR_R);return;}
+  var m=heroMeteorSpawn({x:msg.x,z:msg.z,y:msg.y,r:msg.r,t:(+msg.d||METEOR_DELAY*1000)/1000,local:false});
+  try{
+    var dx=camera.position.x-m.x,dz=camera.position.z-m.z;
+    if(dx*dx+dz*dz<=m.r*m.r)showMsg('☄️ 敌方陨石锁定这里：'+Math.round(m.T)+' 秒后落地','#ff6b6b');
+  }catch(e){}
+}
+/* 圈内警告条（DOM，只建一次；显示期间带脉冲动画） */
+var _meteorWarnEl=null;
+function heroMeteorWarn(t){
+  try{
+    if(!_meteorWarnEl){
+      if(typeof document==='undefined'||!document.body)return;
+      var st=document.createElement('style');
+      st.textContent='@keyframes meteorWarnPulse{0%,100%{transform:translateX(-50%) scale(1);opacity:1}50%{transform:translateX(-50%) scale(1.045);opacity:.82}}';
+      document.head.appendChild(st);
+      var d=document.createElement('div');
+      d.id='meteor-warn';
+      d.style.cssText='position:fixed;left:50%;top:16%;transform:translateX(-50%);z-index:9998;'+
+        'padding:9px 22px;border-radius:12px;background:rgba(126,12,8,.86);border:2px solid #ff5a33;'+
+        'color:#fff;font-weight:800;font-size:clamp(14px,3.6vw,19px);letter-spacing:1px;white-space:nowrap;'+
+        'box-shadow:0 0 26px rgba(255,70,30,.6),inset 0 0 18px rgba(255,120,60,.25);'+
+        'text-shadow:0 2px 6px rgba(0,0,0,.7);pointer-events:none;display:none';
+      document.body.appendChild(d);
+      _meteorWarnEl=d;
+    }
+    if(t==null||!(t>0)){if(_meteorWarnEl.style.display!=='none')_meteorWarnEl.style.display='none';return;}
+    _meteorWarnEl.textContent='⚠ 已在陨石范围内，请尽快撤出！（'+t.toFixed(1)+'s）';
+    if(_meteorWarnEl.style.display!=='block'){
+      _meteorWarnEl.style.display='block';
+      _meteorWarnEl.style.animation='meteorWarnPulse .55s ease-in-out infinite';
+    }
+  }catch(e){}
+}
+/* ③ 焚天新星 = 天陨：和镇岳的墙同一套手感 ——
+   按 N 举起来（手里托一颗烧红的陨石核）→ 准星指哪，地上就画哪的圈 → 左键召唤。
+   召唤后再等 3 秒落地；举着不扣冷却，收起 / 右键取消退还。 */
+SP_SKILLS['sp_nova']=function(i,s,H){
+  if(SK.hold&&SK.hold.kind==='sp_meteor'){heroHoldCancel();showMsg('已收起「'+s.name+'」','#ffd166');return true;}
+  if(SK.hold)heroHoldCancel();
+  SK.hold={kind:'sp_meteor',si:i};
+  heroHoldShow('sp_meteor');
+  showMsg('已举起「'+s.name+'」：准星指哪＝圆形落点预览，左键召唤陨石；右键 / 再按技能键收起','#ff8a3d');
+  heroHudUpdate(true);
   return true;
 };
 /* ---- 镇岳 · 铁壁 ----
@@ -1655,6 +1928,7 @@ function heroAimStart(){
   if(!SK.hold)return false;
   if(!S.playing||S.over||S.paused)return false;
   if(SK.hold.kind==='sp_wall'){ heroWallPlace(); return true; }   // 【batch178】墙：直接放下（不是抛物线）
+  if(SK.hold.kind==='sp_meteor'){ heroMeteorPlace(); return true; }   // 【batch236】陨石：左键＝召唤，也不是抛物线
   SK.aimThrow=true;heroPreviewUpdate();
   return true;
 }
@@ -1780,6 +2054,7 @@ function updateHero(){
   }else SK.inDome=false;
   updateSpZones(dt);
   updateSpDrone(dt);
+  heroMeteorTick(dt);                                                 /* 【batch235】天陨：倒计时 + 下落 + 圈内警告 */
   if(SK.blind>0){SK.blind=Math.max(0,SK.blind-dt);heroBlindSync();}
   if(SK.dashBuff>0)SK.dashBuff=Math.max(0,SK.dashBuff-dt);
   // 堡垒阵地：站在半径 6 米内才算「在阵地里」（减伤 / 免减速都看这个标志）
@@ -1865,6 +2140,7 @@ function updateHero(){
     }
   }
   if(SK.hold&&SK.hold.kind==='sp_wall')heroWallGhostUpdate();   // 【batch178】举着墙时实时预览落点
+  if(SK.hold&&SK.hold.kind==='sp_meteor')heroMeteorGhostUpdate();   // 【batch236】举着陨石时实时预览落点
   if(SK.aimThrow)heroPreviewUpdate();
   /* 【batch178】墙钻地动画 + 把站上面的玩家顶起来 */
   if(SK.wallRises&&SK.wallRises.length){

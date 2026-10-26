@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.7.5';
+const SRV_VER = '1.7.6';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -1603,6 +1603,29 @@ function joinPlayer(sock, name, cid, code, mapId, clear, ecl, mode, room, teamWa
    · 护盾投放：伤害 ×0.3（减伤 70%）
    · 堡垒阵地：伤害 ×0.7（减伤 30%）
    减伤口径与客户端 heroMitigate() 一致。 */
+/* 【batch236】阵亡结算（从 applyDamage 里抽出来的）：扣到 0 之后要做的收尾都在这儿 ——
+   掉包 / 清技能状态 / 广播击杀 / 给本人发 dead / 写日志。
+   抽出来是为了让「陨石秒杀」这条权威路径复用同一套，避免两处各写一份、早晚写歪。 */
+function killPlayerSrv(from, target, hs, why) {
+  if (!target) return;
+  target.hp = 0; target.alive = false; target.deaths++;
+  spikeDropOnDeath(target);                                   // 【batch169】持包者阵亡 → 包掉在阵亡点
+  target.downed = false; target.downedUntil = 0;              // 【batch120】死了就不再是"倒地"
+  target.shieldUntil = 0; target.reflectUntil = 0; target.fortifyUntil = 0;
+  target.rushUntil = 0; target.adrenUntil = 0; target.healAuraUntil = 0; target.healAcc = 0;   // 死了就撤技能状态
+  target.fortifyZone = 0;
+  target.domeUntil = 0; target.domeZone = 0;                  // 【batch173】死了就撤穹顶
+  target.vulnUntil = 0;                                       // 【batch121c】死了就撤易伤
+  target.meteor = null;                                       // 【batch236】人没了，挂在他身上的陨石也作废
+  target.respawnAt = Date.now() + RESPAWN_MS;
+  if (from && from !== target) from.kills++;                  // 自己砸死自己不算人头
+  broadcast({ t: 'kill', k: (from && from !== target) ? from.id : 0, kn: (from && from !== target) ? from.name : '',
+              d: target.id, dn: target.name, hs: !!hs }, undefined, mapOf(target));
+  sendTo(target, { t: 'dead', rs: RESPAWN_MS });
+  log('击杀：' + (from ? (from.code + ' ' + from.name) : '（技能）') + ' → ' + target.code + ' ' + target.name +
+      (why ? '（' + why + '）' : '') + (hs ? '（爆头）' : ''));
+}
+
 function applyDamage(from, target, rawDmg, hs, noReflect, nade) {
   if (!target || !target.alive) return 0;
   // 【batch145】虚化中（日蚀之门）：免疫一切伤害（客户端也在本地拦一道，这里是联机的权威）
@@ -1634,19 +1657,7 @@ function applyDamage(from, target, rawDmg, hs, noReflect, nade) {
 
   target.hp -= dmg;
   if (target.hp <= 0) {
-    target.hp = 0; target.alive = false; target.deaths++;
-    spikeDropOnDeath(target);                                   // 【batch169】持包者阵亡 → 包掉在阵亡点
-    target.downed = false; target.downedUntil = 0;              // 【batch120】死了就不再是"倒地"
-    target.shieldUntil = 0; target.reflectUntil = 0; target.fortifyUntil = 0;
-    target.rushUntil = 0; target.adrenUntil = 0; target.healAuraUntil = 0; target.healAcc = 0;   // 死了就撤技能状态
-    target.fortifyZone = 0;
-    target.domeUntil = 0; target.domeZone = 0;                      // 【batch173】死了就撤穹顶
-    target.vulnUntil = 0;                                       // 【batch121c】死了就撤易伤
-    target.respawnAt = Date.now() + RESPAWN_MS;
-    if (from) from.kills++;
-    broadcast({ t: 'kill', k: from ? from.id : 0, kn: from ? from.name : '', d: target.id, dn: target.name, hs: !!hs }, undefined, mapOf(target));
-    sendTo(target, { t: 'dead', rs: RESPAWN_MS });
-    log('击杀：' + (from ? (from.code + ' ' + from.name) : '（技能）') + ' → ' + target.code + ' ' + target.name + (hs ? '（爆头）' : ''));
+    killPlayerSrv(from, target, !!hs);
   } else {
     broadcast({ t: 'hp', i: target.id, h: target.hp, by: from ? from.id : 0, hs: !!hs }, undefined, mapOf(target));
     sendTo(target, { t: 'hurt', by: from ? from.name : '', d: dmg, h: target.hp, hs: !!hs });
@@ -1666,6 +1677,62 @@ function handleHit(from, msg) {
   if (typeof from.team === 'number' && typeof target.team === 'number' && from.team >= 0 && target.team >= 0 && from.team === target.team) return;
   applyDamage(from, target, msg.d, !!msg.h);
 }
+
+/* ============================================================================
+   【batch236】流火 SP ③「焚天新星 · 天陨」：3 秒延迟 + 不分楼层秒杀
+   ----------------------------------------------------------------------------
+   客户端在「举起 → 左键召唤」那一刻发 ph:0（准星落点 + 半径），之后：
+     · 服务端**自己掐表** 3 秒（不信客户端的落地时刻 —— 改个请求就能瞬间砸人）；
+     · 到点先广播 ph:1 给同房**除施法者以外**的人播落地特效（他本地已经播过）；
+     · 再按**水平距离**判死：dx²+dz² ≤ r²，**故意不看 y** ——
+       这就是"人在 1 楼、圈画在 2 楼也照样被砸中"的圆柱判定；
+     · 施法者自己站在圈里也照杀（和客户端单机规则一致）。
+   计数写在全局数组里而不是挂在玩家身上：施法者中途被打死 / 掉线，陨石照样落。
+   ==========================================================================*/
+const METEOR_MS = 3000, METEOR_R_MAX = 14, METEOR_GAP_MS = 12000;
+const pendingMeteors = [];                 // {x,y,z,r,at,byId,byName,room}
+
+function handleMeteor(from, msg) {
+  if (!from || from.stale || !from.alive || from.downed) return;
+  if (((msg.ph | 0) !== 0)) return;                       // 落地由服务端触发，客户端发的一律不认
+  const now = Date.now();
+  if (from._meteorAt && now - from._meteorAt < METEOR_GAP_MS) return;   // 防刷（客户端冷却 25 秒）
+  const room = mapOf(from);
+  if (!room) return;
+  const x = Math.max(-200, Math.min(200, +msg.x || 0));
+  const z = Math.max(-200, Math.min(200, +msg.z || 0));
+  const y = Math.max(-50, Math.min(80, +msg.y || 0));
+  const r = Math.max(2, Math.min(METEOR_R_MAX, +msg.r || 8));
+  from._meteorAt = now;
+  pendingMeteors.push({ x: x, y: y, z: z, r: r, at: now + METEOR_MS, byId: from.id, byName: from.name, room: room });
+  while (pendingMeteors.length > 40) pendingMeteors.shift();
+  broadcast({ t: 'meteor', ph: 0, i: from.id, x: x, y: y, z: z, r: r, d: METEOR_MS }, from.id, room);
+  log('陨石起手：' + from.code + ' ' + from.name + ' → (' + x.toFixed(1) + ', ' + z.toFixed(1) + ') r=' + r);
+}
+
+function meteorTickSrv() {
+  if (!pendingMeteors.length) return;
+  const now = Date.now();
+  for (let i = pendingMeteors.length - 1; i >= 0; i--) {
+    const m = pendingMeteors[i];
+    if (now < m.at) continue;
+    pendingMeteors.splice(i, 1);
+    const caster = players.get(m.byId) || null;
+    broadcast({ t: 'meteor', ph: 1, i: m.byId, x: m.x, y: m.y, z: m.z, r: m.r }, m.byId, m.room);
+    let n = 0;
+    players.forEach(function (q) {
+      if (!q || q.stale || !q.alive) return;
+      if (mapOf(q) !== m.room) return;
+      const dx = q.x - m.x, dz = q.z - m.z;
+      if (dx * dx + dz * dz > m.r * m.r) return;
+      killPlayerSrv(caster, q, false, '陨石');
+      n++;
+    });
+    log('陨石落地：' + (caster ? (caster.code + ' ' + caster.name) : '（施法者已离开）') +
+        ' 于 (' + m.x.toFixed(1) + ', ' + m.z.toFixed(1) + ') r=' + m.r + ' → 击杀 ' + n + ' 人');
+  }
+}
+setInterval(function () { try { meteorTickSrv(); } catch (e) { } }, 100);
 
 /* 英雄技能（联机权威结算）：客户端发 {t:'skill', k:'<英雄>', s:0|1|2}，
    这里做冷却校验 + 结算 + 广播特效（广播带 s，别人的模型上能播对第几个技能）。
@@ -2266,6 +2333,8 @@ function handleMsg(sock, raw) {
     broadcast({ t: 'spwallclear', x: +m.x || 0, z: +m.z || 0 }, p.id, mapOf(p));
   } else if (m.t === 'hit') {
     handleHit(p, m);
+  } else if (m.t === 'meteor') {                   // 【batch236】流火 SP·天陨：起手落点（落地由服务端掐表触发）
+    handleMeteor(p, m);
   } else if (m.t === 'aihit') {                   // 【batch227】本地 AI / 剧情 BOSS 打中玩家：客户端上报，纳入权威
     handleAiHit(p, m);
   } else if (m.t === 'chat') {                    // 【batch228】文字聊天：限长 + 同房广播
