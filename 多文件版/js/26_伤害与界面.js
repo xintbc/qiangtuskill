@@ -52,7 +52,7 @@ function curMode(){try{return CUR_MODE?GAME_MODES[CUR_MODE]:null;}catch(e){retur
 function updateWave(){var _wv=document.getElementById('wave');if(!_wv)return;
   /* 玩法模式可以自己决定 HUD 这一栏显示什么（比如"剩余 42 人 / 决赛圈"） */
   var _gmh=curMode();if(_gmh&&typeof _gmh.hud==='function'){try{var _hv=_gmh.hud();if(_hv){_wv.textContent=_hv;return;}}catch(e){}}
-  if(netIsMulti()){_wv.textContent='线上对战 · '+((NET.list&&NET.list.length)?NET.list.length:1)+' 人';return;}if(netIsMulti()){_wv.textContent='线上对战 · '+((NET.list&&NET.list.length)?NET.list.length:1)+' 人';return;}
+  if(netIsMulti()){_wv.textContent='线上对战 · '+((NET.list&&NET.list.length)?NET.list.length:1)+' 人';return;}
   if(typeof STORY_!=='undefined'&&STORY_.on){_wv.textContent=storyGoalText();return;}      // 【batch126】剧情模式不显示波次
   _wv.textContent='第'+S.wave+'波 | 剩余:'+S.left;}
 function updateAmmo(){

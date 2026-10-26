@@ -264,6 +264,8 @@ function netPanelHint(t,cls){
   h.textContent=t;h.className='spHint'+(cls?(' '+cls):'');
 }
 function netOpenPanel(){
+  /* 【batch237】优先亮**连接条**（文档流、不挡画面）；没有它才退回老的全屏面板 */
+  if(typeof window.netShowBar==='function'){ try{ window.netShowBar(); return; }catch(e){} }
   var p=document.getElementById('netPanel');if(!p)return;
   var a=document.getElementById('netAddr');
   if(a)a.value=NET.raw||NET.server||'';
@@ -274,6 +276,9 @@ function netOpenPanel(){
 function netClosePanel(){var p=document.getElementById('netPanel');if(p)p.classList.remove('on');}
 function netEnterGame(){
   if(S.playing&&!S.paused&&!S.over){if(!NET.connected){NET.reconnecting=false;netConnect();}return;}  // 已在局中：只补连接，不重开
+  /* 【batch237】进多人前先把"玩家上次真正选的那张图"读回来 ——
+     上一局（剧情 / 联机房间）可能把 curMapId 改成别的图了，不读回来就会"选的是日蚀、进的却是哨塔"。 */
+  try{ if(typeof mapLoad==='function')mapLoad(); }catch(e){}
   enterGame();
   netStart();
   setTimeout(function(){
@@ -285,6 +290,12 @@ function netPlayMulti(v){
   var fromPage=(raw!==''&&raw===netHostFromPage());     // 就是当前页面自己的地址（含隧道域名）
   var host=netNormHost(raw,fromPage);
   if(!host){netPanelHint('请先填服务器地址，例如 192.168.1.5:8765','bad');return;}
+  /* 【batch237】已经连着同一台服务器 → **不重连**，直接进游戏。
+     用户："如果连上了服务器，点多人游戏就直接连去，不需要再一次触发连接"。 */
+  if(NET.connected&&NET.server===host){
+    try{localStorage.setItem(NET_SRV_KEY,NET.raw||host);}catch(e){}
+    netClosePanel();netEnterGame();return;
+  }
   NET.server=host;NET.enabled=true;
   NET.secure=fromPage?(typeof location!=='undefined'&&location.protocol==='https:'):netSecureOf(raw);
   NET.raw=raw||host;
@@ -331,12 +342,59 @@ function netPlayMulti(v){
   }catch(e){}
   if(netAutoMode()){NET.enabled=true;NET.server=netHostFromPage();NET.secure=(location.protocol==='https:');return;}
 })();
+/* 【batch237】「多人游戏」按钮的完整逻辑：
+   ① 已经连着服务器 → 直接进（netPlayMulti 内部会跳过重连）
+   ② 有上次连过的服务器 → 先悄悄探一下（2.5 秒）：通了直接进，不通才弹地址框
+   ③ 从来没连过 → 弹地址框 */
+function netLastHost(){
+  try{
+    var a=localStorage.getItem(NET_AUTO_KEY)||'';
+    var b=localStorage.getItem(NET_SRV_KEY)||'';
+    return String((NET&&NET.raw)||a||b||'');
+  }catch(e){ return String((NET&&NET.raw)||''); }
+}
+function netPingHost(host,cb){
+  var h='';try{ h=netNormHost(host); }catch(e){ h=''; }
+  if(!h){cb(false);return;}
+  var secure=false;try{ secure=netSecureOf(host); }catch(e){}
+  var url=(secure?'wss://':'ws://')+h+'/ws';
+  var done=false,ws=null;
+  var t=setTimeout(function(){ if(done)return; done=true; try{ws&&ws.close();}catch(e){} cb(false); },2500);
+  try{ ws=new WebSocket(url); }catch(e){ clearTimeout(t); cb(false); return; }
+  ws.onopen=function(){ if(done)return; done=true; clearTimeout(t); try{ws.close();}catch(e){} cb(true); };
+  ws.onerror=function(){ if(done)return; done=true; clearTimeout(t); try{ws.close();}catch(e){} cb(false); };
+}
+function netMultiClick(){
+  if(typeof NET==='undefined')return;
+  if(NET.connected&&NET.server){netPlayMulti(NET.server);return;}
+  /* 候选顺序：上次连过的服务器 → 页面自己的地址（真的是对战服务器时 netHostFromPage 才给值）
+     ⚠️ 不能直接信 netAutoMode：普通静态服务器（客户端内置的读文件服务、python -m http.server）
+     也会被判成 true，拿页面地址去连必然失败。所以一律先探一下，通了才真连。 */
+  var 候选=[];
+  var 上次=netLastHost(); if(上次)候选.push(上次);
+  try{ if(netAutoMode()){ var pg=netHostFromPage(); if(pg&&候选.indexOf(pg)<0)候选.push(pg); } }catch(e){}
+  if(!候选.length){netOpenPanel();return;}
+  var i=0;
+  (function 试下一个(){
+    if(i>=候选.length){
+      netOpenPanel();
+      var 话=(上次?('连不上 '+上次+'，确认地址后再点「连接」'):'没找到可用的服务器，先填地址');
+      if(typeof window.netBarSay==='function'){ try{ window.netBarSay(话,'bad'); }catch(e){} }
+      else netPanelHint(话,'bad');
+      var si=document.getElementById('srvInput');if(si&&!si.value&&上次)si.value=上次;
+      var a=document.getElementById('netAddr');if(a&&!a.value&&上次)a.value=上次;
+      return;
+    }
+    var h=候选[i++];
+    try{ if(typeof showMsg==='function')showMsg('正在连接 '+h+' …','#8fd6ff'); }catch(e){}
+    netPingHost(h,function(通){ if(通)netPlayMulti(h); else 试下一个(); });
+  })();
+}
 (function netUIInit(){
   var b=document.getElementById('netBtn');
   if(b)b.addEventListener('click',function(e){
     e.preventDefault();e.stopPropagation();
-    if(netAutoMode())netPlayMulti(NET.server||netHostFromPage());   // 从服务器页面打开：直接连（用页面自己的地址，不补端口）
-    else netOpenPanel();                                        // 本地文件：弹地址框
+    netMultiClick();   /* 【batch237】已连／有上次的服务器 → 直接进；连不上才弹地址框 */
   });
   var g=document.getElementById('netGo');
   if(g)g.addEventListener('click',function(e){
@@ -488,7 +546,8 @@ function netOnMsg(m){
       }
       // 顺序要紧：先更新「活着/死了」，再套血量。
       // 否则阵亡那一帧 netSetHp 会把血量夹在「存活保底 1 点」，尸体就留 1 点血、还能被当活人打。
-      if(rp.alive!==_alive){rp.alive=_alive;rp.root.visible=_alive;if(rp.label)rp.label.visible=_alive;}
+      /* 【batch237】al=0 不再把模型藏起来：留一具尸体躺在地上（3 秒后重生再由 al=1 站起来） */
+      if(rp.alive!==_alive){rp.alive=_alive;rp.root.visible=true;if(rp.label)rp.label.visible=_alive;if(rp.hb)rp.hb.visible=_alive;}
       rp.tx=q.x;rp.ty=_tyNew;rp.tz=q.z;rp.tyaw=q.r;rp.tp=(typeof q.p==='number')?q.p:0;rp.tan=q.a;rp.tw=q.w;rp.nv=(typeof q.nv==='number'?q.nv:0);rp.na=(typeof q.na==='number'?q.na:0);rp._pt=_pt0;rp.tln=q.ln||0;
       /* 【batch216】换弹 / 检视进度（服务端转发） */
       rp.rl=(typeof q.rl==='number'?q.rl:0);rp.iv=(typeof q.iv==='number'?q.iv:0);
@@ -529,7 +588,7 @@ function netOnMsg(m){
   if(m.t==='train'){trainApplyState(m);return;}
   if(m.t==='trainpos'){ try{ if(typeof TRAIN!=='undefined'){ TRAIN.head=(typeof m.head==='number')?m.head:TRAIN.head; if(typeof m.ti==='number')TRAIN.ti=m.ti; } }catch(e){} return; }
   if(m.t==='trainHit'){ try{ var _kd=(m.dir||1), _tz=null; try{ _tz=TRAIN_TRACKS[TRAIN.ti].z; }catch(e3){ _tz=camera.position.z; } if(typeof trainBlastAway==='function'){ trainBlastAway(_kd,_tz,m.px,m.pz); } else { if(typeof m.pz==='number'){ camera.position.x=(typeof m.px==='number')?m.px:camera.position.x; camera.position.z=m.pz; } else { var _kx=camera.position.x+_kd*9; if(typeof playerBlocked==='function'&&!playerBlocked(_kx,camera.position.z,standEyeY()))camera.position.x=_kx; } } S.velY=(typeof m.vy==='number')?m.vy:6.5;SK.slow=Math.max(SK.slow,1.2); if(typeof spawnParticle==='function')spawnParticle(camera.position.clone(),0xffdd66,16,0.5,true); if(typeof showMsg==='function')showMsg('🚆 被列车撞飞！','#ff6b6b'); }catch(e){} return; }   // 扣血由服务端 applyDamage 权威处理；【batch188】击飞落点也由服务端下发（px/pz），避免推不动卡在车体里
-  if(m.t==='push'){ try{ if(typeof m.x==='number')camera.position.x=m.x; if(typeof m.z==='number')camera.position.z=m.z; SK.slow=Math.max(SK.slow,0.35); if(typeof showMsg==='function'&&m.why==='train')showMsg('🚉 列车把卡住的你挤了出来','#8fd6ff'); }catch(e){} return; }   // 【batch188】服务端停靠兜底：把人从车体里挪出来
+  if(m.t==='push'){ try{ if(typeof m.x==='number')camera.position.x=m.x; if(typeof m.z==='number')camera.position.z=m.z; SK.slow=Math.max(SK.slow,0.35); if(typeof showMsg==='function'){ if(m.why==='train')showMsg('🚉 列车把卡住的你挤了出来','#8fd6ff'); else if(m.why==='tp')showMsg('⚠ 位移异常，已把你拉回原地','#ffd166'); } }catch(e){} return; }   // 【batch188】服务端停靠兜底：把人从车体里挪出来
   if(m.t==='portal'){heroPortalRemote(m);return;}   // 【batch145】别人的日蚀之门（一对门）→ 本地也开出来
   if(m.t==='flash'){var _bd=(m.dur||3000)/1000;SK.blind=Math.max(SK.blind,_bd);SK.blindDur=Math.max(SK.blindDur||0,_bd);heroBlindSync();return;}   // 被对方闪光弹致盲：整屏泛白（【batch183】dur 可能是 2.5s 日冕喷发 / 4s 白夜，淡出按真实时长算）
   if(m.t==='buff'){heroApplyBuff(m.b,(m.dur||3000)/1000);return;}   // 队友的技能增益共享到自己
@@ -684,8 +743,8 @@ function netOnMsg(m){
         _ce._cloak=true;                                       // 标记：每帧 netUpdateRemote 都保持隐藏
         _ce.root.visible=false;
         if(_ce.label)_ce.label.visible=false;
-        _ce._cloakTmr=setTimeout(function(){try{_ce._cloak=false;if(_ce.root)_ce.root.visible=_ce.alive;if(_ce.label)_ce.label.visible=_ce.alive;}catch(e){}_ce._cloakTmr=0;},_dur+200);
-      }else{ _ce._cloak=false;_ce.root.visible=_ce.alive;if(_ce.label)_ce.label.visible=_ce.alive;_ce._cloakTmr=0; }
+        _ce._cloakTmr=setTimeout(function(){try{_ce._cloak=false;if(_ce.root)_ce.root.visible=true;if(_ce.label)_ce.label.visible=_ce.alive;if(_ce.hb)_ce.hb.visible=_ce.alive;}catch(e){}_ce._cloakTmr=0;},_dur+200);
+      }else{ _ce._cloak=false;_ce.root.visible=true;if(_ce.label)_ce.label.visible=_ce.alive;if(_ce.hb)_ce.hb.visible=_ce.alive;_ce._cloakTmr=0; }
     }
     return;
   }
@@ -721,6 +780,7 @@ function netOnMsg(m){
   if(m.t==='trap'){remoteTrap(+m.x||0,+m.y||0,+m.z||0,m.nx,m.ny,m.nz);return;}   // 别人的电荷陷阱：本地放个装饰件（结算在服务端）
   if(m.t==='dead'){
     NET.dead=true;S.hp=0;updateHp();clearDeathFx();   /* 【batch155】联机死亡同样收掉白闪/电弧/倒地倒计时 */
+    NET.deadUntil=performance.now()+((typeof m.rs==='number'&&m.rs>0)?m.rs:3000);   /* 【batch237】死亡条倒计时 */
     /* 【batch227】倒地中被打死（球形闪电放倒再补刀）：死就不再是"倒地"，
        否则复活时 SK.downed 还是正数 → 人躺在地上起不来（用户实测）。 */
     SK.downed=0;SK._dbT=0;
@@ -729,7 +789,7 @@ function netOnMsg(m){
     return;
   }
   if(m.t==='respawn'){
-    NET.dead=false;NET.overloadUntil=0;S.hp=m.hp||S.maxHp;updateHp();   /* 【batch172】重生清过载 */
+    NET.dead=false;NET.deadUntil=0;NET.overloadUntil=0;S.hp=m.hp||S.maxHp;updateHp();   /* 【batch172】重生清过载 */
     /* 【batch227】重生＝效果全清（负面 + 正面，用户要求："复活的时候应该清除所有的负面效果，
        正面效果也要清除"）。倒地状态必须在这里清掉，否则"闪电放倒→补刀→复活"后人起不来。 */
     if(typeof clearAllStatusFx==='function')clearAllStatusFx();
@@ -828,7 +888,7 @@ function netEnsurePlayer(info){
     kills:info.k||0,deaths:info.d||0,tx:0,ty:0,tz:0,tyaw:0,tp:0,pt:0,tan:0,walk:0,_t:0,_snap:true,rec:0,
     /* 【batch216】rl/iv＝服务端转发的换弹/检视进度；rlS/ivS＝本地平滑后的值（直接跳会一顿一顿） */
     rl:0,iv:0,rlS:0,ivS:0,_tpMag:null,_rlPhase:-1,
-    gunRig:model.gun,knifeRig:model.knifeRig,nadeRig:model.nadeRig,wk:undefined,_wk:undefined,nv:0,na:0,holdP:0,naP:0,_nadeCode:0,shSeq:-1};
+    gunRig:model.gun,knifeRig:model.knifeRig,nadeRig:model.nadeRig,hb:model.hb,hbMat:model.hbMat,wk:undefined,_wk:undefined,nv:0,na:0,holdP:0,naP:0,_nadeCode:0,shSeq:-1};
   NET.players[info.i]=e;
   enemies.push(e);
   netMakeLabel(e);
@@ -915,6 +975,21 @@ function netEyeOff(anim){ if(anim===NET_ANIM.CROUCH)return GROUND_Y-CROUCH_DROP;
 //   · 视角俯仰【batch105】：抬头 → 躯干后仰 + 枪口抬高；低头 → 前倾 + 枪口压低（看得出他在看天还是看地）
 function netPoseRemote(e,sw){
   sw=sw||0;
+  /* 【batch237】阵亡姿态：整个人瘫在地上（模型**不消失**，别人能看到尸体），
+     四肢摆成自然的"散架"样，别再跟着走路/瞄准动。 */
+  if(!e.alive){
+    if(e.g){e.g.rotation.x=-1.45;e.g.position.y=0.16;e.g.rotation.z=0;}
+    if(e.bodyPivot)e.bodyPivot.rotation.set(0,0,0);
+    if(e.armRig)e.armRig.rotation.set(0.16,0,0);
+    if(e.rArm)e.rArm.rotation.set(0.30,0,-0.25);
+    if(e.lArm)e.lArm.rotation.set(-0.26,0,0.30);
+    if(e.legL&&e.legR){
+      e.legL.hip.rotation.set(0.10,0,0);e.legR.hip.rotation.set(-0.06,0,0);
+      e.legL.knee.rotation.x=0.18;e.legR.knee.rotation.x=0.10;
+      e.legL.hip.position.y=LEG_HIP_Y;e.legR.hip.position.y=LEG_HIP_Y;
+    }
+    return;
+  }
   var cr=e.cr||0,run=e.run||0,aimP=e.aimP||0,dclimb=e.dclimb||0,ln=e.ln||0,rec=e.rec||0;
   // 【batch105】视角俯仰（抬头/低头）：以前只同步左右朝向，别人根本看不出你在看天还是看地。
   // 把 pitch 摊到「躯干」和「手臂+枪」两层上 —— 都是**动作本身**，不额外加提示线（不暴露位置）。
@@ -1185,8 +1260,13 @@ function netUpdateRemote(e){
   }else{
     if(e._shadowBlob){if(e._shadowBlob.parent)e._shadowBlob.parent.remove(e._shadowBlob);e._shadowBlob=null;}
     /* 【batch184c】光学隐身：每帧尊重 _cloak 标志（和 _shadow 同理），否则会被 e.root.visible=e.alive 盖掉 → 别人永远看得到你 */
-    if(e._cloak&&e.alive){ e.root.visible=false; if(e.label)e.label.visible=false; }
-    else { e.root.visible=e.alive; if(e.label)e.label.visible=e.alive; }
+    if(e._cloak&&e.alive){ e.root.visible=false; if(e.label)e.label.visible=false; if(e.hb)e.hb.visible=false; }
+    else {
+      /* 【batch237】活着 / 死了都显示：死了要留一具尸体（以前直接隐藏＝人凭空消失） */
+      e.root.visible=true;
+      if(e.label)e.label.visible=e.alive;
+      if(e.hb)e.hb.visible=e.alive;
+    }
   }
 }
 function netHitRemote(e,hs,dmg,point,melee){
@@ -1509,17 +1589,20 @@ function netTick(){
   var 状态=document.getElementById('srvSt');
   var 已连接过=false;
 
-  function 显示(){ 条.classList.remove('hide'); }
+  function 显示(){ 条.classList.remove('hide'); 预填(); }
   function 隐藏(){ 条.classList.add('hide'); }
+  /* 【batch237】给外面（netMultiClick）用：连不上时亮条 / 写字 */
+  window.netShowBar=显示; window.netHideBar=隐藏;
   function 说话(t,cls){
     if(状态) 状态.textContent=t;
     条.classList.remove('ok','bad');
     if(cls) 条.classList.add(cls);
   }
+  /* 亮条时把上次的地址预填进去（原来只在点「多人游戏」时调，现在统一挂在 显示() 后面） */
   function 预填(){
     var v='';
     try{ v=(typeof NET!=='undefined'&&(NET.raw||NET.server))||localStorage.getItem('gunGame.netServer.v1')||''; }catch(e){}
-    if(输入) 输入.value=v;
+    if(输入&&!输入.value) 输入.value=v;
   }
 
   /* 离线：断开一切联机意图，只留单人。记住这个选择，本次会话不再打扰。 */
@@ -1580,23 +1663,10 @@ function netTick(){
     if(e.key==='Enter'){ e.preventDefault(); 连接(); }
   });
 
-  /* 「多人游戏」按钮：
-     · 页面本身就是服务器发的（/pc、/mobile、隧道）→ 地址天生就有，**直接连并进战场**，
-       不再弹"填地址"的条（batch226 用户口径：输入网址进来就已经在服务器上了）；
-     · 本地文件 / 客户端壳子 → 才亮这条填地址。 */
-  var 多人钮=document.getElementById('netBtn');
-  if(多人钮) 多人钮.addEventListener('click',function(e){
-    e.preventDefault(); e.stopPropagation();
-    try{
-      if(typeof netAutoMode==='function' && netAutoMode() && NET.server){
-        netPlayMulti(NET.server);
-        return;
-      }
-    }catch(e2){}
-    显示(); 预填();
-    if(输入){ try{ 输入.focus(); 输入.select(); }catch(e2){} }
-    说话('填好地址点「连接」；不填就是离线模式。');
-  },true);
+  /* 【batch237】「多人游戏」按钮**只有一个入口**：netMultiClick（在 netUIInit 里）。
+     这里原来还有一条 capture 监听，会先把点击吃掉 —— 于是"已连接就直接进 / 有上次的服务器先探一下"
+     那套新逻辑永远跑不到（探针抓到的）。串行化后只保留下面这个只读的对外写字接口。 */
+  window.netBarSay=说话;
 
   /* ---- 启动判断：什么时候该主动亮条 ---- */
   var 单人=false;

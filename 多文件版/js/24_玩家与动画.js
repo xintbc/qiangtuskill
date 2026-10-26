@@ -629,6 +629,27 @@ function updatePlayer(){
     S.sprinting=false;S.sprintLatch=false;S.joySprint=false;
   }
   var now=performance.now(),dt=Math.min((now-lastFrameTime)/1000,0.05);lastFrameTime=now;
+  /* 【batch237】联机阵亡：人躺在地上动不了，镜头贴地 + 侧倒，只能转头看别人；
+     3 秒后服务端发 respawn 再站起来（爆能器那种回合制则等下一回合）。 */
+  if(typeof NET!=='undefined'&&NET&&NET.dead){
+    try{ for(var _dkd in _raw)_raw[_dkd]=false; }catch(e){}
+    mouseDown=false;rightMouseDown=false;
+    S.aiming=false;S.sprinting=false;S.sprintLatch=false;S.joySprint=false;S.crouch=false;
+    S.velX=0;S.velZ=0;S.velY=0;
+    /* 脚下的面（1 楼 0 / 2 楼楼板…）→ 眼高降到 0.55，像躺在地上 */
+    var _gd=0;
+    try{ _gd=(typeof standSurfY==='function')?standSurfY():0; }catch(e){ _gd=0; }
+    camera.position.y+=(((_gd+0.55)-camera.position.y))*Math.min(1,dt*6);
+    if(typeof THREE!=='undefined'&&camera.quaternion&&camera.quaternion.setFromEuler){
+      camera.quaternion.setFromEuler(new THREE.Euler(Math.max(-0.9,Math.min(1.0,pitch||0)),yaw||0,0.55,'YXZ'));
+    }
+    var _pd=document.querySelector('#netDeath p');
+    if(_pd){
+      var _left=(typeof NET.deadUntil==='number'&&NET.deadUntil>0)?Math.max(0,(NET.deadUntil-now)/1000):0;
+      _pd.textContent=_left>0.05?(_left.toFixed(1)+' 秒后重生…'):'等待下一回合…';
+    }
+    return;
+  }
   /* 【batch180】帧率归一：位移原来是"每帧固定 BASE_SPEED"，**完全没乘 dt** ——
      120Hz 屏上比 60Hz 整整快一倍（这就是"移速过快"和掉帧时表现飘忽的根源）。
      统一换算成"以 60fps 为基准的每帧量"；上限 2.0（≈30fps）防止掉帧时一步跨太大穿墙。 */

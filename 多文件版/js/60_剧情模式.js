@@ -194,7 +194,7 @@ function storyStart(){
   var _cs=storyCur();
   if(_cs){
     if(typeof _cs.need==='number')STORY_.need=_cs.need;
-    if(_cs.mapId)setMap(_cs.mapId); else setMap(STORY_MAP);
+    if(_cs.mapId)setMap(_cs.mapId,true); else setMap(STORY_MAP,true);
     if(_cs.spawn)camera.position.set(_cs.spawn[0],GROUND_Y,_cs.spawn[1]); else playerSpawnAt();
     S.velY=0;S.onGround=true;S.onLadder=false;S.mantle=0;S.landKick=0;
     if(typeof _cs.init==='function'){try{_cs.init();}catch(e){}}   /* begin 留给"开场白演完"之后，init 是刚进图时 */
@@ -209,7 +209,7 @@ function storyStart(){
   if(STORY_.ch===2){
     /* 【batch149】第二章：地图换成「地下实验室」，出生点用**固定的** LAB_STORY_SPAWN ——
        它与收容舱相距约 146 米，且不在正常对局的出生点表里（用户要求：剧情固定、平时另算）。 */
-    setMap('lab');
+    setMap('lab',true);
     camera.position.set(LAB_STORY_SPAWN.x,GROUND_Y,LAB_STORY_SPAWN.z);
     S.velY=0;S.onGround=true;S.onLadder=false;S.mantle=0;S.landKick=0;
     STORY_.rescueP=0;STORY_.rescueNear=false;STORY_.amb=null;STORY_.ambT=AMB_FIRST;STORY_.mobT=1.0;
@@ -217,11 +217,11 @@ function storyStart(){
   }else if(STORY_.ch===3){
     /* 【batch181】第三章：旧火车站（站前广场固定出生点，面朝大厅与轨道带）。
        火车由地图系统自己跑（trainTick），这一章照样会有班车不时进站。 */
-    setMap('station');
+    setMap('station',true);
     camera.position.set(STATION_STORY_SPAWN.x,GROUND_Y,STATION_STORY_SPAWN.z);
     S.velY=0;S.onGround=true;S.onLadder=false;S.mantle=0;S.landKick=0;
   }else{
-    setMap(STORY_MAP);playerSpawnAt();
+    setMap(STORY_MAP,true);playerSpawnAt();
   }
   updateHp();updateWave();updateScore();
   try{if(document.exitPointerLock)document.exitPointerLock();}catch(e){}

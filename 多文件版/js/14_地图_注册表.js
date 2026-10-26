@@ -300,7 +300,7 @@ var MAP_SPAWNS={
             [0,-20],[18,-24],[-20,-22],[40,-28],[-40,-30],[0,-40],[-15,-42],[24,-44],
             [28,-16],[48,-18],[-48,-18],[52,20],[-52,20],[0,12.5],[44,12.5],[-44,12.5]]
 };
-function setMap(id){
+function setMap(id,不存){
   /* 【batch131】门口导航表跟着建图一起做（buildNavFor 定义在后面，函数声明会提升） */
   var m=mapById(id); if(!m)return false;
   /* 【batch180】靶场是独立模式的专用图：非靶场模式选到它（含读档带回的 curMapId）一律回落经典图，
@@ -334,7 +334,10 @@ function setMap(id){
   try{ scene.background.setHex(th.bg); if(scene.fog){scene.fog.color.setHex(th.fog);scene.fog.density=th.fogD;} }catch(e){}
   if(!_navBuiltFor[id]){ _navBuiltFor[id]=1; try{buildNavFor(id);}catch(e){} }   // 【batch131】门口导航表（建完图再算，才能拿到 doors/roofs）
   buildObstacleBoxes();
-  mapSave();
+  /* 【batch237】只有"玩家在主菜单选图"才写进存档。
+     以前开局 / 剧情 / 联机换图都会调用 setMap → 把玩家真正选的那张图覆盖掉，
+     于是"上次选的日蚀环城，这次进多人却是哨塔"。 */
+  if(!不存)mapSave();
   return true;
 }
 /* ---------------- 传送门（batch112）----------------
@@ -350,6 +353,8 @@ function updateTeleports(){
     var t=teleports[i];
     var dx=camera.position.x-t.x, dz=camera.position.z-t.z;
     if(dx*dx+dz*dz<t.r*t.r){
+      /* 【batch237】这是"合法瞬移"：先告诉服务器开个窗口，否则下一包位置会被防瞬移抓回去 */
+      try{ if(typeof netIsMulti==='function'&&netIsMulti())netSend({t:'tp'}); }catch(e){}
       camera.position.x=t.to[0];
       camera.position.z=t.to[1];
       camera.position.y=groundHeightAt(t.to[0],t.to[1],GROUND_Y+2);

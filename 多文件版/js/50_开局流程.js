@@ -254,7 +254,7 @@ function startSoloGame(){
     try{showMsg('🎯 靶场：不刷敌人 · 弹药无限 · 技能无冷却','#ffd166');}catch(e){}
   }
   if(typeof rangeMode==='function'&&rangeMode()){ try{ curMapId='range'; }catch(_e){} }   /* 【batch180】靶场模式：强制进靶场这张独立的图 */
-  setMap(curMapId);playerSpawnAt();      // 【batch111】按所选地图建图，并落到这张图的出生点
+  setMap(curMapId,true);playerSpawnAt();      // 【batch111】按所选地图建图，并落到这张图的出生点
   /* 【batch180】退出重进要把两个特殊靶子补回来：靶场图懒构建（第二次 setMap 不会重建），
      而退出时 clearFieldData 把假人当 AI 敌人清掉了——不补就"退出重进靶子失效"。 */
   if(typeof rangeMode==='function'&&rangeMode()&&typeof rangeEnsureDummies==='function')rangeEnsureDummies();

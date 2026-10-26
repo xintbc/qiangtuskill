@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.7.6';
+const SRV_VER = '1.7.7';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -1665,6 +1665,33 @@ function applyDamage(from, target, rawDmg, hs, noReflect, nade) {
   return dmg;
 }
 
+/* ============================================================================
+   【batch237】防瞬移（网络波动导致的"敌人突然出现在别处"）
+   ----------------------------------------------------------------------------
+   做法：服务器记下**上一次采纳的位置 + 时刻**，每个 p 包先算"这段时间最远能跑多远"：
+        允许距离 = max(8 米, 间隔 × 26 米/秒)     （跑步 ~6-9，突进 10，留足余量）
+   超了就不采纳，把旧坐标用 {t:'push'} 打回去，客户端会把自己拉回原地。
+   · 间隔最多按 1.2 秒算 —— 掉线 5 秒回来也别想一步跨过半个地图；
+   · 复活 / 换图 / 突进 / 传送门 / 被列车撞飞 这些**合法瞬移**由 p._tpUntil 开窗口；
+   · 死了 / 倒地的人不动，直接跳过（别把尸体拽来拽去）。
+   ==========================================================================*/
+const MOVE_MAX_SPEED = 26, MOVE_MIN_STEP = 8, MOVE_MAX_DT = 1.2;
+function moveGuard(p, x, z) {
+  const now = Date.now();
+  /* 第一个状态包只当基准（刚进服 / 刚重生时客户端还在对齐出生点，不该判瞬移） */
+  if (!p._pAt) { p._pAt = now; return true; }
+  const dt = Math.min(MOVE_MAX_DT, Math.max(0.02, (now - p._pAt) / 1000));
+  p._pAt = now;
+  if (!p.alive || p.downed) return true;                       // 死了 / 倒地：不动
+  if (now < (p._tpUntil || 0)) return true;                    // 合法瞬移窗口
+  const dx = x - (p.x || 0), dz = z - (p.z || 0);
+  const d = Math.sqrt(dx * dx + dz * dz);
+  const allow = Math.max(MOVE_MIN_STEP, dt * MOVE_MAX_SPEED);
+  if (d <= allow) return true;
+  log('抓回瞬移：' + p.code + ' ' + p.name + ' 一步 ' + d.toFixed(1) + ' 米（允许 ' + allow.toFixed(1) + '，间隔 ' + Math.round(dt * 1000) + 'ms）');
+  return false;
+}
+
 function handleHit(from, msg) {
   if (from.downed) return;                                  // 【batch120】倒地的人开不了枪（也补不了刀）
   /* 【batch172】装备过载（蜂鸟无人机）：服务端不认他的**枪**伤，防客户端绕过；
@@ -1914,6 +1941,8 @@ function handleSkill(from, msg) {
   const s = msg.s | 0;
   if (SKILL_IDS.indexOf(k) < 0 || s < 0 || s > 2) return;     // 未知英雄 / 技能序号越界：忽略
   if (!from.alive || from.downed) return;                     // 死了 / 倒地了都不能放技能
+  /* 【batch237】突进（rusher ①）和虚化（eclipse ②）都是"一笔跨很远"，给防瞬移开窗 */
+  if ((k === 'rusher' && s === 0) || (k === 'eclipse' && s === 1)) from._tpUntil = Date.now() + 900;
   const now = Date.now();
   if (!from.skReady) from.skReady = {};
   // 冷却按「英雄 + 技能位」记（不是只按 0/1/2）：否则一局里换过英雄后，
@@ -2211,7 +2240,11 @@ function handleMsg(sock, raw) {
   p.lastSeen = Date.now();
 
   if (m.t === 'p') {                              // 状态上报
-    p.x = +m.x || 0; p.y = +m.y || 0; p.z = +m.z || 0;
+    /* 【batch237】先过防瞬移：超了就不采纳坐标，并把旧坐标打回去（其余字段照常收） */
+    const _nx = +m.x || 0, _nz = +m.z || 0;
+    if (moveGuard(p, _nx, _nz)) { p.x = _nx; p.z = _nz; }
+    else sendTo(p, { t: 'push', x: p.x || 0, z: p.z || 0, why: 'tp' });
+    p.y = +m.y || 0;
     p.yaw = +m.yaw || 0; p.pitch = +m.pitch || 0;
     p.an = m.an | 0; p.w = m.w | 0; p.ln = +m.ln || 0;   // ln＝探头侧倾，转发给其他人显示
     p.wk = m.wk;                                         // 【batch184e】武器标识（枪=槽位号 / 刀='k:'+id）：让别人看到你手里具体的枪/刀
@@ -2333,6 +2366,8 @@ function handleMsg(sock, raw) {
     broadcast({ t: 'spwallclear', x: +m.x || 0, z: +m.z || 0 }, p.id, mapOf(p));
   } else if (m.t === 'hit') {
     handleHit(p, m);
+  } else if (m.t === 'tp') {                       // 【batch237】客户端主动开瞬移窗口（踩传送点 / 模组传送）
+    p._tpUntil = Date.now() + 800;
   } else if (m.t === 'meteor') {                   // 【batch236】流火 SP·天陨：起手落点（落地由服务端掐表触发）
     handleMeteor(p, m);
   } else if (m.t === 'aihit') {                   // 【batch227】本地 AI / 剧情 BOSS 打中玩家：客户端上报，纳入权威
@@ -2356,6 +2391,7 @@ function handleMsg(sock, raw) {
   } else if (m.t === 'boom') {                    // 投掷物「引爆 / 落地」：这一刻才按真实落点结算
     handleBoom(p, m);
   } else if (m.t === 'portal') {                  // 【batch145】日蚀之门：一对门的位置，转发给同房间的其他人
+    p._tpUntil = Date.now() + 1200;               // 【batch237】穿门＝合法瞬移
     const ok3 = function (v) {
       return Array.isArray(v) && v.length === 3 && isFinite(+v[0]) && isFinite(+v[1]) && isFinite(+v[2]);
     };
@@ -2866,6 +2902,7 @@ function trainHitPlayers(rk, t, tz) {               // 撞玩家（服务端权�
     /* 【batch188】先算击飞落点（服务端权威坐标），报文一起下发 —— 客户端按它摆位，
        否则人留在车体里，等列车停靠（车厢变实体障碍）就彻底出不来了。 */
     const out = trainKnockOut(p, t, tz);
+    p.x = out.x; p.z = out.z; p._tpUntil = Date.now() + 1500;   // 【batch237】击飞是合法的"瞬移"，服务器位置也跟上
     sendTo(p, { t: 'trainHit', dir: t.dir, dmg: TRAIN_HIT_DMG, px: out.x, pz: out.z, vy: 6.5 });
     try { applyDamage(null, p, TRAIN_HIT_DMG, false, true); } catch (e) { }   // 【batch184f-补4】服务端权威扣血（护盾/穹顶照样减伤），客户端只播击飞特效
   });
@@ -2890,6 +2927,7 @@ function trainSettleSrv(rk, t, tz) {
     if (Math.abs((p.z || 0) - tz) > TRAIN_HALF_W + 0.6) return;   // 已在车体侧面之外
     if ((p.x || 0) < x0 || (p.x || 0) > x1) return;         // 不在车身长度范围内
     const out = trainKnockOut(p, t, tz);
+    p.x = out.x; p.z = out.z; p._tpUntil = Date.now() + 1500;   // 【batch237】同理
     sendTo(p, { t: 'push', x: out.x, z: out.z, why: 'train' });
   });
 }
