@@ -22,10 +22,14 @@
 
 #include "sdk/WebView2.h"
 #include "网页视图.h"
+#include "本地服务.h"
 
 /* 虚拟站点名：把本地目录当成一个 https 站点。
    用 game.example（`.example` 是 IANA 保留给示例的顶级域，不会被真解析走）。 */
 static const WCHAR 虚拟主机[] = L"game.example";
+/* 访问协议：WebView2 的虚拟主机映射官方只保证 https。用 http 会被当成普通外部域名
+   （DNS 解析不到就 chrome-error），所以这里固定 https，连服务器的问题在页面侧解决。 */
+static const WCHAR 虚拟协议[] = L"https";
 
 static ICoreWebView2Environment *g_env = NULL;
 static ICoreWebView2Controller  *g_ctrl = NULL;
@@ -34,6 +38,11 @@ static HWND  g_父窗口 = NULL;
 static WCHAR g_根目录[MAX_PATH * 2] = { 0 };
 static char  g_服务器[128] = { 0 };
 static BOOL  g_已导航 = FALSE;
+/* 初始导航路径（相对虚拟站点根）。默认 index.html；版本内启动器会把账号参数拼在后面。 */
+static WCHAR g_初始路径[1024] = L"index.html";
+/* 内置 HTTP 服务的端口：>0 时页面源是 http://127.0.0.1:端口，
+   这样游戏里连服务器能用明文 ws://（https 虚拟主机会被强行拼成 wss:// → 永远连不上）。 */
+static int   g_本地端口 = 0;
 
 /* ============================================================ 环境选项对象
    用途只有一个：把 AdditionalBrowserArguments 传给内核 —— 性能全靠它。
@@ -348,11 +357,16 @@ static void 控制器就绪(ICoreWebView2Controller *控制器)
         注入配置();
         网页视图_铺满();
 
-        /* 导航到游戏本体 */
+        /* 导航到游戏本体（路径由 网页视图_设初始路径 决定，默认 index.html） */
         if (!g_已导航) {
+            WCHAR 网址[2048];
+            if (g_本地端口 > 0)
+                _snwprintf(网址, 2047, L"http://127.0.0.1:%d/%s", g_本地端口, g_初始路径);
+            else
+                _snwprintf(网址, 2047, L"%s://game.example/%s", 虚拟协议, g_初始路径);
             g_已导航 = TRUE;
-            HRESULT hrN = g_web->lpVtbl->Navigate(g_web, L"https://game.example/index.html");
-            写日志(L"Navigate hr=0x%08X", (unsigned)hrN);
+            HRESULT hrN = g_web->lpVtbl->Navigate(g_web, 网址);
+            写日志(L"Navigate %s hr=0x%08X", 网址, (unsigned)hrN);
         }
     }
 }
@@ -474,6 +488,18 @@ BOOL 网页视图_启动(HWND 父窗口, const wchar_t *根目录, const char *�
     拼路径(配置目录, MAX_PATH * 2, exe目录, L"配置\\网页数据");
     建目录(配置目录);
 
+    /* ★ 起内置 HTTP 服务：页面用 http://127.0.0.1:端口 打开。
+       这是"客户端连不上服务器"的正解 —— 虚拟主机的 https 源会把 ws:// 强行变 wss://。
+       端口记在 配置\端口.txt，下次复用（源不变 → localStorage 存档延续）。 */
+    {
+        WCHAR 服务配置[MAX_PATH * 2];
+        拼路径(服务配置, MAX_PATH * 2, exe目录, L"配置");
+        建目录(服务配置);
+        g_本地端口 = 本地服务_启动(g_根目录, 服务配置);
+        写日志(L"内置 HTTP 服务端口=%d%s", g_本地端口,
+               g_本地端口 > 0 ? L"" : L"（失败，回退虚拟主机 https —— 联机会连不上）");
+    }
+
     /* 进程里必须先 CoInitialize（STA）：WebView2 的控件是单线程的 */
     写日志(L"userDataFolder=%s", 配置目录);
     /* 性能参数（说明见上面"环境选项对象"那段注释） */
@@ -486,6 +512,15 @@ BOOL 网页视图_启动(HWND 父窗口, const wchar_t *根目录, const char *�
         L"--autoplay-policy=no-user-gesture-required "
         L"--force_high_performance_gpu --enable-gpu-rasterization",
         1024);
+    /* 调试开关：exe 旁边放一个「调试.txt」→ 开远程调试端口 9222，
+       这样能用 CDP 抓控制台报错 / 网络请求（平时没有这个文件，端口不开，玩家无感）。 */
+    {
+        WCHAR 调[MAX_PATH * 2];
+        _snwprintf(调, MAX_PATH * 2 - 1, L"%s\\调试.txt", exe目录);
+        if (GetFileAttributesW(调) != INVALID_FILE_ATTRIBUTES) {
+            lstrcatW(选对象.参数, L" --remote-debugging-port=9222");
+        }
+    }
     写日志(L"内核参数=%s", 选对象.参数);
 
     /* ⚠️ 参数**不能**通过自己实现的 ICoreWebView2EnvironmentOptions 传：
@@ -498,6 +533,12 @@ BOOL 网页视图_启动(HWND 父窗口, const wchar_t *根目录, const char *�
         (ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler *)&环对象);
     写日志(L"CreateCoreWebView2EnvironmentWithOptions hr=0x%08X", (unsigned)hr);
     return SUCCEEDED(hr);
+}
+
+/* 设置初始导航路径（必须在 网页视图_启动 之前调；默认 index.html） */
+void 网页视图_设初始路径(const wchar_t *相对路径)
+{
+    if (相对路径 && 相对路径[0]) lstrcpynW(g_初始路径, 相对路径, 1024);
 }
 
 BOOL 网页视图_就绪(void) { return g_web != NULL; }
@@ -522,7 +563,8 @@ void 网页视图_转到(const wchar_t *相对路径)
 {
     if (!g_web || !相对路径) return;
     WCHAR url[1024];
-    _snwprintf(url, 1023, L"https://game.example/%s", 相对路径);
+    if (g_本地端口 > 0) _snwprintf(url, 1023, L"http://127.0.0.1:%d/%s", g_本地端口, 相对路径);
+    else _snwprintf(url, 1023, L"%s://game.example/%s", 虚拟协议, 相对路径);
     g_web->lpVtbl->Navigate(g_web, url);
 }
 
@@ -555,4 +597,5 @@ void 网页视图_关闭(void)
     if (g_ctrl) { g_ctrl->lpVtbl->Close(g_ctrl); g_ctrl->lpVtbl->Release(g_ctrl); g_ctrl = NULL; }
     if (g_web) { g_web->lpVtbl->Release(g_web); g_web = NULL; }
     if (g_env) { g_env->lpVtbl->Release(g_env); g_env = NULL; }
+    本地服务_停止();          /* 内置 HTTP 服务一起收掉，别留监听端口 */
 }

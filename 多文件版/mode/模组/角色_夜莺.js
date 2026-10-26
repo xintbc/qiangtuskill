@@ -1,5 +1,6 @@
 /* ============================================================================
  * 模组：角色「夜莺」—— 暗月组织新成员 · 歌声医师
+ * 【模组信息】@id nightingale　@name 夜莺　@ver 1.7.5　@api 2
  * ----------------------------------------------------------------------------
  * 英雄：夜莺（暗月 · 医者）
  *   V 治愈之歌 ：以自身为中心 7 米的治愈光环，每 0.5 秒为自己与友方回复 6 点生命，
@@ -23,8 +24,14 @@
   'use strict';
   if (window.__nightingaleModLoaded) return;
   window.__nightingaleModLoaded = true;
-  if (typeof window.ModLoader === 'undefined') return;
+  var M = window.枪战模组;                    // 统一模组接口（1.7.5 起）
+  if (!M) { console.warn('[夜莺] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
   if (typeof window.HEROES === 'undefined') return;
+  var 模组 = M.定义({
+    id: 'nightingale', name: '夜莺', ver: '1.7.5', author: '官方示例',
+    desc: '暗月 · 歌声医师（治愈 / 解控 / 大范围持续治疗）'
+  });
+  if (!模组) return;
 
   var SONG_COLOR = 0x9ff0d0;                 // 歌声主色：薄荷青绿
   var SONG_CSS = '#9ff0d0';
@@ -49,7 +56,7 @@
       }
     }
   };
-  ModLoader.addHero(夜莺);
+  模组.加英雄(夜莺);
 
   /* ---------------- 2. 运行时状态 ---------------- */
   var ST = {
@@ -85,7 +92,7 @@
     ensureRing();
     /* 联机：广播“开唱”事件，其他玩家也在他机器上放一个同样的光环 */
     try {
-      ModLoader.heroBroadcast(key, {
+      模组.广播(key, {
         x: camera.position.x, y: camera.position.y, z: camera.position.z, r: r, dur: dur
       });
     } catch (e) { }
@@ -107,20 +114,20 @@
     overlayHide();
   }
 
-  ModLoader.addSkill('song_heal', function (i, s, H) {
+  模组.加技能('song_heal', function (i, s, H) {
     if (ST.song > 0) { endSong(); return true; }        // 正在唱：再按一次提前收声（不重置冷却）
     startSong(s.dur || 6, 7, 6, 0.5, 'song_heal');
     return true;
   });
 
-  ModLoader.addSkill('song_lullaby', function (i, s, H) {
+  模组.加技能('song_lullaby', function (i, s, H) {
     if (ST.song > 0) { endSong(true); }                 // 大招盖过小歌
     startSong(s.dur || 8, 15, 10, 1.0, 'song_lullaby');
     return true;
   });
 
   /* B 安神谣：瞬发中范围治疗 + 解减速 */
-  ModLoader.addSkill('song_calm', function (i, s, H) {
+  模组.加技能('song_calm', function (i, s, H) {
     var r = 12, amt = 25;
     /* 数值结算：联机走服务端权威（同房范围内所有人，含自己）；单机只治自己 */
     if (netOn()) {
@@ -134,7 +141,7 @@
     }
     /* 联机：广播特效；视觉本地照播 */
     try {
-      ModLoader.heroBroadcast('song_calm', { x: camera.position.x, y: camera.position.y, z: camera.position.z, r: r });
+      模组.广播('song_calm', { x: camera.position.x, y: camera.position.y, z: camera.position.z, r: r });
     } catch (e) { }
     try {
       if (typeof heroFxRingAt === 'function') heroFxRingAt(camera.position.x, camera.position.z, SONG_COLOR, 0.2, r, 0.7);
@@ -358,9 +365,9 @@
       window.storyEnd = function () { cleanupRound(); return _se.apply(this, arguments); };
     }
   }
-  ModLoader.onApply(wrapLoopHooks);
+  模组.载入后(wrapLoopHooks);
   /* 退出对局清场：收声、撤光环、清远端复现的歌声环（否则回主菜单再开一局会残留） */
-  ModLoader.onFieldClear(function () {
+  模组.清场(function () {
     try { if (ST.song > 0) endSong(true); } catch (e) { }
     try { removeRing(); } catch (e) { }
     try { for (var k in REMOTE) removeRemoteRing(k); } catch (e) { }

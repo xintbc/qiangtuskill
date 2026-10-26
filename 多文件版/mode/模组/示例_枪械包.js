@@ -1,4 +1,5 @@
 /* ============================================================================
+ * 【模组信息】@id weapon_pack_demo　@name 示例枪械包　@ver 1.7.5　@api 2
  *  示例模组：枪械包（作者演示用）
  *  ----------------------------------------------------------------------------
  *  通过 ModLoader.addWeapon 注册 4 把「模型各不相同」的枪械，演示：
@@ -21,8 +22,10 @@
  * ========================================================================== */
 (function () {
   'use strict';
-  if (!window.ModLoader) { console.warn('[枪械包] ModLoader 未就绪，跳过注册'); return; }
-  var ML = window.ModLoader;
+  var M = window.枪战模组;
+  if (!M) { console.warn('[枪械包] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
+  var 模组 = M.定义({ id: 'weapon_pack_demo', name: '示例枪械包', ver: '1.7.5', author: '官方示例', desc: '四把不同手感/模型的枪（教学示例）' });
+  if (!模组) return;
 
   // ---- 通用小工具：搭盒子 / 搭圆柱（圆柱默认轴是 y，转 90° 让轴沿 z = 朝向屏幕里）----
   function box(w, h, d, mat, x, y, z) {
@@ -63,7 +66,7 @@
   var MAG_POS = { x: 0, y: -0.04, z: -0.02 };   // 各枪弹匣统一挂点（引擎据 magType 生成对应外形）
 
   /* ---------------- 1) 霰弹枪：双管 + 木托，近距离一片弹丸·半自动 ---------------- */
-  ML.addWeapon({
+  模组.加武器({
     name: '霰弹枪', melee: false, icon: '🔫', note: '近距离·一片弹丸·半自动',
     damage: 0.45, magSize: 6, fireRate: 750, reloadTime: 2600, recoilMul: 1.4, range: 45, pellets: 8, spread: 0.022, auto: false, redDot: true, type: 'shotgun', adsSpreadKeep: 0.35, // 注册为「散弹枪」：开镜保留35%散射 + 专属散布圆准星（圆多大散射就多大）
     magType: 'shotgun', magPos: MAG_POS,
@@ -87,7 +90,7 @@
   });
 
   /* ---------------- 2) 冲锋枪：短小紧凑 + 香蕉弹匣，高射速低伤·全自动 ---------------- */
-  ML.addWeapon({
+  模组.加武器({
     name: '冲锋枪', melee: false, icon: '🔫', note: '高射速·低伤·全自动',
     damage: 0.55, magSize: 40, fireRate: 60, reloadTime: 1500, recoilMul: 1.25, range: 70, pellets: 1, spread: 0.045, auto: true, redDot: true, type: 'normal', // 普通枪：开镜后完全无散射
     magType: 'smg', magPos: MAG_POS,
@@ -107,7 +110,7 @@
   });
 
   /* ---------------- 3) 狙击枪：超长细管 + 大镜，超高伤少弹·半自动·带镜 ---------------- */
-  ML.addWeapon({
+  模组.加武器({
     name: '狙击枪', melee: false, icon: '🎯', note: '超远·超高伤·半自动·开镜有镜',
     damage: 4.0, magSize: 5, fireRate: 1100, reloadTime: 3200, recoilMul: 2.6, range: 220, pellets: 1, spread: 0.0, auto: false, scope: true, adsFov: 18, // 狙击枪：开镜 FOV=18（≈4倍放大，比默认45明显更大）；开镜自动隐藏枪身与手部
     magType: 'sniper', magPos: MAG_POS,
@@ -129,7 +132,7 @@
   });
 
   /* ---------------- 4) 重机枪：方正机匣 + 大弹箱，中伤巨弹容·全自动 ---------------- */
-  ML.addWeapon({
+  模组.加武器({
     name: '重机枪', melee: false, icon: '🔫', note: '中伤·海量子弹·全自动',
     damage: 0.9, magSize: 100, fireRate: 80, reloadTime: 5000, recoilMul: 2.0, range: 90, pellets: 1, spread: 0.06, auto: true, redDot: true, type: 'normal', // 普通枪：开镜后完全无散射
     magType: 'lmg', magPos: MAG_POS,

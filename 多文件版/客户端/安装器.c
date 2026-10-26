@@ -310,18 +310,120 @@ static HWND 加静态(const WCHAR *文, int x, int y, int w, int h)
     return s;
 }
 
-static HWND g_页0控件[4], g_页1控件[6], g_页2控件[3], g_页3控件[6];
-static HWND g_目录框, g_浏览钮, g_进度文字;
+static HWND g_页0控件[4], g_页1控件[8], g_页2控件[3], g_页3控件[6];
+static HWND g_目录框, g_浏览钮, g_进度文字, g_版本行;
+
+static void 刷新版本提示(void);      /* 定义在后面（版本检测那一段） */
 
 static void 显示页(int 页)
 {
     g_页 = 页;
     int i;
     for (i = 0; i < 4; i++) if (g_页0控件[i]) ShowWindow(g_页0控件[i], 页 == 0 ? SW_SHOW : SW_HIDE);
-    for (i = 0; i < 6; i++) if (g_页1控件[i]) ShowWindow(g_页1控件[i], 页 == 1 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 8; i++) if (g_页1控件[i]) ShowWindow(g_页1控件[i], 页 == 1 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 3; i++) if (g_页2控件[i]) ShowWindow(g_页2控件[i], 页 == 2 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 6; i++) if (g_页3控件[i]) ShowWindow(g_页3控件[i], 页 == 3 ? SW_SHOW : SW_HIDE);
     SetWindowTextW(g_窗, 页 == 3 ? L"枪战突击 · 安装完成" : L"枪战突击 · 电脑客户端 安装");
+    if (页 == 1) 刷新版本提示();      /* 进选目录页就告诉玩家：这是新装还是更新 */
+}
+
+/* ---------------------------------------------------------------- 版本检测
+   目标（用户要求）：**同一个安装目录**里如果已经装了同一个游戏但版本不同，
+   就自动按「更新」处理，而且绝不碰用户数据（存档/账号/模组库/玩家自加的模组）。
+   做法：
+     · 安装包根目录带一个 `版本.txt`（打包时从 js/02 的 GAME_VER 生成）
+     · 装好后它落在安装目录里，下次安装就能读到"已装版本"
+     · 安装只写清单里的文件、从不删目录 → 配置\ 和玩家自己放进 mode\模组\ 的文件天然保留
+   ---------------------------------------------------------------- */
+
+/* 从内嵌清单里读某个文本文件的内容（这里用来读 版本.txt） */
+static BOOL 读内嵌文本(const char *相对路径, WCHAR *出, int 容量)
+{
+    出[0] = 0;
+    for (int i = 0; i < g_清单数; i++) {
+        if (lstrcmpiA(g_清单[i].相对路径, 相对路径) != 0) continue;
+        char 临时[64] = { 0 };
+        DWORD 取 = g_数据大[i] < sizeof(临时) - 1 ? g_数据大[i] : sizeof(临时) - 1;
+        memcpy(临时, g_数据[i], 取);
+        /* 只取第一行、去掉空白 */
+        for (DWORD k = 0; k < 取; k++) if (临时[k] == '\r' || 临时[k] == '\n') { 临时[k] = 0; break; }
+        MultiByteToWideChar(CP_UTF8, 0, 临时, -1, 出, 容量);
+        /* 去尾部空白 */
+        int n = lstrlenW(出);
+        while (n > 0 && (出[n - 1] == L' ' || 出[n - 1] == L'\t')) 出[--n] = 0;
+        return 出[0] != 0;
+    }
+    return FALSE;
+}
+
+/* 读目标目录里已装的版本（<目录>\版本.txt） */
+static BOOL 读已装版本(const WCHAR *目录, WCHAR *出, int 容量)
+{
+    出[0] = 0;
+    WCHAR 路径[MAX_PATH * 2];
+    _snwprintf(路径, MAX_PATH * 2 - 1, L"%s\\版本.txt", 目录);
+    HANDLE f = CreateFileW(路径, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (f == INVALID_HANDLE_VALUE) return FALSE;
+    char 缓冲[64] = { 0 };
+    DWORD 读 = 0;
+    ReadFile(f, 缓冲, sizeof(缓冲) - 1, &读, NULL);
+    CloseHandle(f);
+    for (DWORD k = 0; k < 读; k++) if (缓冲[k] == '\r' || 缓冲[k] == '\n') { 缓冲[k] = 0; break; }
+    MultiByteToWideChar(CP_UTF8, 0, 缓冲, -1, 出, 容量);
+    return 出[0] != 0;
+}
+
+/* 版本比较：a>b → 1，相等 → 0，a<b → -1（按 1.7.0 这种数字段比，忽略非数字后缀） */
+static int 比版本(const WCHAR *a, const WCHAR *b)
+{
+    int 甲[4] = { 0, 0, 0, 0 }, 乙[4] = { 0, 0, 0, 0 };
+    int 段 = 0;
+    const WCHAR *p = a;
+    while (*p && 段 < 4) {
+        while (*p && (*p < L'0' || *p > L'9')) p++;
+        if (!*p) break;
+        甲[段++] = (int)wcstol(p, (wchar_t **)&p, 10);
+    }
+    段 = 0; p = b;
+    while (*p && 段 < 4) {
+        while (*p && (*p < L'0' || *p > L'9')) p++;
+        if (!*p) break;
+        乙[段++] = (int)wcstol(p, (wchar_t **)&p, 10);
+    }
+    for (int i = 0; i < 4; i++) {
+        if (甲[i] > 乙[i]) return 1;
+        if (甲[i] < 乙[i]) return -1;
+    }
+    return 0;
+}
+
+/* 刷新页1 那行版本提示（选目录/输入目录时调） */
+static void 刷新版本提示(void)
+{
+    if (!g_版本行) return;
+    WCHAR 本次[32] = { 0 }, 已装[32] = { 0 }, 文[640];
+    读内嵌文本("版本.txt", 本次, 32);
+    if (!本次[0]) lstrcpynW(本次, L"未知", 32);
+
+    BOOL 装过 = 读已装版本(g_目录, 已装, 32);
+    if (!装过) {
+        _snwprintf(文, 639,
+            L"这个文件夹还是空的 → 会装成新的一份（v%s）。", 本次);
+    } else {
+        int c = 比版本(本次, 已装);
+        if (c > 0)
+            _snwprintf(文, 639,
+                L"检测到已装 v%s  →  将更新到 v%s。\r\n"
+                L"存档、账号、模组库、你自己放进 mode\\模组\\ 的文件全部保留。", 已装, 本次);
+        else if (c == 0)
+            _snwprintf(文, 639,
+                L"已经是 v%s（和安装包同一版）→  重新安装＝修复损坏的文件，数据照旧保留。", 本次);
+        else
+            _snwprintf(文, 639,
+                L"当前装的是 v%s，比安装包的 v%s 新。\r\n"
+                L"继续会把这些游戏文件降级到 v%s，存档等数据仍然保留。", 已装, 本次);
+    }
+    SetWindowTextW(g_版本行, 文);
 }
 
 static void 默认目录(WCHAR *出, int 容量)
@@ -330,16 +432,9 @@ static void 默认目录(WCHAR *出, int 容量)
     if (!SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, 基))) {
         lstrcpynW(基, L"C:\\枪战突击", MAX_PATH * 2);
     }
+    /* 【改成"原地更新"】以前装过就自动换名（枪战突击-2）→ 玩家想更新却装出第二份。
+       现在默认就用同一个目录：装过就是更新（数据保留）；真想装第二份，自己把名字改一改。 */
     _snwprintf(出, 容量 - 1, L"%s\\枪战突击", 基);
-    /* 已经装过 → 默认换个名，玩家也可以自己改回覆盖安装 */
-    WCHAR 试[MAX_PATH * 2];
-    int n = 2;
-    while (n < 50) {
-        _snwprintf(试, MAX_PATH * 2 - 1, L"%s\\枪战客户端.exe", 出);
-        if (GetFileAttributesW(试) == INVALID_FILE_ATTRIBUTES) break;
-        _snwprintf(出, 容量 - 1, L"%s\\枪战突击-%d", 基, n);
-        n++;
-    }
 }
 
 /* 安装主过程（同步跑，文件小，几秒完） */
@@ -367,6 +462,38 @@ static void 执行安装(void)
         return;
     }
     CloseHandle(tf); DeleteFileW(测试文件);
+
+    /* 【版本检测·用户要求】同一个目录里已经装了同一个游戏但版本不同 → 自动按更新处理，
+       并且**明确告诉玩家"只换游戏文件、数据一个都不动"**，让他放心点确认。 */
+    {
+        WCHAR 本次[32] = { 0 }, 已装[32] = { 0 };
+        读内嵌文本("版本.txt", 本次, 32);
+        if (本次[0] && 读已装版本(g_目录, 已装, 32)) {
+            int c = 比版本(本次, 已装);
+            WCHAR 问[900];
+            int r;
+            if (c > 0) {
+                _snwprintf(问, 899,
+                    L"检测到已安装 v%s，这次是更新到 v%s。\n\n"
+                    L"会保留：存档 / 名字 / 金币 / 身份码 / 模组库 / 你自己加的模组。\n"
+                    L"只会替换游戏本体的文件。\n\n现在更新吗？", 已装, 本次);
+                r = MessageBoxW(g_窗, 问, L"枪战突击 · 版本检测", MB_ICONINFORMATION | MB_OKCANCEL);
+                if (r != IDOK) { 显示页(1); return; }
+            } else if (c == 0) {
+                _snwprintf(问, 899,
+                    L"这个目录装的就是 v%s（和安装包同一版）。\n\n"
+                    L"重新安装＝修复损坏或丢失的文件，存档和模组都不会动。\n\n继续吗？", 本次);
+                r = MessageBoxW(g_窗, 问, L"枪战突击 · 版本检测", MB_ICONINFORMATION | MB_OKCANCEL);
+                if (r != IDOK) { 显示页(1); return; }
+            } else {
+                _snwprintf(问, 899,
+                    L"注意：这个目录装的是 v%s，比安装包里的 v%s 更新。\n\n"
+                    L"继续会把游戏本体降级到 v%s（存档、模组等数据不动）。\n\n仍要降级吗？", 已装, 本次, 本次);
+                r = MessageBoxW(g_窗, 问, L"枪战突击 · 版本检测", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+                if (r != IDYES) { 显示页(1); return; }
+            }
+        }
+    }
 
     显示页(2);
     InvalidateRect(g_窗, NULL, TRUE);
@@ -451,8 +578,11 @@ static LRESULT CALLBACK 窗口过程(HWND h, UINT m, WPARAM w, LPARAM l)
         g_页1控件[1] = g_目录框;
         g_浏览钮 = 加按钮(L"浏览…", 2002, x + 388, y + 32, 72, 26);
         g_页1控件[2] = 加静态(
-            L"默认装在本机用户目录下。之前装过的话，这里会自动换个名字（装第二份）；\r\n"
-            L"想覆盖安装就把目录改回原来的。", x, y + 70, 500, 44);
+            L"默认装在本机用户目录下。如果这个目录已经装了旧版本，会原地更新（存档/模组都保留）；\r\n"
+            L"想另外装一份，把目录名改一下就行。", x, y + 70, 500, 44);
+        /* 版本检测结果（选目录后自动刷新） */
+        g_版本行 = 加静态(L"", x, y + 120, 500, 62);
+        g_页1控件[5] = g_版本行;
         g_页1控件[3] = 加按钮(L"开始安装", 2003, 440, 340, 钮宽, 30);
         g_页1控件[4] = 加按钮(L"< 上一步", 2004, 340, 340, 钮宽, 30);
 
@@ -510,9 +640,15 @@ static LRESULT CALLBACK 窗口过程(HWND h, UINT m, WPARAM w, LPARAM l)
                 if (SHGetPathFromIDListW(项, 选)) {
                     lstrcpynW(g_目录, 选, MAX_PATH * 2);
                     SetWindowTextW(g_目录框, g_目录);
+                    刷新版本提示();
                 }
                 CoTaskMemFree(项);
             }
+            return 0;
+        }
+        if (id == 2001 && HIWORD(w) == EN_CHANGE) {                       /* 目录框改了 */
+            GetWindowTextW(g_目录框, g_目录, MAX_PATH * 2);
+            刷新版本提示();
             return 0;
         }
         if (id == 2003) {                                                 /* 开始安装 */

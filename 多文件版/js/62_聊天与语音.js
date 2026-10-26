@@ -28,6 +28,7 @@ var 语音开 = true;                         // 总开关（设置里改）
 var 说中 = false;                          // 我正在说
 var 录音器 = null;
 var 麦流 = null;
+var 取消麦 = 0;                            // 【batch229】开麦取消标记：解决"松手太快关不掉"的竞态
 var 说话者们 = {};                         // id -> {名字, 麦:MediaSource实例...}
 var 帧序号 = 0;
 
@@ -37,7 +38,7 @@ function 取(key){ try{ return localStorage.getItem(key); }catch(e){ return null
 function 颜色Hex(c){ return '#' + (c >>> 0).toString(16).padStart(6, '0'); }
 
 /* ---------------- DOM（全部 JS 建，不动 index.html） ---------------- */
-var 历史框 = null, 输入框 = null, 名单框 = null;
+var 历史框 = null, 输入框 = null, 名单框 = null, 聊天钮 = null, 语音钮 = null;
 
 function 建DOM(){
     if (document.getElementById('chatWrap')) return;
@@ -52,7 +53,15 @@ function 建DOM(){
       '#chatInput:focus{border-color:rgba(120,200,255,.9);}' +
       '#chatTalkers{position:fixed;right:12px;top:64px;z-index:60;display:flex;flex-direction:column;gap:4px;pointer-events:none;}' +
       '#chatTalkers .tk{display:flex;align-items:center;gap:5px;padding:3px 9px;font-size:12px;color:#dff;background:rgba(20,60,80,.72);border:1px solid rgba(90,220,255,.4);border-radius:20px;}' +
-      '#chatTalkers .tk i{width:7px;height:7px;border-radius:50%;background:#4fe37a;box-shadow:0 0 6px #4fe37a;}';
+      '#chatTalkers .tk i{width:7px;height:7px;border-radius:50%;background:#4fe37a;box-shadow:0 0 6px #4fe37a;}' +
+      /* 【batch229】手机端：聊天 + 语音两个触屏按钮（只触屏显示，复用 tbtn 深色风格） */
+      '#chatBtn,#voiceBtn{position:fixed;display:none;z-index:60;align-items:center;justify-content:center;' +
+        'width:56px;height:56px;border-radius:14px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);' +
+        'color:#fff;font-size:13px;font-weight:bold;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}' +
+      '#chatBtn{left:14px;bottom:150px}' +
+      '#voiceBtn{left:14px;bottom:214px}' +
+      '#voiceBtn.on{background:rgba(200,40,40,.72);border-color:rgba(255,140,140,.6);}' +
+      'body.is-touch #chatBtn,body.is-touch #voiceBtn{display:flex}';
     document.head.appendChild(css);
 
     历史框 = document.createElement('div');
@@ -70,6 +79,29 @@ function 建DOM(){
     名单框 = document.createElement('div');
     名单框.id = 'chatTalkers';
     document.body.appendChild(名单框);
+
+    /* 【batch229】手机端聊天 + 语音触屏按钮 */
+    聊天钮 = document.createElement('div');
+    聊天钮.id = 'chatBtn'; 聊天钮.textContent = '💬';
+    聊天钮.addEventListener('touchstart', function(e){
+        e.preventDefault(); e.stopPropagation();
+        if (开) { 关输入(); } else if (S && S.playing) 开输入();
+    }, { passive: false });
+    document.body.appendChild(聊天钮);
+
+    语音钮 = document.createElement('div');
+    语音钮.id = 'voiceBtn'; 语音钮.textContent = '🎙️';
+    语音钮.addEventListener('touchstart', function(e){
+        e.preventDefault(); e.stopPropagation();
+        if (开) { 关输入(); return; }
+        开麦(); 语音钮.classList.add('on');
+    }, { passive: false });
+    语音钮.addEventListener('touchend', function(e){
+        e.preventDefault(); e.stopPropagation();
+        停麦(); 语音钮.classList.remove('on');
+    });
+    语音钮.addEventListener('touchcancel', function(e){ 停麦(); 语音钮.classList.remove('on'); });
+    document.body.appendChild(语音钮);
 
     /* 按键：Enter 开输入框；开着时 WASD 不触发游戏（输入框自己吞） */
     document.addEventListener('keydown', function(e){
@@ -112,12 +144,18 @@ function 开输入(){
     输入框.style.display = 'block';
     输入框.value = '';
     setTimeout(function(){ try{ 输入框.focus(); }catch(e){} }, 0);
+    /* 【batch229】开聊天框要退指针锁（否则鼠标还锁着点不到输入框），但退锁会触发
+       pointerlockchange → openGameMenu 弹暂停菜单。用 window.__聊天退锁 标记，让 22_输入与手势
+       的 pointerlockchange 在这一下跳过 openGameMenu。 */
+    try{ window.__聊天退锁 = 1; }catch(e){}
     try{ if(document.exitPointerLock) document.exitPointerLock(); }catch(e){}
+    setTimeout(function(){ try{ window.__聊天退锁 = 0; }catch(e){} }, 200);
 }
 function 关输入(){
     开 = false;
     输入框.style.display = 'none';
     输入框.blur();
+    /* 关输入框后游戏还在暂停态（指针没锁），不用自动锁回 —— 玩家点一下画面就锁（22 里 mousedown 处理） */
 }
 function 发送(){
     var v = String(输入框.value || '').trim();
@@ -213,7 +251,12 @@ function 开麦(){
         if (typeof showMsg === 'function') showMsg('这个环境不支持麦克风（需要 https 或 localhost）', '#ffd166');
         return;
     }
+    var 代 = ++取消麦;                       // 每次开麦记一个新代次，停麦时取消它
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function(流){
+        /* 【batch229】松手太快：停麦() 早就跑过了（当时 说中 还是 false，没进 stop 逻辑），
+           而 getUserMedia 是异步的，授权/初始化要几十到几百毫秒 —— 等这个回调回来时人已经松手了，
+           如果还往下走就会"开麦了却关不掉"。用取消标记：代次对不上说明已经停麦，直接收流返回。 */
+        if (代 !== 取消麦) { 流.getTracks().forEach(function(t){ t.stop(); }); return; }
         麦流 = 流;
         var 选项 = {};
         if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
@@ -238,6 +281,7 @@ function 开麦(){
         if (typeof netSend === 'function') netSend({ t: 'voice', on: 1 });
         if (typeof showMsg === 'function') showMsg('🎙️ 松开发言完毕（按住 G 说话）', '#6ff0ff');
     }).catch(function(err){
+        if (代 !== 取消麦) return;            // 已经停麦了，别弹错
         var 原因 = '麦克风打不开';
         if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) 原因 = '麦克风权限被拒绝——点地址栏左边的图标允许麦克风';
         else if (err && err.name === 'NotFoundError') 原因 = '没检测到麦克风设备';
@@ -245,6 +289,7 @@ function 开麦(){
     });
 }
 function 停麦(){
+    取消麦++;                                 // 让还没回来的 getUserMedia 回调直接收流返回
     if (!说中) return;
     说中 = false;
     try{ if (录音器 && 录音器.state !== 'inactive') 录音器.stop(); }catch(e){}
@@ -371,12 +416,16 @@ function 初始化(){
 if (document.readyState === 'complete' || document.readyState === 'interactive') 初始化();
 else document.addEventListener('DOMContentLoaded', 初始化);
 
-/* 对外：给模组用 */
+/* 对外：给模组用 / 给探针回归用 */
 window.枪战聊天 = {
   发: function(文){ if (输入框) { 输入框.value = 文; 发送(); } },
   说: function(名, 色, 文){ 加一行(名, 色, 文); },
   开关语音: function(开){ 语音开 = !!开; if (!开) 停麦(); },
-  语音状态: function(){ return 语音开; }
+  语音状态: function(){ return 语音开; },
+  开麦: 开麦,           // 【batch229】暴露给回归探针（内部函数，页面逻辑不受影响）
+  停麦: 停麦,
+  在说: function(){ return 说中; },
+  聊天开着: function(){ return 开; }
 };
 
 })();

@@ -10,6 +10,7 @@
 #
 # 产物：客户端/枪战突击_安装程序.exe（约 3.5MB，含全部游戏文件）
 import os, io, shutil, subprocess, sys
+import datetime
 
 客户端目录 = os.path.dirname(os.path.abspath(__file__))
 游戏目录 = os.path.join(客户端目录, '游戏')
@@ -40,6 +41,24 @@ for 根, 目录们, 文件列表 in os.walk(游戏目录):
         全 = os.path.join(根, f)
         相对 = os.path.relpath(全, 游戏目录).replace('\\', '/')
         收(全, '游戏/' + 相对)
+
+# ④ 版本号（安装器靠它判断「同一个目录里是同一个游戏的哪个版本」→ 自动更新、不动用户数据）
+#    从 js/02 的 GAME_VER 读；读不到就按日期生成，绝不空着。
+import re
+版本 = ''
+try:
+    _源码 = io.open(os.path.join(游戏目录, 'js', '02_状态键位与粒子.js'), encoding='utf-8').read()
+    _m = re.search(r"GAME_VER\s*=\s*'([0-9][0-9A-Za-z.\-]*)'", _源码)
+    if _m:
+        版本 = _m.group(1)
+except Exception:
+    pass
+if not 版本:
+    版本 = datetime.datetime.now().strftime('%Y.%m.%d')
+版本文件 = os.path.join(客户端目录, '_版本_临时.txt')
+io.open(版本文件, 'w', encoding='utf-8', newline='\n').write(版本 + '\n')
+收(版本文件, '版本.txt')
+print('版本号：%s（会随包安装成 <安装目录>\\版本.txt）' % 版本)
 
 assert 文件们, '没找到要打包的文件'
 print('待内嵌文件 %d 个' % len(文件们))

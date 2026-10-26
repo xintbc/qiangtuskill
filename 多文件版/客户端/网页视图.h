@@ -20,6 +20,10 @@
    成功后会自动导航到 index.html。返回 FALSE 表示连内核都没起来（缺运行时）。 */
 BOOL 网页视图_启动(HWND 父窗口, const wchar_t *根目录, const char *服务器地址);
 
+/* 设置初始导航路径（在 网页视图_启动 之前调；默认 L"index.html"）。
+   版本内启动器用它把账号参数拼在 index.html 后面。 */
+void 网页视图_设初始路径(const wchar_t *相对路径);
+
 /* 控件是否已经准备好（导航完成前也可以调，内部会自己等） */
 BOOL 网页视图_就绪(void);
 

@@ -1,5 +1,6 @@
 /* ============================================================================
  * 模组：角色「魅影」—— 隐身 / 瞬闪 / 假人诱饵
+ * 【模组信息】@id phantom　@name 魅影　@ver 1.7.5　@api 2
  * ----------------------------------------------------------------------------
  * 英雄：魅影（暗月 · 突进）
  *   V 隐身     ：8 秒内敌人看不见你（不追、不瞄、不锁、听不见），可自由移动射击
@@ -22,8 +23,14 @@
   'use strict';
   if (window.__phantomModLoaded) return;
   window.__phantomModLoaded = true;
-  if (typeof window.ModLoader === 'undefined') return;
+  var M = window.枪战模组;                    // 统一模组接口（1.7.5 起）
+  if (!M) { console.warn('[魅影] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
   if (typeof window.HEROES === 'undefined') return;
+  var 模组 = M.定义({
+    id: 'phantom', name: '魅影', ver: '1.7.5', author: '官方示例',
+    desc: '暗月 · 突进（隐身 / 瞬闪 / 假人诱饵）'
+  });
+  if (!模组) return;
 
   /* ---------------- 1. 英雄数据 ---------------- */
   var 魅影 = {
@@ -43,7 +50,7 @@
       }
     }
   };
-  ModLoader.addHero(魅影);
+  模组.加英雄(魅影);
 
   /* ---------------- 2. 运行时状态（只属于本模组，不污染游戏） ---------------- */
   var ST = {
@@ -63,7 +70,7 @@
   /* ---------------- 3. 技能效果 ---------------- */
 
   /* V 隐身 */
-  ModLoader.addSkill('phantom_invis', function (i, s, H) {
+  模组.加技能('phantom_invis', function (i, s, H) {
     if (ST.invis > 0) return true;                 // 已隐身：提前退出走 heroCast 包裹
     ST.invis = s.dur || 8;
     try {
@@ -75,13 +82,13 @@
   });
 
   /* N 假人诱饵 */
-  ModLoader.addSkill('phantom_decoy', function (i, s, H) {
+  模组.加技能('phantom_decoy', function (i, s, H) {
     if (ST.decoy) return true;                     // 已有假人：提前取消走 heroCast 包裹
     spawnDecoy(s.dur || 6);
     /* 联机：把假人生成事件广播给同房其他人，让他们也看得见这个假人 */
     try {
-      if (typeof ModLoader !== 'undefined' && ModLoader.heroBroadcast) {
-        ModLoader.heroBroadcast('phantom_decoy', {
+      if (模组) {
+        模组.广播('phantom_decoy', {
           x: camera.position.x, y: camera.position.y, z: camera.position.z,
           dirX: -Math.sin(yaw), dirZ: -Math.cos(yaw), dur: s.dur || 6
         });
@@ -419,9 +426,9 @@
       };
     }
   }
-  ModLoader.onApply(wrapLoopHooks);
+  模组.载入后(wrapLoopHooks);
   /* 退出对局清场：收掉假人、所有远端假人、隐身遮罩（否则回主菜单再开一局会残留） */
-  ModLoader.onFieldClear(function () {
+  模组.清场(function () {
     try { if (ST.invis > 0) { ST.invis = 0; invisOverlayHide(); } } catch (e) { }
     try { if (ST.decoy) removeDecoy(); } catch (e) { }
     try { for (var k in ST_REMOTE) removeRemoteDecoy(k); } catch (e) { }

@@ -249,6 +249,8 @@
   var 已扫描 = [];          // [{名, 大小, 来源:'内置'|'已装', url, _blob, ver, 兼容}]
   var 内置名单 = [];        // 最近一次准备() 拿到的内置清单（去掉扩展名前的原名也存一份）
   var _版本不兼容 = [];     // 【batch229】大版本和游戏对不上的模组（面板里说明，不加载）
+  /* 【batch234】统一接口版本：模组可以在文件头写 `@api 2` 声明按哪版接口写的 */
+  var 模组接口版本 = (typeof window.模组接口版本 === 'number' ? window.模组接口版本 : 2);
 
   function 扫描(内置) {
     var 内 = [], 内集 = {};
@@ -293,6 +295,12 @@
             /MOD_VER\s*=\s*['"]([0-9]+(?:\.[0-9]+){0,2})['"]/.exec(文);
     return m ? (m[1] || m[2]) : '';
   }
+  /* 【batch234】模组按哪版接口写的（没写=1，即老的英文接口，一律放行） */
+  function 抽接口版本(文) {
+    if (!文) return 1;
+    var m = /@api\s+(\d+)/.exec(文) || /MOD_API\s*=\s*(\d+)/.exec(文);
+    return m ? parseInt(m[1], 10) : 1;
+  }
   function 模组兼容(ver) {
     if (!ver) return true;
     var a = String(ver).split('.')[0];
@@ -319,7 +327,9 @@
       return Promise.all(表.map(function (it) {
         return 读模组文本(it).then(function (文) {
           it.ver = 抽模组版本(文);
-          it.兼容 = 模组兼容(it.ver);
+          it.api = 抽接口版本(文);
+          it.兼容 = 模组兼容(it.ver) && it.api <= 模组接口版本;
+          if (it.api > 模组接口版本) it.不兼容原因 = '按接口 v' + it.api + ' 写的，本游戏只到 v' + 模组接口版本;
         });
       })).then(function () {
         for (var i = 0; i < 表.length; i++) {
@@ -333,7 +343,7 @@
           /* 【batch229】大版本不兼容的模组：跳过并记账（面板里会说明原因） */
           if (!it.兼容) {
             跳过.push(it.名);
-            _版本不兼容.push({ 名: it.名, ver: it.ver || '(没声明)' });
+            _版本不兼容.push({ 名: it.名, ver: it.ver || '(没声明)', 原因: it.不兼容原因 || '' });
             continue;
           }
           文件.push({ 名: it.名, url: it.url });
@@ -607,7 +617,13 @@
       : (_后端 === '服务器' ? '💻 服务器的 Mods 文件夹（mode/模组/）—— 网页上只读，由服务器主管理'
         : '💾 浏览器本地模组库（离线模式：双击打开的网页 / 客户端壳子都存这儿）');
     var w = _面板.querySelector('#modWhere');
-    if (w) w.textContent = '存储位置：' + 位置 + (有加载器() ? '' : '　⚠️ 本页面没有模组加载器');
+    if (w) {
+      /* 【batch234】把「这一轮真正登记进来的模组」也写一行（统一接口后每个模组都自报名字/版本） */
+      var 摘要 = '';
+      try { 摘要 = (window.枪战模组 && window.枪战模组.摘要) ? window.枪战模组.摘要() : ''; } catch (e) { }
+      w.textContent = '存储位置：' + 位置 + (有加载器() ? '' : '　⚠️ 本页面没有模组加载器')
+        + (摘要 ? '　·　已登记：' + 摘要 : '');
+    }
 
     var 表 = 已扫描;
     if (!表.length) {
@@ -640,9 +656,13 @@
       if (it.已删) 标签 += ' <span style="color:#f88">已删除</span>';
       else if (启用) 标签 += ' <span style="color:#6f6">● 启用中</span>';
       else 标签 += ' <span style="color:#999">' + (可管 ? '○ 已关闭' : '○ 服务器未启用') + '</span>';
-      /* 【batch229】版本徽章：声明了 @ver 的显示版本号；大版本和游戏对不上的标红说明 */
+      /* 【batch229】版本徽章：声明了 @ver 的显示版本号；【batch234】再显示接口版本 */
       if (it.ver) 标签 += ' <span style="color:' + (it.兼容 === false ? '#f88' : '#9cf') + '">v' + 转义(it.ver) + '</span>';
-      if (it.兼容 === false) 标签 += ' <span style="color:#f88">⛔ 版本不兼容（要 ' + (typeof GAME_VER !== 'undefined' ? GAME_VER : '?') + ' 的大版本）</span>';
+      if (it.api) 标签 += ' <span style="color:#889">接口 v' + it.api + '</span>';
+      if (it.兼容 === false) {
+        标签 += ' <span style="color:#f88">⛔ ' + 转义(it.不兼容原因 ||
+          ('版本不兼容（要 ' + (typeof GAME_VER !== 'undefined' ? GAME_VER : '?') + ' 的大版本）')) + '</span>';
+      }
       行.push(
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,.09)">' +
         '<div style="flex:1;min-width:0">' +

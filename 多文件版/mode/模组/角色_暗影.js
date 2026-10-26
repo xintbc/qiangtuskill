@@ -1,5 +1,18 @@
+/* ============================================================================
+ * 模组：角色「暗影」—— 时空术士 · 黑洞 / 传送 / 时间凝滞
+ * 【模组信息】@id shadow_yanyue　@name 暗影　@ver 1.7.5　@api 2
+ * ========================================================================== */
 (function(){
   console.log('[暗影模组] 加载开始（原版投掷手感版 v3）');
+
+  /* 【1.7.5】统一模组接口：没它就说明游戏版本太老，直接跳过（别用半套老接口硬跑） */
+  var M = window.枪战模组;
+  if (!M) { console.warn('[暗影] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
+  var 模组 = M.定义({
+    id: 'shadow_yanyue', name: '暗影', ver: '1.7.5', author: '官方示例',
+    desc: '暗月 · 时空术士（奇点黑洞 / 空间裂隙 / 时间凝滞）'
+  });
+  if (!模组) return;
 
   var hero_anYing = {
     k:'shadow_yanyue',
@@ -144,7 +157,7 @@
     }catch(err){ console.log('[暗影] 时间暂停初始化出错', err); }
     /* 联机：把时间凝滞事件广播给同房其他人（远端只复现可见特效：clock 冲击 + 屏幕提示；
        注意：真人对玩家的“静止”需要服务端权威，模组暂只做视觉，不锁真人移动） */
-    try{ if (window.ModLoader && ModLoader.heroBroadcast) ModLoader.heroBroadcast('custom_timestop_all', { x: camera.position.x, y: camera.position.y, z: camera.position.z, dur: (s && s.dur) ? s.dur : 10 }); }catch(e){}
+    try{ if (模组) 模组.广播('custom_timestop_all', { x: camera.position.x, y: camera.position.y, z: camera.position.z, dur: (s && s.dur) ? s.dur : 10 }); }catch(e){}
     return true;
   }
 
@@ -423,7 +436,7 @@
           shadow.holes.push({x:pp.x,z:pp.z,y:(_holeY||0),end:Date.now()+_dur*1000,obj:_obj});
           try{ projRemove(pp,false); }catch(e){}
           /* 联机：让同房其他人也看到这个黑洞（远端只复现视觉，伤害由释放者走服务端 t:'hit'） */
-          try{ if(window.ModLoader && ModLoader.heroBroadcast) ModLoader.heroBroadcast('custom_blackhole_throw', {x:pp.x, y:(_holeY||0), z:pp.z, dur:_dur}); }catch(e2){}
+          try{ if (模组) 模组.广播('custom_blackhole_throw', {x:pp.x, y:(_holeY||0), z:pp.z, dur:_dur}); }catch(e2){}
         };
       } else {
         opt.onLand = function(pp){
@@ -435,7 +448,7 @@
           }catch(e){}
           try{ projRemove(pp); }catch(e){}
           /* 联机：让同房其他人也看到传送标记 */
-          try{ if(window.ModLoader && ModLoader.heroBroadcast) ModLoader.heroBroadcast('custom_portal_throw', {x:pp.x, y:pp.y, z:pp.z}); }catch(e2){}
+          try{ if (模组) 模组.广播('custom_portal_throw', {x:pp.x, y:pp.y, z:pp.z}); }catch(e2){}
         };
       }
       try{
@@ -491,40 +504,26 @@
     }
   }catch(e){ console.log('[暗影模组] HOLD_POSE 注册失败(不致命)',e); }
 
-  /* ③ CUSTOM_SKILLS 注册：空间裂隙（传送分流）+ 时间凝滞。
+  /* ③ 技能注册：空间裂隙（传送分流）+ 时间凝滞。
      奇点黑洞不注册 —— 全靠原版投掷流程。 */
   try{
-    if (window.ModLoader && typeof ModLoader.addSkill==='function'){
-      ModLoader.addSkill('custom_portal_throw', castPortal);
-      ModLoader.addSkill('custom_timestop_all', castTimeStop);
-      console.log('[暗影模组] 空间裂隙(传送分流)/时间凝滞 已注册');
-    } else {
-      if (typeof CUSTOM_SKILLS==='object'){
-        CUSTOM_SKILLS['custom_portal_throw']=castPortal;
-        CUSTOM_SKILLS['custom_timestop_all']=castTimeStop;
-      }
-    }
+    模组.加技能('custom_portal_throw', castPortal);
+    模组.加技能('custom_timestop_all', castTimeStop);
+    console.log('[暗影模组] 空间裂隙(传送分流)/时间凝滞 已注册');
   }catch(e){ console.log('[暗影模组] 注册技能出错',e); }
 
-  if (window.ModLoader && typeof ModLoader.onApply==='function'){
-    ModLoader.onApply(function(){
-      console.log('[暗影模组] onApply 执行');
-      try{
-        if (typeof ModLoader.addHero==='function') ModLoader.addHero(hero_anYing);
-        else if (window.HEROES) HEROES.push(hero_anYing);
-      }catch(e){ console.log('[暗影模组] 注册英雄出错',e); }
-      shadow.lastT = performance.now();
-      requestAnimationFrame(frame);
-    });
-  } else {
-    try{ HEROES.push(hero_anYing); }catch(e){}
+  /* 英雄要等全部模组载入完再登记（载入后回调），否则可能被后面载入的模组覆盖界面 */
+  模组.载入后(function(){
+    console.log('[暗影模组] 载入后执行');
+    try{ 模组.加英雄(hero_anYing); }
+    catch(e){ console.log('[暗影模组] 注册英雄出错',e); }
     shadow.lastT = performance.now();
     requestAnimationFrame(frame);
-  }
+  });
+
   console.log('[暗影模组] 加载完成');
   /* 退出对局清场：收掉场上黑洞、结束时间凝滞并恢复敌人速度（否则回主菜单再开一局会残留） */
-  if (window.ModLoader && typeof ModLoader.onFieldClear === 'function') {
-    ModLoader.onFieldClear(function () {
+  模组.清场(function () {
       try {
         for (var i = shadow.holes.length - 1; i >= 0; i--) {
           var h = shadow.holes[i];
@@ -540,6 +539,5 @@
           if (e && !e.isNet && e._savedSpd !== undefined) { e.spd = e._savedSpd; delete e._savedSpd; }
         }
       } catch (e) { }
-    });
-  }
+  });
 })();

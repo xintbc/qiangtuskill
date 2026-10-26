@@ -184,6 +184,14 @@ function netConnect(){
     if(NET.replaced){netClearPlayers();return;}             // 已被服务端明确拒绝（封禁/满员/重名）：不再重连
     if(!netIsMulti()){netClearPlayers();return;}
     NET.retry++;NET.reconn++;
+    /* 【batch231】连续 10 次都连不上就停下来 —— 玩家看到的是"一直重连"转圈，
+       以为游戏卡死（主人实测反馈）。停下来给一句明确提示，让他点「多人游戏」重试或改地址。 */
+    if(NET.retry>10){
+      NET.enabled=false;NET.reconnecting=false;NET.connected=false;
+      netClearPlayers();
+      showMsg('连不上 '+(NET.server||'服务器')+'，已停止自动重连。点「多人游戏」可以再试或换个地址。','#f66');
+      return;
+    }
     var wait=netRetryDelay(NET.retry);
     NET.lastWait=wait;                                      // 记下这次要等多久（HUD/排查都用得上）
     var why=netCloseWhy(NET.closeCode);
@@ -243,6 +251,11 @@ function netAutoMode(){
     /* 【batch225】客户端壳子把本地目录映射成 https://game.example/ —— 它是 http 源，
        但**没有任何服务器**。不排掉的话，壳子里一打开就去连 game.example/ws，永远连不上。 */
     if(String(location.host||'')==='game.example')return false;
+    /* 【batch231】电脑客户端改成内置 http://127.0.0.1:端口 之后，光排 game.example 不够了：
+       127.0.0.1:39002 长得像"服务器页面"，于是被当成对战服务器 → 页面去连自己的静态服务
+       → ws://127.0.0.1:39002/ws 404 → 无限重连（主人实测："点多人游戏一直重连"）。
+       客户端壳子由 __inClient 标记，直接排除。 */
+    if(window.__inClient)return false;
     return (location.protocol==='http:'||location.protocol==='https:')&&!/[?&]solo=1/.test(location.search||'')&&!(typeof rangeMode==='function'&&rangeMode())   /* 【batch180】靶场：强制单人，绝不自动联机 */;
   }catch(e){return false;}
 }
@@ -304,6 +317,18 @@ function netPlayMulti(v){
       return;
     }
   }
+  /* 【batch231】电脑客户端：页面跑在客户端内置的 http://127.0.0.1:端口（只是读游戏文件的
+     静态服务，**不是对战服务器**）。对战服务器地址来自客户端注入的 gunGame.netServer.v1
+     （本机 8765 探测到的，或玩家上次填的）→ 直接自动连它。
+     ⚠️ 必须排在 netAutoMode 前面：否则会被当成"服务器页面"，server 被改成 location.host
+        （= 内置静态服务自己）→ 连自己 → 404 → 无限重连。 */
+  try{
+    if(window.__inClient && NET.server && !单人){
+      NET.enabled=true; NET._autoStart=1;
+      NET.secure=netSecureOf(NET.raw||NET.server);
+      return;
+    }
+  }catch(e){}
   if(netAutoMode()){NET.enabled=true;NET.server=netHostFromPage();NET.secure=(location.protocol==='https:');return;}
 })();
 (function netUIInit(){

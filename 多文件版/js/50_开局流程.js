@@ -75,6 +75,30 @@ function playerCodeSave(c){
   if(typeof refreshMyIdLine==='function')refreshMyIdLine();
 }
 function netMyCode(){return _playerCode||'';}
+/* ==================== 【batch230】启动器账号注入 ====================
+   启动器（PCL 枪战突击修改版）里管着一份账号表；启动某个版本时把选中的账号拼进 URL：
+     index.html?pclname=名字&pclcode=身份码&pclcid=客户端ID
+   这里读出来写进 localStorage —— 于是"启动器一份账号，所有版本共用"。
+   注意：只在**带了参数**时才写；不带的普通打开绝不动玩家现有账号。 */
+(function 启动器账号注入(){
+  var q='';
+  try{ q=String(location.search||''); }catch(e){ return; }
+  if(q.indexOf('pcl')<0) return;                 // 完全没带启动器参数：什么都不做
+  function 取(k){
+    var m=new RegExp('[?&]'+k+'=([^&]*)').exec(q);
+    if(!m) return '';
+    try{ return decodeURIComponent(m[1]); }catch(e2){ return m[1]; }
+  }
+  var 名=取('pclname'), 码=取('pclcode'), cid=取('pclcid');
+  try{
+    if(名) localStorage.setItem(PLAYER_NAME_KEY, nameEnc(String(名).trim().slice(0,8)));
+    if(码) localStorage.setItem(PLAYER_CODE_KEY, nameEnc(playerCodeNormalize(码)));
+    if(cid) localStorage.setItem('gunGame.clientId.v1', String(cid).slice(0,40));
+  }catch(e){}
+  /* 写进仓库后要把内存里的也刷一遍（playerNameLoad/playerCodeLoad 可能在这之前已经跑过） */
+  try{ if(typeof playerNameLoad==='function') playerNameLoad(); }catch(e3){}
+  try{ if(typeof playerCodeLoad==='function') playerCodeLoad(); }catch(e4){}
+})();
 // 主菜单那行「我的名字 · 身份码」
 function refreshMyIdLine(){
   var el=document.getElementById('myIdLine');if(!el)return;

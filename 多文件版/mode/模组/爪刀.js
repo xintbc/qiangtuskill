@@ -1,4 +1,5 @@
 /* ============================================================================
+ * 【模组信息】@id knife_claw　@name 爪刀　@ver 1.7.5　@api 2
  *  示例模组：爪刀（作者演示用）  【batch184d·#103/#104/#106 + batch184e 模型重做】
  *  ----------------------------------------------------------------------------
  *  · ModLoader.addKnife 注册一把新刀（进 B 菜单近战区，可单独选中切换）
@@ -8,8 +9,10 @@
  * ========================================================================== */
 (function () {
   'use strict';
-  if (!window.ModLoader) { console.warn('[爪刀] ModLoader 未就绪，跳过注册'); return; }
-  var ML = window.ModLoader;
+  var M = window.枪战模组;
+  if (!M) { console.warn('[爪刀] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
+  var 模组 = M.定义({ id: 'knife_claw', name: '爪刀', ver: '1.7.5', author: '官方示例', desc: '弯爪 · 横扫动作 + 自定义握持' });
+  if (!模组) return;
   var THREE = window.THREE;
 
   function box(w, h, d, mat, x, y, z) {
@@ -73,7 +76,7 @@
     }
   }
 
-  ML.addKnife({
+  模组.加刀({
     id: 'claw',
     name: '爪刀',
     icon: '🗡️',

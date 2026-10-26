@@ -6,6 +6,7 @@
 多文件版/客户端/启动日志.txt
 多文件版/手机版安卓/app/src/main/assets/
 多文件版/手机版安卓/output/
+多文件版/手机版安卓/构建/
 多文件版/手机版安卓/*.apk
 多文件版/手机版安卓/*.idsig
 *.keystore
@@ -15,3 +16,9 @@ local.properties
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 运行时数据（每人本地不同，不进仓库）
+多文件版/名字库.dat
+多文件版/名字库.dat.bak
+多文件版/实际端口.txt
+多文件版/公网地址.txt

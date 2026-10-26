@@ -12,8 +12,10 @@
    · SRV_VER     ＝ 这个服务器自己的版本号（开局日志会打出来）
    · SRV_VER_MIN ＝ 客户端最低可进版本（大版本升级后，老客户端连上也被拒，并收到明确提示）
    规则：major 不同 → 拒；客户端 < SRV_VER_MIN → 拒；同 major 且 >= min → 放行。
-   改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。 */
-const SRV_VER = '1.7.0';
+   改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
+   【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
+   1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
+const SRV_VER = '1.7.5';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -415,9 +417,16 @@ function wsParser(onMsg, onClose, onBin) {
       if (masked) { if (buf.length < off + 4) return; }
       const maskKey = masked ? buf.slice(off, off + 4) : null;
       if (masked) off += 4;
-      if (len > FLOOD.MSG_BYTES) {     // 防挤爆：超大包直接断开（否则 Buffer 会被撑爆）
+      /* 【batch229】超大包判定要区分帧类型：
+         · 文本帧（op=0x1）＝控制消息，4096 字节足够，超了是异常 → 断开
+         · 二进制帧（op=0x2）＝语音音频切片，100ms 的 opus 偶尔会到 8~16KB，属正常；
+           超过 VOICE_MAX_BYTES 才判异常断开。之前用同一个 MSG_BYTES(4096) 卡语音，
+           开麦时音频一超 4KB 就被当"超大包"踢下线 —— 这是"限流踢开麦玩家"的根因。 */
+      const 是语音 = (op === 0x2);
+      const 上限 = 是语音 ? FLOOD.VOICE_MAX_BYTES : FLOOD.MSG_BYTES;
+      if (len > 上限) {
         fStat.bytes++;
-        logThrottled('bytes', '⛔ 防挤爆：收到 ' + len + ' 字节的超大消息，已断开该连接');
+        logThrottled('bytes', '⛔ 防挤爆：收到 ' + len + ' 字节的超大' + (是语音 ? '语音' : '消息') + '，已断开该连接');
         onClose(); return;
       }
       if (buf.length < off + len) return;
@@ -577,6 +586,25 @@ const MEDIC_HEAL_MUL = 1.5;    // 白泽被动：受到的治疗 +50%
 const MEDIC_SMOKE_MUL = 1.5;   // 白泽身处烟雾中：治疗再 +50%（乘算）
 const SMOKE_LIFE_MS = 14000;   // 烟团存活（毫秒）：服务端据此判断"谁在烟里"（客户端 SMOKE_LIFE=14 秒）
 const smokeZones = [];         // 正在生效的烟团 {x,z,r,until} —— 服务端只知道"哪里在冒烟"
+
+/* ============================================================================
+   【batch233】场景持久效果 · 唯一规约表
+   ----------------------------------------------------------------------------
+   以前"哪些效果要留给后进的玩家"散落在 handleBoom 的一堆 if 里，
+   而且和 worldEnts 那套（spzone / portal / trap）各写一遍 → 谁漏了就没人知道。
+   现在集中到这张表：key = k + '|' + s，值 = 这个效果在场上活多久（毫秒）。
+     · 在表里 → 广播后自动登记进 worldEnts，晚进玩家进场时按剩余时间重放
+     · 不在表里 → 瞬发特效（闪光、爆炸、落雷…），只播一次，不需要补发
+   以后加新技能：只要效果是"留在场上"的，来这里加一行就行。
+   ============================================================================ */
+const 场景持久效果 = {
+  'guard|1':     { life: SMOKE_LIFE_MS },     // 镇岳 · 烟雾弹（挡视线）
+  'medic|2':     { life: SMOKE_LIFE_MS },     // 白泽 · 治疗烟雾（烟中治疗加成）
+  'yingyue|0':   { life: SMOKE_LIFE_MS },     // 影月 · 暗影烟雾（紫烟）
+  'eclipse|0':   { life: SOLAR_LIFE_MS },     // 蚀日 · 黑日（致盲区）
+  'lightning|0': { life: ORB_LIFE_MS },       // 闪电 · 球形闪电（电区）
+  'yingyue|1':   { life: SHADOW_LIFE_MS },    // 影月 · 暗影炸弹（毒圈）
+};
 /* 某个坐标是否在烟里（白泽"烟中治疗加成"判定用） */
 function inSmokeSrv(x, z, mapId) {
   const now = Date.now();
@@ -590,7 +618,16 @@ function inSmokeSrv(x, z, mapId) {
   }
   return false;
 }
-function pushSmokeSrv(x, z, mapId) { smokeZones.push({ x: x, z: z, r: SMOKE_R, until: Date.now() + SMOKE_LIFE_MS, map: normMapId(mapId) }); }
+/* 【batch232】kind 记住这是哪种烟（guard 普通 / medic 治疗 / yingyue 暗影）——
+   后进来的玩家要靠它建出**对的颜色**，不能一律当普通烟。y＝那层的高度（可选）。 */
+function pushSmokeSrv(x, z, mapId, kind, y) {
+  smokeZones.push({
+    x: x, z: z, r: SMOKE_R, until: Date.now() + SMOKE_LIFE_MS,
+    map: normMapId(mapId), kind: kind || 'guard',
+    y: (typeof y === 'number' ? y : undefined)
+  });
+}
+
 /* 某个玩家"吃到治疗"时的倍率：只有白泽有增益，且烟中再 ×1.5（和客户端 heroHealMul 同口径） */
 function healMulFor(p) {
   if (!p || p.hero !== HERO_MEDIC) return 1;
@@ -754,7 +791,8 @@ const FLOOD = {
   COOL_MS: 20000,           // 触发阈值 → 该 IP 冷却这么久（到期自动解除）
   HELLO_MS: 8000,           // 连上后多久必须进场，否则断开（防"占着坑不说话"）
   MSG_PER_SEC: 150,         // 单连接每秒消息上限（客户端正常约 31 条/秒）
-  MSG_BYTES: 4096,          // 单条消息字节上限（防超大包打爆内存）
+  MSG_BYTES: 4096,          // 单条**文本**消息字节上限（防超大包打爆内存）
+  VOICE_MAX_BYTES: 32768,   // 【batch229】单条**语音**二进制帧字节上限（100ms opus 正常到 8~16KB，留 32KB 余量）
   HTTP_PER_WIN: 60,         // 同一 IP 每 10 秒最多请求网页几次
   HTTP_PER_WIN_PROXY: 400,
   MAX_BUFFER: 512 * 1024,   // 单连接待发字节上限：超了就跳过这一帧（丢帧不丢连接）
@@ -1485,7 +1523,11 @@ function joinPlayer(sock, name, cid, code, mapId, clear, ecl, mode, room, teamWa
       players.forEach(function (q) { if (q.id !== oid && mapOf(q) === mapOf(op)) others0.push(publicInfo(q)); });   // 【batch166】只报同房间（房间钥匙）的人
       sendTo(op, { t: 'welcome', i: oid, n: op.name, x: op.x, y: op.y, z: op.z, hp: op.hp, maxHp: MAX_HP, ps: others0, code: op.codeId || '', map: op.map, mode: op.mode || '', room: op.room || '', unlocks: op.unlocks || unlockOf(op.name) });   /* 【batch168】map＝房间地图 */   // 【batch126】剧情解锁；【batch166】mode/room＝所在玩法模式与自建房号
       /* 【batch184f-补4】首连即在火车站：服务端起权威列车 + 下发当前地图状态（晚进者可见） */
-      if (op.map === 'station') { ensureRoomTrain(mapOf(op)); sendWorldInit(op); }
+      /* 【batch232】★ 以前这里写成 if (op.map === 'station') —— 只有火车站才补发世界实体，
+         别的图（classic 等）晚进的玩家**什么都收不到**（用户："服务器好多都是没法给后进的玩家的"）。
+         现在：列车只有 station 需要，实体快照**所有地图都发**。 */
+      if (op.map === 'station') ensureRoomTrain(mapOf(op));
+      sendWorldInit(op);
       log('玩家重连：' + op.code + ' ' + op.name + '（沿用 ' + op.code + '，第 ' + op.reconn + ' 次重连，当前 ' + onlineCount() + '/' + MAX_PLAYERS + ' 人）');
       return op;
     }
@@ -1546,7 +1588,9 @@ function joinPlayer(sock, name, cid, code, mapId, clear, ecl, mode, room, teamWa
      现在发**房间的图**（p.map，已被强制成房主那张）。 */
   sendTo(p, { t: 'welcome', i: p.id, n: p.name, x: p.x, y: p.y, z: p.z, hp: MAX_HP, maxHp: MAX_HP, ps: others, code: p.codeId || '', map: p.map, mode: jm, room: jr, unlocks: p.unlocks || {} });   // 【batch126】；【batch166】mode/room；【batch168】map＝房间地图
   /* 【batch184f-补4】首连即在火车站：服务端起权威列车 + 下发当前地图状态（晚进者可见） */
-  if (p.map === 'station') { ensureRoomTrain(mapOf(p)); sendWorldInit(p); }
+  /* 【batch232】同上：所有地图都要补发现存实体（烟 / 技能区域 / 门 / 陷阱） */
+  if (p.map === 'station') ensureRoomTrain(mapOf(p));
+  sendWorldInit(p);
   broadcast({ t: 'new', p: publicInfo(p), x: p.x, z: p.z }, p.id, mapOf(p));   // 【batch166】只通知同房间
   pushRooms();
   log('玩家进入：' + p.code + ' ' + p.name + '（地图「' + mapNameOf(mid) + '」当前 '
@@ -1725,10 +1769,10 @@ function handleBoom(from, msg) {
         if (dx * dx + dz * dz > SMOKE_R * SMOKE_R) return;
         sendTo(q, { t: 'unslow' });
       });
-      pushSmokeSrv(x, z, mapOf(from));                                      // batch100：治疗烟雾也记进服务端烟团（白泽"烟中治疗加成"要用）
+      pushSmokeSrv(x, z, mapOf(from), 'medic', (typeof msg.y === 'number' ? msg.y : undefined));   // batch232：记类型，后进来的玩家才建得出治疗烟的颜色
     }
   } else if (k === 'guard') {                                  // ②烟雾弹（batch92）：落地冒烟（只记位置，给白泽"烟中治疗加成"判定用）
-    if (s === 1) pushSmokeSrv(x, z, mapOf(from));
+    if (s === 1) pushSmokeSrv(x, z, mapOf(from), 'guard', (typeof msg.y === 'number' ? msg.y : undefined));
   } else if (k === 'eclipse') {
     if (s === 0) {                                             // ①蚀日：黑日落地 → 登记一段时间，之后由 eclipseTick 周期脉冲致盲
       eclipseZones.push({ x: x, z: z, until: Date.now() + SOLAR_LIFE_MS, next: Date.now() + 120, map: mapOf(from), by: from.id });
@@ -1773,7 +1817,10 @@ function handleBoom(from, msg) {
         map: mapOf(from), by: from.id
       });
     }
-    // ①暗影烟雾弹＝挡视线（客户端本地结算）；③遁入暗影＝无敌（走位置包 gh 标记 → ghostUntil），服务端无需登记
+    // ①暗影烟雾弹＝挡视线：以前"客户端本地结算"→ 服务端没记录，后进来的玩家完全看不到紫烟。
+    //   现在登记进 smokeZones（kind='yingyue'），join 时会补发。
+    if (s === 0) pushSmokeSrv(x, z, mapOf(from), 'yingyue', (typeof msg.y === 'number' ? msg.y : undefined));
+    // ③遁入暗影＝无敌（走位置包 gh 标记 → ghostUntil），服务端无需登记
   }
   /* 【batch135】把引爆点高度 y 也中继出去：撞墙 / 空中引爆时，别人那边要在**那个高度**播特效
      （原来只发 x,z，别人一律按 0.6~0.9 的地面高度播 → 二楼的烟在一楼冒）。
@@ -1786,6 +1833,14 @@ function handleBoom(from, msg) {
     boomMsg.nx = +msg.nx || 0; boomMsg.ny = (msg.ny === undefined ? 1 : +msg.ny || 0); boomMsg.nz = +msg.nz || 0;
   }
   broadcast(boomMsg, from.id, mapOf(from));   // 其他人播引爆特效（带 s：手雷/烟/急救箱各不同）
+
+  /* 【batch233】持久效果统一登记：查表 → 登记进 worldEnts（晚进玩家进场时由 sendWorldInit 重放）。
+     直接拿**刚广播出去的报文**做快照，所以后进来的人看到的和别人当时看到的逐字段一致。 */
+  const 规约 = 场景持久效果[k + '|' + s];
+  if (规约) {
+    const 快照 = Object.assign({}, boomMsg, { left: 规约.life });
+    recordWorldEnt(mapOf(from), 'boom', 快照, 规约.life);
+  }
 }
 function handleSkill(from, msg) {
   const k = String(msg.k || '');
@@ -2165,7 +2220,7 @@ function handleMsg(sock, raw) {
     broadcast({ t: 'new', p: publicInfo(p), x: p.x, z: p.z }, p.id, mapOf(p));   // 【batch166】按房间钥匙广播
     /* 【batch184f-补4】进/换到火车站：服务端起一列权威列车，并把当前地图状态（列车+实体）下发给刚进的人 */
     if (mid === 'station') ensureRoomTrain(mapOf(p));
-    if (mid === 'station') sendWorldInit(p);
+    sendWorldInit(p);        /* 【batch232】换图后同样要补发世界实体（以前只有 station 发） */
     pushRooms();
     log('换地图：' + (p.code || '') + ' ' + p.name + ' → 「' + mapNameOf(mid) + '」');
   } else if (m.t === 'spOv') {                      // 【batch172】蜂鸟无人机过载：命中远端玩家 → 一段时间无法开枪（只能近战）
@@ -2834,7 +2889,9 @@ function sendWorldInit(p) {                          // 晚进者进房：把当
       if (ents[i].until <= now) continue;
       try {
         const m2 = JSON.parse(JSON.stringify(ents[i].msg));
-        if (typeof m2.dur === 'number') m2.dur = Math.max(200, ents[i].until - now);  // 按剩余时间重发，客户端自毁
+        const 剩 = Math.max(200, ents[i].until - now);      // 按剩余时间重发，客户端自毁
+        if (typeof m2.dur === 'number') m2.dur = 剩;        // spzone / portal：时长字段叫 dur
+        if (typeof m2.left === 'number') m2.left = 剩;      // 【batch233】boom 类持久效果：字段叫 left
         sendTo(p, m2);
       } catch (e) { }
     }
@@ -3268,7 +3325,9 @@ server.on('upgrade', function (req, socket) {
   /* 【batch228】语音：二进制帧 = [4 字节说话人玩家 id][音频数据]，原样转给同房其他人 */
   const onBin = function (payload) {
     try {
-      if (!payload || payload.length < 5 || payload.length > 4096) return;   // 小包防挤爆
+      /* 【batch229】语音帧上限放宽到 32KB：100ms 的 opus 切片偶尔超 4KB，之前用 4096 卡
+         会把正常语音帧当"小包防挤爆"直接丢掉（或更早被 wsParser 断开）。 */
+      if (!payload || payload.length < 5 || payload.length > FLOOD.VOICE_MAX_BYTES) return;
       const from = players.get(socket._pid | 0);
       if (!from || from.stale || !from.alive) return;
       /* ⚠️ 别按 room 过滤发送方：原版模式根本没有房号（room=''），

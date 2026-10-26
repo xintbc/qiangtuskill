@@ -3216,7 +3216,11 @@ function updateLeftHand(dt){
    服务器启动时会校验这个号：major 不同或版本低于服务器下限 → 连不上也进不去，
    并弹明确提示（在哪看到的：join 时带上 v，服务端比对，不符发 bye why:'ver'）。
    改版本号的规矩：小修 patch+1；上功能 minor+1 且 patch 归 0；动协议/存档 major+1 且其余归 0。 */
-var GAME_VER='1.7.0';
+var GAME_VER='1.7.5';
+/* 【batch234】模组接口版本：1=老的英文接口（ModLoader.addHero…），
+   2=1.7.5 起的统一中文接口（window.枪战模组）。模组文件头写 `@api 2` 声明自己按哪版写的。
+   加接口（新增一类"能加的东西"）动小版本，改已有接口的参数/语义才动这个数。 */
+var 模组接口版本=2;
 var MAX_PARTICLES=80,MINIMAP_INTERVAL=5,SEP_DIST=2.0,SEP_FORCE=0.03,WALL_DIST=3.0,WALL_FORCE=0.10,WALL_TANGENT=0.16,BASE_SPEED=0.10,BOB_STRIDE=2.1,GRAVITY=0.015,JUMP_FORCE=0.28,GROUND_Y=2.0,WORLD_LIMIT=76,VIEW_RANGE=60,FOV_HALF_COS=Math.cos(117*Math.PI/360),LEAN_ROLL=0.30;
 /* ==================== 【batch180】靶场（range）====================
    独立于「原版对战」「爆能器」的**第三种模式**，**仅单人**：不联机、不刷敌人，
@@ -7348,6 +7352,9 @@ document.addEventListener('pointerlockchange',function(){
     // 暂停菜单，玩家就"卡在界面里"（点继续也不是、点浮层也不是），而且因为浮层 z-index 低于 blocker，面板会被遮住看不见。
     // 全屏浮层（商店 / 结算 / 武器选择）开着时不弹暂停菜单，交给它自己的按钮收尾。
     if(overlayOpen()||weaponSelectOpen())return;
+    /* 【batch229】开聊天框主动退锁也会走到这：别把聊天误判成"玩家按 Esc 暂停"，
+       否则一按 Enter 聊天就弹暂停菜单。聊天退锁由 62 用 window.__聊天退锁 标记。 */
+    try{ if(window.__聊天退锁) return; }catch(e){}
     openGameMenu();
   }
 });
@@ -10145,6 +10152,14 @@ function netConnect(){
     if(NET.replaced){netClearPlayers();return;}             // 已被服务端明确拒绝（封禁/满员/重名）：不再重连
     if(!netIsMulti()){netClearPlayers();return;}
     NET.retry++;NET.reconn++;
+    /* 【batch231】连续 10 次都连不上就停下来 —— 玩家看到的是"一直重连"转圈，
+       以为游戏卡死（主人实测反馈）。停下来给一句明确提示，让他点「多人游戏」重试或改地址。 */
+    if(NET.retry>10){
+      NET.enabled=false;NET.reconnecting=false;NET.connected=false;
+      netClearPlayers();
+      showMsg('连不上 '+(NET.server||'服务器')+'，已停止自动重连。点「多人游戏」可以再试或换个地址。','#f66');
+      return;
+    }
     var wait=netRetryDelay(NET.retry);
     NET.lastWait=wait;                                      // 记下这次要等多久（HUD/排查都用得上）
     var why=netCloseWhy(NET.closeCode);
@@ -10204,6 +10219,11 @@ function netAutoMode(){
     /* 【batch225】客户端壳子把本地目录映射成 https://game.example/ —— 它是 http 源，
        但**没有任何服务器**。不排掉的话，壳子里一打开就去连 game.example/ws，永远连不上。 */
     if(String(location.host||'')==='game.example')return false;
+    /* 【batch231】电脑客户端改成内置 http://127.0.0.1:端口 之后，光排 game.example 不够了：
+       127.0.0.1:39002 长得像"服务器页面"，于是被当成对战服务器 → 页面去连自己的静态服务
+       → ws://127.0.0.1:39002/ws 404 → 无限重连（主人实测："点多人游戏一直重连"）。
+       客户端壳子由 __inClient 标记，直接排除。 */
+    if(window.__inClient)return false;
     return (location.protocol==='http:'||location.protocol==='https:')&&!/[?&]solo=1/.test(location.search||'')&&!(typeof rangeMode==='function'&&rangeMode())   /* 【batch180】靶场：强制单人，绝不自动联机 */;
   }catch(e){return false;}
 }
@@ -10265,6 +10285,18 @@ function netPlayMulti(v){
       return;
     }
   }
+  /* 【batch231】电脑客户端：页面跑在客户端内置的 http://127.0.0.1:端口（只是读游戏文件的
+     静态服务，**不是对战服务器**）。对战服务器地址来自客户端注入的 gunGame.netServer.v1
+     （本机 8765 探测到的，或玩家上次填的）→ 直接自动连它。
+     ⚠️ 必须排在 netAutoMode 前面：否则会被当成"服务器页面"，server 被改成 location.host
+        （= 内置静态服务自己）→ 连自己 → 404 → 无限重连。 */
+  try{
+    if(window.__inClient && NET.server && !单人){
+      NET.enabled=true; NET._autoStart=1;
+      NET.secure=netSecureOf(NET.raw||NET.server);
+      return;
+    }
+  }catch(e){}
   if(netAutoMode()){NET.enabled=true;NET.server=netHostFromPage();NET.secure=(location.protocol==='https:');return;}
 })();
 (function netUIInit(){
@@ -15807,6 +15839,9 @@ function heroRemoteThrow(e,kind,s,th){
 /* 联机：别人的投掷物引爆 → 在引爆点播特效（谁被致盲 / 谁回血由服务端另行下发） */
 function heroRemoteBoom(m){
   var x=(typeof m.x==='number')?m.x:0,z=(typeof m.z==='number')?m.z:0;
+  /* 【batch232】服务端补发"场上还留着的烟/黑日/电区/毒圈"时会带 left＝剩余毫秒。
+     有它就按剩余时间算寿命 —— 后进来的人看到的是"还剩几秒"，而不是重新数满 14 秒。 */
+  var _左=(typeof m.left==='number'&&m.left>0)?m.left/1000:null;
   var s=(typeof m.s==='number')?(m.s|0):1;
   /* 【batch135】引爆点高度：撞墙 / 在空中引爆时服务端会把 y 一起中继过来，
      本机也要在**那个高度**播特效 —— 原来一律硬写 0.9 / 0.6，
@@ -15819,27 +15854,27 @@ function heroRemoteBoom(m){
   else if(m.k==='rusher')heroFXFragBurst(x,_sy,z);
   else if(m.k==='medic'&&s===0)heroFXHealAt(x,z,my==null?0:_sy);
   else if(m.k==='medic'&&s===1)heroFXMedkitBurst(x,_my,z);
-  else if(m.k==='medic'&&s===2){heroFXSmokePop(x,_my,z,true);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:SMOKE_LIFE,gold:true});}
-  else if(m.k==='guard'){heroFXSmokePop(x,_my,z,false);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:SMOKE_LIFE,gold:false});}
+  else if(m.k==='medic'&&s===2){heroFXSmokePop(x,_my,z,true);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:(_左!=null?_左:SMOKE_LIFE),gold:true});}
+  else if(m.k==='guard'){heroFXSmokePop(x,_my,z,false);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:(_左!=null?_左:SMOKE_LIFE),gold:false});}
   /* 【batch120】新英雄 */
   else if(m.k==='eclipse'&&s===0){                     // 别人的蚀日：黑日悬空（致盲由服务端权威结算，这里只是画面）
     heroFXSolarAt(x,0.9,z);
-    SK.eclipses.push({x:x,z:z,r:SOLAR_R,y:0.9+SOLAR_H,life:SOLAR_LIFE,pulse:SOLAR_PULSE,obj:null,remote:true});
+    SK.eclipses.push({x:x,z:z,r:SOLAR_R,y:0.9+SOLAR_H,life:(_左!=null?_左:SOLAR_LIFE),pulse:SOLAR_PULSE,obj:null,remote:true});
   }
   else if(m.k==='lightning'&&s===0){                   // 别人的闪电光球：电区画面（伤害/减益由服务端结算）
     heroFXOrbPop(x,_sy,z);
     var _om2=heroMeshOrb();scene.add(_om2);_om2.position.set(x,_sy,z);
-    SK.orbs.push({x:x,z:z,y:_sy,r:ORB_R,life:ORB_LIFE,obj:_om2,remote:true,zapT:0,hitT:{}});
+    SK.orbs.push({x:x,z:z,y:_sy,r:ORB_R,life:(_左!=null?_左:ORB_LIFE),obj:_om2,remote:true,zapT:0,hitT:{}});
   }
   else if(m.k==='yingyue'&&s===0){                     // 【batch161】别人的暗影烟雾弹：紫色烟团（之前远端完全看不到烟）
     heroFXSmokePop(x,_my,z,false,true);
-    smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:SMOKE_LIFE,gold:false,dark:1});
+    smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:(_左!=null?_左:SMOKE_LIFE),gold:false,dark:1});
   }
   else if(m.k==='yingyue'&&s===1){                     // 【batch158】别人的暗影炸弹：本地也漫出毒圈（毒伤由服务端 shadowTick 结算）
     heroFxRingAt(x,z,0x8f7bff,0.8,SHADOW_R*2,0.8,_sy+0.12);
     var _sbm=heroMeshShadowBlob();_sbm.scale.set(SHADOW_R,1,SHADOW_R);
     _sbm.position.set(x,Math.max(0.06,_sy+0.06),z);scene.add(_sbm);
-    SK.shadows.push({x:x,y:Math.max(0,_sy),z:z,r:SHADOW_R,life:SHADOW_LIFE,obj:_sbm,remote:true});
+    SK.shadows.push({x:x,y:Math.max(0,_sy),z:z,r:SHADOW_R,life:(_左!=null?_左:SHADOW_LIFE),obj:_sbm,remote:true});
   }
   else if(m.k==='lightning'&&s===1)heroFXTrapStrike(x,_sy,z);   // 别人的陷阱触发：只播落雷
 }
@@ -16129,6 +16164,30 @@ function playerCodeSave(c){
   if(typeof refreshMyIdLine==='function')refreshMyIdLine();
 }
 function netMyCode(){return _playerCode||'';}
+/* ==================== 【batch230】启动器账号注入 ====================
+   启动器（PCL 枪战突击修改版）里管着一份账号表；启动某个版本时把选中的账号拼进 URL：
+     index.html?pclname=名字&pclcode=身份码&pclcid=客户端ID
+   这里读出来写进 localStorage —— 于是"启动器一份账号，所有版本共用"。
+   注意：只在**带了参数**时才写；不带的普通打开绝不动玩家现有账号。 */
+(function 启动器账号注入(){
+  var q='';
+  try{ q=String(location.search||''); }catch(e){ return; }
+  if(q.indexOf('pcl')<0) return;                 // 完全没带启动器参数：什么都不做
+  function 取(k){
+    var m=new RegExp('[?&]'+k+'=([^&]*)').exec(q);
+    if(!m) return '';
+    try{ return decodeURIComponent(m[1]); }catch(e2){ return m[1]; }
+  }
+  var 名=取('pclname'), 码=取('pclcode'), cid=取('pclcid');
+  try{
+    if(名) localStorage.setItem(PLAYER_NAME_KEY, nameEnc(String(名).trim().slice(0,8)));
+    if(码) localStorage.setItem(PLAYER_CODE_KEY, nameEnc(playerCodeNormalize(码)));
+    if(cid) localStorage.setItem('gunGame.clientId.v1', String(cid).slice(0,40));
+  }catch(e){}
+  /* 写进仓库后要把内存里的也刷一遍（playerNameLoad/playerCodeLoad 可能在这之前已经跑过） */
+  try{ if(typeof playerNameLoad==='function') playerNameLoad(); }catch(e3){}
+  try{ if(typeof playerCodeLoad==='function') playerCodeLoad(); }catch(e4){}
+})();
 // 主菜单那行「我的名字 · 身份码」
 function refreshMyIdLine(){
   var el=document.getElementById('myIdLine');if(!el)return;
@@ -17816,6 +17875,8 @@ function quitToHome(){
   var 已扫描 = [];          // [{名, 大小, 来源:'内置'|'已装', url, _blob, ver, 兼容}]
   var 内置名单 = [];        // 最近一次准备() 拿到的内置清单（去掉扩展名前的原名也存一份）
   var _版本不兼容 = [];     // 【batch229】大版本和游戏对不上的模组（面板里说明，不加载）
+  /* 【batch234】统一接口版本：模组可以在文件头写 `@api 2` 声明按哪版接口写的 */
+  var 模组接口版本 = (typeof window.模组接口版本 === 'number' ? window.模组接口版本 : 2);
 
   function 扫描(内置) {
     var 内 = [], 内集 = {};
@@ -17860,6 +17921,12 @@ function quitToHome(){
             /MOD_VER\s*=\s*['"]([0-9]+(?:\.[0-9]+){0,2})['"]/.exec(文);
     return m ? (m[1] || m[2]) : '';
   }
+  /* 【batch234】模组按哪版接口写的（没写=1，即老的英文接口，一律放行） */
+  function 抽接口版本(文) {
+    if (!文) return 1;
+    var m = /@api\s+(\d+)/.exec(文) || /MOD_API\s*=\s*(\d+)/.exec(文);
+    return m ? parseInt(m[1], 10) : 1;
+  }
   function 模组兼容(ver) {
     if (!ver) return true;
     var a = String(ver).split('.')[0];
@@ -17886,7 +17953,9 @@ function quitToHome(){
       return Promise.all(表.map(function (it) {
         return 读模组文本(it).then(function (文) {
           it.ver = 抽模组版本(文);
-          it.兼容 = 模组兼容(it.ver);
+          it.api = 抽接口版本(文);
+          it.兼容 = 模组兼容(it.ver) && it.api <= 模组接口版本;
+          if (it.api > 模组接口版本) it.不兼容原因 = '按接口 v' + it.api + ' 写的，本游戏只到 v' + 模组接口版本;
         });
       })).then(function () {
         for (var i = 0; i < 表.length; i++) {
@@ -17900,7 +17969,7 @@ function quitToHome(){
           /* 【batch229】大版本不兼容的模组：跳过并记账（面板里会说明原因） */
           if (!it.兼容) {
             跳过.push(it.名);
-            _版本不兼容.push({ 名: it.名, ver: it.ver || '(没声明)' });
+            _版本不兼容.push({ 名: it.名, ver: it.ver || '(没声明)', 原因: it.不兼容原因 || '' });
             continue;
           }
           文件.push({ 名: it.名, url: it.url });
@@ -18174,7 +18243,13 @@ function quitToHome(){
       : (_后端 === '服务器' ? '💻 服务器的 Mods 文件夹（mode/模组/）—— 网页上只读，由服务器主管理'
         : '💾 浏览器本地模组库（离线模式：双击打开的网页 / 客户端壳子都存这儿）');
     var w = _面板.querySelector('#modWhere');
-    if (w) w.textContent = '存储位置：' + 位置 + (有加载器() ? '' : '　⚠️ 本页面没有模组加载器');
+    if (w) {
+      /* 【batch234】把「这一轮真正登记进来的模组」也写一行（统一接口后每个模组都自报名字/版本） */
+      var 摘要 = '';
+      try { 摘要 = (window.枪战模组 && window.枪战模组.摘要) ? window.枪战模组.摘要() : ''; } catch (e) { }
+      w.textContent = '存储位置：' + 位置 + (有加载器() ? '' : '　⚠️ 本页面没有模组加载器')
+        + (摘要 ? '　·　已登记：' + 摘要 : '');
+    }
 
     var 表 = 已扫描;
     if (!表.length) {
@@ -18207,9 +18282,13 @@ function quitToHome(){
       if (it.已删) 标签 += ' <span style="color:#f88">已删除</span>';
       else if (启用) 标签 += ' <span style="color:#6f6">● 启用中</span>';
       else 标签 += ' <span style="color:#999">' + (可管 ? '○ 已关闭' : '○ 服务器未启用') + '</span>';
-      /* 【batch229】版本徽章：声明了 @ver 的显示版本号；大版本和游戏对不上的标红说明 */
+      /* 【batch229】版本徽章：声明了 @ver 的显示版本号；【batch234】再显示接口版本 */
       if (it.ver) 标签 += ' <span style="color:' + (it.兼容 === false ? '#f88' : '#9cf') + '">v' + 转义(it.ver) + '</span>';
-      if (it.兼容 === false) 标签 += ' <span style="color:#f88">⛔ 版本不兼容（要 ' + (typeof GAME_VER !== 'undefined' ? GAME_VER : '?') + ' 的大版本）</span>';
+      if (it.api) 标签 += ' <span style="color:#889">接口 v' + it.api + '</span>';
+      if (it.兼容 === false) {
+        标签 += ' <span style="color:#f88">⛔ ' + 转义(it.不兼容原因 ||
+          ('版本不兼容（要 ' + (typeof GAME_VER !== 'undefined' ? GAME_VER : '?') + ' 的大版本）')) + '</span>';
+      }
       行.push(
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,.09)">' +
         '<div style="flex:1;min-width:0">' +
@@ -18368,6 +18447,7 @@ var 语音开 = true;                         // 总开关（设置里改）
 var 说中 = false;                          // 我正在说
 var 录音器 = null;
 var 麦流 = null;
+var 取消麦 = 0;                            // 【batch229】开麦取消标记：解决"松手太快关不掉"的竞态
 var 说话者们 = {};                         // id -> {名字, 麦:MediaSource实例...}
 var 帧序号 = 0;
 
@@ -18377,7 +18457,7 @@ function 取(key){ try{ return localStorage.getItem(key); }catch(e){ return null
 function 颜色Hex(c){ return '#' + (c >>> 0).toString(16).padStart(6, '0'); }
 
 /* ---------------- DOM（全部 JS 建，不动 index.html） ---------------- */
-var 历史框 = null, 输入框 = null, 名单框 = null;
+var 历史框 = null, 输入框 = null, 名单框 = null, 聊天钮 = null, 语音钮 = null;
 
 function 建DOM(){
     if (document.getElementById('chatWrap')) return;
@@ -18392,7 +18472,15 @@ function 建DOM(){
       '#chatInput:focus{border-color:rgba(120,200,255,.9);}' +
       '#chatTalkers{position:fixed;right:12px;top:64px;z-index:60;display:flex;flex-direction:column;gap:4px;pointer-events:none;}' +
       '#chatTalkers .tk{display:flex;align-items:center;gap:5px;padding:3px 9px;font-size:12px;color:#dff;background:rgba(20,60,80,.72);border:1px solid rgba(90,220,255,.4);border-radius:20px;}' +
-      '#chatTalkers .tk i{width:7px;height:7px;border-radius:50%;background:#4fe37a;box-shadow:0 0 6px #4fe37a;}';
+      '#chatTalkers .tk i{width:7px;height:7px;border-radius:50%;background:#4fe37a;box-shadow:0 0 6px #4fe37a;}' +
+      /* 【batch229】手机端：聊天 + 语音两个触屏按钮（只触屏显示，复用 tbtn 深色风格） */
+      '#chatBtn,#voiceBtn{position:fixed;display:none;z-index:60;align-items:center;justify-content:center;' +
+        'width:56px;height:56px;border-radius:14px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);' +
+        'color:#fff;font-size:13px;font-weight:bold;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}' +
+      '#chatBtn{left:14px;bottom:150px}' +
+      '#voiceBtn{left:14px;bottom:214px}' +
+      '#voiceBtn.on{background:rgba(200,40,40,.72);border-color:rgba(255,140,140,.6);}' +
+      'body.is-touch #chatBtn,body.is-touch #voiceBtn{display:flex}';
     document.head.appendChild(css);
 
     历史框 = document.createElement('div');
@@ -18410,6 +18498,29 @@ function 建DOM(){
     名单框 = document.createElement('div');
     名单框.id = 'chatTalkers';
     document.body.appendChild(名单框);
+
+    /* 【batch229】手机端聊天 + 语音触屏按钮 */
+    聊天钮 = document.createElement('div');
+    聊天钮.id = 'chatBtn'; 聊天钮.textContent = '💬';
+    聊天钮.addEventListener('touchstart', function(e){
+        e.preventDefault(); e.stopPropagation();
+        if (开) { 关输入(); } else if (S && S.playing) 开输入();
+    }, { passive: false });
+    document.body.appendChild(聊天钮);
+
+    语音钮 = document.createElement('div');
+    语音钮.id = 'voiceBtn'; 语音钮.textContent = '🎙️';
+    语音钮.addEventListener('touchstart', function(e){
+        e.preventDefault(); e.stopPropagation();
+        if (开) { 关输入(); return; }
+        开麦(); 语音钮.classList.add('on');
+    }, { passive: false });
+    语音钮.addEventListener('touchend', function(e){
+        e.preventDefault(); e.stopPropagation();
+        停麦(); 语音钮.classList.remove('on');
+    });
+    语音钮.addEventListener('touchcancel', function(e){ 停麦(); 语音钮.classList.remove('on'); });
+    document.body.appendChild(语音钮);
 
     /* 按键：Enter 开输入框；开着时 WASD 不触发游戏（输入框自己吞） */
     document.addEventListener('keydown', function(e){
@@ -18452,12 +18563,18 @@ function 开输入(){
     输入框.style.display = 'block';
     输入框.value = '';
     setTimeout(function(){ try{ 输入框.focus(); }catch(e){} }, 0);
+    /* 【batch229】开聊天框要退指针锁（否则鼠标还锁着点不到输入框），但退锁会触发
+       pointerlockchange → openGameMenu 弹暂停菜单。用 window.__聊天退锁 标记，让 22_输入与手势
+       的 pointerlockchange 在这一下跳过 openGameMenu。 */
+    try{ window.__聊天退锁 = 1; }catch(e){}
     try{ if(document.exitPointerLock) document.exitPointerLock(); }catch(e){}
+    setTimeout(function(){ try{ window.__聊天退锁 = 0; }catch(e){} }, 200);
 }
 function 关输入(){
     开 = false;
     输入框.style.display = 'none';
     输入框.blur();
+    /* 关输入框后游戏还在暂停态（指针没锁），不用自动锁回 —— 玩家点一下画面就锁（22 里 mousedown 处理） */
 }
 function 发送(){
     var v = String(输入框.value || '').trim();
@@ -18553,7 +18670,12 @@ function 开麦(){
         if (typeof showMsg === 'function') showMsg('这个环境不支持麦克风（需要 https 或 localhost）', '#ffd166');
         return;
     }
+    var 代 = ++取消麦;                       // 每次开麦记一个新代次，停麦时取消它
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function(流){
+        /* 【batch229】松手太快：停麦() 早就跑过了（当时 说中 还是 false，没进 stop 逻辑），
+           而 getUserMedia 是异步的，授权/初始化要几十到几百毫秒 —— 等这个回调回来时人已经松手了，
+           如果还往下走就会"开麦了却关不掉"。用取消标记：代次对不上说明已经停麦，直接收流返回。 */
+        if (代 !== 取消麦) { 流.getTracks().forEach(function(t){ t.stop(); }); return; }
         麦流 = 流;
         var 选项 = {};
         if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
@@ -18578,6 +18700,7 @@ function 开麦(){
         if (typeof netSend === 'function') netSend({ t: 'voice', on: 1 });
         if (typeof showMsg === 'function') showMsg('🎙️ 松开发言完毕（按住 G 说话）', '#6ff0ff');
     }).catch(function(err){
+        if (代 !== 取消麦) return;            // 已经停麦了，别弹错
         var 原因 = '麦克风打不开';
         if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) 原因 = '麦克风权限被拒绝——点地址栏左边的图标允许麦克风';
         else if (err && err.name === 'NotFoundError') 原因 = '没检测到麦克风设备';
@@ -18585,6 +18708,7 @@ function 开麦(){
     });
 }
 function 停麦(){
+    取消麦++;                                 // 让还没回来的 getUserMedia 回调直接收流返回
     if (!说中) return;
     说中 = false;
     try{ if (录音器 && 录音器.state !== 'inactive') 录音器.stop(); }catch(e){}
@@ -18711,12 +18835,16 @@ function 初始化(){
 if (document.readyState === 'complete' || document.readyState === 'interactive') 初始化();
 else document.addEventListener('DOMContentLoaded', 初始化);
 
-/* 对外：给模组用 */
+/* 对外：给模组用 / 给探针回归用 */
 window.枪战聊天 = {
   发: function(文){ if (输入框) { 输入框.value = 文; 发送(); } },
   说: function(名, 色, 文){ 加一行(名, 色, 文); },
   开关语音: function(开){ 语音开 = !!开; if (!开) 停麦(); },
-  语音状态: function(){ return 语音开; }
+  语音状态: function(){ return 语音开; },
+  开麦: 开麦,           // 【batch229】暴露给回归探针（内部函数，页面逻辑不受影响）
+  停麦: 停麦,
+  在说: function(){ return 说中; },
+  聊天开着: function(){ return 开; }
 };
 
 })();

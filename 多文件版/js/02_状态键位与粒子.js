@@ -6,7 +6,11 @@
    服务器启动时会校验这个号：major 不同或版本低于服务器下限 → 连不上也进不去，
    并弹明确提示（在哪看到的：join 时带上 v，服务端比对，不符发 bye why:'ver'）。
    改版本号的规矩：小修 patch+1；上功能 minor+1 且 patch 归 0；动协议/存档 major+1 且其余归 0。 */
-var GAME_VER='1.7.0';
+var GAME_VER='1.7.5';
+/* 【batch234】模组接口版本：1=老的英文接口（ModLoader.addHero…），
+   2=1.7.5 起的统一中文接口（window.枪战模组）。模组文件头写 `@api 2` 声明自己按哪版写的。
+   加接口（新增一类"能加的东西"）动小版本，改已有接口的参数/语义才动这个数。 */
+var 模组接口版本=2;
 var MAX_PARTICLES=80,MINIMAP_INTERVAL=5,SEP_DIST=2.0,SEP_FORCE=0.03,WALL_DIST=3.0,WALL_FORCE=0.10,WALL_TANGENT=0.16,BASE_SPEED=0.10,BOB_STRIDE=2.1,GRAVITY=0.015,JUMP_FORCE=0.28,GROUND_Y=2.0,WORLD_LIMIT=76,VIEW_RANGE=60,FOV_HALF_COS=Math.cos(117*Math.PI/360),LEAN_ROLL=0.30;
 /* ==================== 【batch180】靶场（range）====================
    独立于「原版对战」「爆能器」的**第三种模式**，**仅单人**：不联机、不刷敌人，

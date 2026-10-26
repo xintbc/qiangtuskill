@@ -94,6 +94,9 @@ document.addEventListener('pointerlockchange',function(){
     // 暂停菜单，玩家就"卡在界面里"（点继续也不是、点浮层也不是），而且因为浮层 z-index 低于 blocker，面板会被遮住看不见。
     // 全屏浮层（商店 / 结算 / 武器选择）开着时不弹暂停菜单，交给它自己的按钮收尾。
     if(overlayOpen()||weaponSelectOpen())return;
+    /* 【batch229】开聊天框主动退锁也会走到这：别把聊天误判成"玩家按 Esc 暂停"，
+       否则一按 Enter 聊天就弹暂停菜单。聊天退锁由 62 用 window.__聊天退锁 标记。 */
+    try{ if(window.__聊天退锁) return; }catch(e){}
     openGameMenu();
   }
 });

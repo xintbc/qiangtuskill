@@ -1,5 +1,6 @@
 /* ============================================================================
  *  模组：武器「暗影脉冲」（暗月科技 · 能量步枪）
+ * 【模组信息】@id weapon_shadow_pulse　@name 暗影脉冲　@ver 1.7.5　@api 2
  *  ----------------------------------------------------------------------------
  *  按《模组开发教程.md》第 6 章 addWeapon 写法做的一把全新枪：
  *    · 暗月阵营科技风：深紫黑机匣 + 紫色能量条 + 发光能量核心
@@ -10,8 +11,10 @@
  * ========================================================================== */
 (function () {
   'use strict';
-  if (!window.ModLoader) { console.warn('[暗影脉冲] ModLoader 未就绪，跳过注册'); return; }
-  var ML = window.ModLoader;
+  var M = window.枪战模组;
+  if (!M) { console.warn('[暗影脉冲] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
+  var 模组 = M.定义({ id: 'weapon_shadow_pulse', name: '暗影脉冲', ver: '1.7.5', author: '官方示例', desc: '暗月科技 · 全自动能量步枪' });
+  if (!模组) return;
 
   // ---- 通用小工具：搭盒子 / 搭圆柱 ----
   function box(w, h, d, mat, x, y, z, rx, ry, rz) {
@@ -43,7 +46,7 @@
   var glowC     = new THREE.MeshBasicMaterial({ color: 0xcc88ff, side: THREE.DoubleSide });    // 能量核心（更亮）
 
   /* ---------------- 暗影脉冲 · 能量步枪 ---------------- */
-  ML.addWeapon({
+  模组.加武器({
     name: '暗影脉冲', melee: false, icon: '🔫', note: '暗月科技 · 能量脉冲 · 全自动',
     damage: 1.3, magSize: 32, fireRate: 90, reloadTime: 1800, recoilMul: 1.05,
     range: 95, pellets: 1, spread: 0.028, auto: true, redDot: true, type: 'normal',

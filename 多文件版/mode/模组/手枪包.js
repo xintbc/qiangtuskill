@@ -1,4 +1,5 @@
 /* ============================================================================
+ * 【模组信息】@id weapon_pack_pistol　@name 手枪包　@ver 1.7.5　@api 2
  *  示例模组：手枪包（作者演示用）  【batch184d·#102/#105 + batch184e 重做】
  *  ----------------------------------------------------------------------------
  *  · 每把手枪自带握持(gripPos)/开镜(aimPos)/左手(lhPos) 姿势；
@@ -9,8 +10,10 @@
  * ========================================================================== */
 (function () {
   'use strict';
-  if (!window.ModLoader) { console.warn('[手枪包] ModLoader 未就绪，跳过注册'); return; }
-  var ML = window.ModLoader;
+  var M = window.枪战模组;
+  if (!M) { console.warn('[手枪包] 需要游戏 1.7.5 或更新版本（枪战模组接口未就绪），已跳过'); return; }
+  var 模组 = M.定义({ id: 'weapon_pack_pistol', name: '手枪包', ver: '1.7.5', author: '官方示例', desc: '手枪 / 左轮 · 单手与转轮换弹' });
+  if (!模组) return;
   var THREE = window.THREE;
 
   // ---- 小工具 ----
@@ -72,7 +75,7 @@
   }
 
   /* ---- 1) M9（9mm 紧凑手枪）：平衡·半自动·绿点 ---- */
-  ML.addWeapon({
+  模组.加武器({
     name: 'M9手枪', melee: false, icon: '🔫', note: '平衡·半自动·9mm',
     damage: 1.4, magSize: 15, fireRate: 160, reloadTime: 1400, recoilMul: 0.8, range: 50, pellets: 1, spread: 0.006, auto: false, redDot: true,
     adsFov: 52, hold: 'pistol',
@@ -88,7 +91,7 @@
   });
 
   /* ---- 2) 沙漠之鹰（大威力半自动手枪）：高伤少弹·金色 ---- */
-  ML.addWeapon({
+  模组.加武器({
     name: '沙漠之鹰', melee: false, icon: '🔫', note: '大威力·高伤·半自动',
     damage: 3.2, magSize: 7, fireRate: 360, reloadTime: 1800, recoilMul: 1.5, range: 70, pellets: 1, spread: 0.004, auto: false, redDot: true,
     adsFov: 48, hold: 'pistol',
@@ -112,7 +115,7 @@
   });
 
   /* ---- 3) 左轮手枪（Revolver）：六发·超高伤·木握把·转轮换弹 ---- */
-  ML.addWeapon({
+  模组.加武器({
     name: '左轮手枪', melee: false, icon: '🔫', note: '六发·超高伤·转轮换弹',
     damage: 4.0, magSize: 6, fireRate: 480, reloadTime: 2200, recoilMul: 1.7, range: 80, pellets: 1, spread: 0.003, auto: false, redDot: true,
     adsFov: 45, hold: 'pistol', reloadStyle: 'cylinder',

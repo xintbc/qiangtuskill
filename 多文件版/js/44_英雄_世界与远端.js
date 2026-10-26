@@ -761,6 +761,9 @@ function heroRemoteThrow(e,kind,s,th){
 /* 联机：别人的投掷物引爆 → 在引爆点播特效（谁被致盲 / 谁回血由服务端另行下发） */
 function heroRemoteBoom(m){
   var x=(typeof m.x==='number')?m.x:0,z=(typeof m.z==='number')?m.z:0;
+  /* 【batch232】服务端补发"场上还留着的烟/黑日/电区/毒圈"时会带 left＝剩余毫秒。
+     有它就按剩余时间算寿命 —— 后进来的人看到的是"还剩几秒"，而不是重新数满 14 秒。 */
+  var _左=(typeof m.left==='number'&&m.left>0)?m.left/1000:null;
   var s=(typeof m.s==='number')?(m.s|0):1;
   /* 【batch135】引爆点高度：撞墙 / 在空中引爆时服务端会把 y 一起中继过来，
      本机也要在**那个高度**播特效 —— 原来一律硬写 0.9 / 0.6，
@@ -773,27 +776,27 @@ function heroRemoteBoom(m){
   else if(m.k==='rusher')heroFXFragBurst(x,_sy,z);
   else if(m.k==='medic'&&s===0)heroFXHealAt(x,z,my==null?0:_sy);
   else if(m.k==='medic'&&s===1)heroFXMedkitBurst(x,_my,z);
-  else if(m.k==='medic'&&s===2){heroFXSmokePop(x,_my,z,true);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:SMOKE_LIFE,gold:true});}
-  else if(m.k==='guard'){heroFXSmokePop(x,_my,z,false);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:SMOKE_LIFE,gold:false});}
+  else if(m.k==='medic'&&s===2){heroFXSmokePop(x,_my,z,true);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:(_左!=null?_左:SMOKE_LIFE),gold:true});}
+  else if(m.k==='guard'){heroFXSmokePop(x,_my,z,false);smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:(_左!=null?_左:SMOKE_LIFE),gold:false});}
   /* 【batch120】新英雄 */
   else if(m.k==='eclipse'&&s===0){                     // 别人的蚀日：黑日悬空（致盲由服务端权威结算，这里只是画面）
     heroFXSolarAt(x,0.9,z);
-    SK.eclipses.push({x:x,z:z,r:SOLAR_R,y:0.9+SOLAR_H,life:SOLAR_LIFE,pulse:SOLAR_PULSE,obj:null,remote:true});
+    SK.eclipses.push({x:x,z:z,r:SOLAR_R,y:0.9+SOLAR_H,life:(_左!=null?_左:SOLAR_LIFE),pulse:SOLAR_PULSE,obj:null,remote:true});
   }
   else if(m.k==='lightning'&&s===0){                   // 别人的闪电光球：电区画面（伤害/减益由服务端结算）
     heroFXOrbPop(x,_sy,z);
     var _om2=heroMeshOrb();scene.add(_om2);_om2.position.set(x,_sy,z);
-    SK.orbs.push({x:x,z:z,y:_sy,r:ORB_R,life:ORB_LIFE,obj:_om2,remote:true,zapT:0,hitT:{}});
+    SK.orbs.push({x:x,z:z,y:_sy,r:ORB_R,life:(_左!=null?_左:ORB_LIFE),obj:_om2,remote:true,zapT:0,hitT:{}});
   }
   else if(m.k==='yingyue'&&s===0){                     // 【batch161】别人的暗影烟雾弹：紫色烟团（之前远端完全看不到烟）
     heroFXSmokePop(x,_my,z,false,true);
-    smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:SMOKE_LIFE,gold:false,dark:1});
+    smokeZones.push({x:x,y:_my,z:z,r:SMOKE_R,t:(_左!=null?_左:SMOKE_LIFE),gold:false,dark:1});
   }
   else if(m.k==='yingyue'&&s===1){                     // 【batch158】别人的暗影炸弹：本地也漫出毒圈（毒伤由服务端 shadowTick 结算）
     heroFxRingAt(x,z,0x8f7bff,0.8,SHADOW_R*2,0.8,_sy+0.12);
     var _sbm=heroMeshShadowBlob();_sbm.scale.set(SHADOW_R,1,SHADOW_R);
     _sbm.position.set(x,Math.max(0.06,_sy+0.06),z);scene.add(_sbm);
-    SK.shadows.push({x:x,y:Math.max(0,_sy),z:z,r:SHADOW_R,life:SHADOW_LIFE,obj:_sbm,remote:true});
+    SK.shadows.push({x:x,y:Math.max(0,_sy),z:z,r:SHADOW_R,life:(_左!=null?_左:SHADOW_LIFE),obj:_sbm,remote:true});
   }
   else if(m.k==='lightning'&&s===1)heroFXTrapStrike(x,_sy,z);   // 别人的陷阱触发：只播落雷
 }

@@ -570,6 +570,172 @@
   function log(m) { try { console.log('[模组加载器] ' + m); } catch (e) { } }
   function warn(m) { try { console.warn('[模组加载器] ' + m); } catch (e) { } }
 
+  /* ===================================================================
+   *  【batch234 · 1.7.5】统一模组接口 —— window.枪战模组
+   *  -------------------------------------------------------------------
+   *  以前每加一样东西就得记一个英文函数名（addHero / addWeapon / addKnife /
+   *  addThrowable / addStory / addGameMode …），模组头部还要自己写 @ver。
+   *  从 1.7.5 起统一成两件事：
+   *
+   *    ① 开头报身份（写一次，建议都写）：
+   *         枪战模组.定义({ id:'nightingale', name:'夜莺', ver:'1.7.5',
+   *                         author:'你', desc:'一句话说明' });
+   *    ② 想加什么就说什么，**全是中文，参数和原来一模一样**：
+   *         加英雄 / 加地图 / 加出生点 / 加武器 / 加刀 / 加投掷物 /
+   *         加技能 / 加敌人类型 / 加模式 / 加剧情 / 加模型 / 放装饰 /
+   *         设环境 / 设物理 / 每帧 / 载入后 / 清场 / 广播 …
+   *
+   *  老的 ModLoader.addHero(…) 等英文接口**全部保留**（指向同一份实现），
+   *  老模组一个字都不用改；新模组按教程用中文接口写就行。
+   *
+   *  接口版本（接口版本 / @api）：1=老英文接口，2=1.7.5 统一中文接口。
+   *  模组按更高接口写的，游戏只会警告（不拦），按更低接口写的一律放行。
+   * ===================================================================*/
+  var 模组表 = {};          // id -> 元数据
+
+  /* 记一笔「这个模组加了什么」。句柄调用时 this=该模组的句柄；
+     老写法 ModLoader.加英雄(...) 没有句柄，就不记账（不影响功能）。 */
+  function 计数(句柄, 键) {
+    try {
+      if (句柄 && 句柄.内容 && typeof 句柄.内容[键] === 'number') 句柄.内容[键]++;
+    } catch (e) { }
+  }
+
+  /* 每个中文方法 = 一层薄包装：调引擎原有实现 + 记一笔「这个模组加了什么」。
+     想加新接口，只在这里加一行，然后教程里加一行表格。 */
+  var 实现 = {
+    加英雄: function (hero) { ML.addHero(hero); 计数(this, '英雄'); return hero; },
+    加地图: function (map) { ML.addMap(map); 计数(this, '地图'); return map; },
+    加出生点: function (id, 点, 覆盖) { ML.addSpawn(id, 点, 覆盖); return id; },
+    加武器: function (def) { var i = ML.addWeapon(def); 计数(this, '武器'); return i; },
+    加刀: function (def) { var i = ML.addKnife(def); 计数(this, '刀'); return i; },
+    加投掷物: function (def) { var i = ML.addThrowable(def); 计数(this, '投掷物'); return i; },
+    加技能: function (k, fn) { ML.addSkill(k, fn); 计数(this, '技能'); return k; },
+    加敌人类型: function (k, def) { ML.addEnemyType(k, def); 计数(this, '敌人'); return k; },
+    加模式: function (def) { ML.addGameMode(def); 计数(this, '模式'); return def; },
+    加多人模式: function (def) { ML.addMPMode(def); 计数(this, '模式'); return def; },
+    设队伍: function (n) { ML.setTeams(n); },
+    进房: function (modeId, room) { ML.joinMP(modeId, room); },
+    加剧情: function (chap) { ML.addStory(chap); 计数(this, '剧情'); return chap; },
+    加模型: function (名, fn) { ML.addModel(名, fn); 计数(this, '模型'); return 名; },
+    加爆能器地图: function (id, cfg) { return ML.addSpikeMap(id, cfg); },
+    放装饰: function (obj) { ML.addScenery(obj); return obj; },
+    摘装饰: function (obj) { ML.removeScenery(obj); },
+    加灯: function (light) { ML.addLight(light); return light; },
+    改枪械: function (slot, def) { ML.setWeaponStats(slot, def); return def; },
+    设环境: function (o) { ML.setEnv(o); return o; },
+    设物理: function (o) { ML.setPhysics(o); return o; },
+    每帧: function (fn) { return ML.addPhysicsTick(fn); },
+    载入后: function (fn) { ML.onApply(fn); return fn; },
+    清场: function (fn) { ML.onFieldClear(fn); return fn; },
+    广播: function (k, d) { return ML.heroBroadcast(k, d); },
+    扔出: function (code, x, y, z, vx, vy, vz, dur) { return ML.throwFx(code, x, y, z, vx, vy, vz, dur); },
+    换玩法: function (id) { ML.setGameMode(id); },
+    刷敌人: function (type, x, z) { return ML.spawnEnemy(type, x, z); },
+    切枪: function (idx) { ML.selectWeapon(idx); },
+    切刀: function (id) { ML.selectKnife(id); },
+    取模型: function (名) { return ML.getModel(名); },
+    刷新界面: function () { ML.refresh(); },
+    查出生点: function (x, z) { return ML.spawnFree(x, z); }
+  };
+
+  var 枪战模组 = {
+    接口版本: (typeof window.模组接口版本 === 'number' ? window.模组接口版本 : 2),
+    游戏版本: (typeof GAME_VER !== 'undefined' ? GAME_VER : '?'),
+
+    /* 声明一个模组：登记元数据，返回这个模组的专属句柄。
+       句柄上的方法 = 上面那张表（加英雄/加武器…），也支持在定义里直接声明：
+         枪战模组.定义({ id:'x', name:'X', hero:[…], weapons:[…], skills:{…},
+                       env:{…}, physics:{…}, tick:fn, init:fn, clear:fn }); */
+    定义: function (def) {
+      def = def || {};
+      var id = String(def.id || def.标识 || '').trim();
+      if (!id) { warn('定义()：缺少 id（模组唯一标识，建议英文小写 + 下划线）'); return null; }
+      if (模组表[id]) { warn('定义()：id「' + id + '」重复，本次不再登记'); return 模组表[id].句柄; }
+
+      var 接口 = +def.api || 枪战模组.接口版本;
+      if (接口 > 枪战模组.接口版本) {
+        warn('模组「' + id + '」按接口 v' + 接口 + ' 写的，本游戏只到 v' + 枪战模组.接口版本 + '，可能有不兼容的地方');
+      }
+      var 元 = {
+        id: id,
+        name: String(def.name || def.名字 || id),
+        ver: String(def.ver || def.版本 || ''),
+        api: 接口,
+        author: String(def.author || def.作者 || ''),
+        desc: String(def.desc || def.说明 || ''),
+        内容: { 英雄: 0, 地图: 0, 武器: 0, 刀: 0, 投掷物: 0, 技能: 0, 敌人: 0, 模式: 0, 剧情: 0, 模型: 0 }
+      };
+      var 句柄 = { 模组: 元, 内容: 元.内容 };
+      Object.keys(实现).forEach(function (名) {
+        /* this 绑到这个句柄上：不管什么时候调（包括「载入后」里），都记在这个模组名下 */
+        句柄[名] = function () { try { return 实现[名].apply(句柄, arguments); } catch (e) { warn(名 + ' 出错：' + (e && e.message)); } };
+      });
+      句柄.日志 = function (m) { log('[' + 元.name + '] ' + m); };
+      句柄.警告 = function (m) { warn('[' + 元.name + '] ' + m); };
+      元.句柄 = 句柄;
+      模组表[id] = 元;
+
+      /* 声明式写法：定义里带了字段就顺手登记，省掉一串调用 */
+      var 列表 = [['hero', '加英雄'], ['heroes', '加英雄'], ['weapons', '加武器'], ['knives', '加刀'],
+                  ['throwables', '加投掷物'], ['maps', '加地图'], ['modes', '加模式'], ['story', '加剧情']];
+      for (var i = 0; i < 列表.length; i++) {
+        (function (v, 方法名) {          // 包一层：别让 forEach 闭包抓到循环变量
+          if (v) [].concat(v).forEach(function (x) { 句柄[方法名](x); });
+        })(def[列表[i][0]], 列表[i][1]);
+      }
+      if (def.skills) Object.keys(def.skills).forEach(function (k) { 句柄.加技能(k, def.skills[k]); });
+      if (def.enemies) Object.keys(def.enemies).forEach(function (k) { 句柄.加敌人类型(k, def.enemies[k]); });
+      if (def.models) Object.keys(def.models).forEach(function (k) { 句柄.加模型(k, def.models[k]); });
+      if (def.env) 句柄.设环境(def.env);
+      if (def.physics) 句柄.设物理(def.physics);
+      if (def.tick) 句柄.每帧(def.tick);
+      if (def.init) 句柄.载入后(def.init);
+      if (def.clear) 句柄.清场(def.clear);
+
+      log('模组已登记：' + 元.name + (元.ver ? ' v' + 元.ver : '') + '（id=' + id + ' · 接口 v' + 接口 + '）');
+      return 句柄;
+    },
+
+    /* 已登记的模组一览（模组管理面板、控制台自检都用它） */
+    表: function () {
+      var out = [];
+      for (var k in 模组表) if (模组表.hasOwnProperty(k)) out.push(模组表[k]);
+      return out;
+    },
+
+    /* 一行字概括：给面板 / 控制台用 */
+    摘要: function () {
+      var a = 枪战模组.表();
+      if (!a.length) return '';
+      return a.map(function (m) { return m.name + (m.ver ? ' v' + m.ver : ''); }).join('、');
+    },
+
+    /* 控制台敲 枪战模组.报告() 看每个模组到底登记了什么 */
+    报告: function () {
+      var a = 枪战模组.表();
+      try {
+        console.group('[枪战模组] 已登记 ' + a.length + ' 个 · 接口 v' + 枪战模组.接口版本);
+        a.forEach(function (m) {
+          var 有 = [];
+          for (var k in m.内容) if (m.内容[k]) 有.push(k + '×' + m.内容[k]);
+          console.log(m.name + (m.ver ? ' v' + m.ver : '') + '  [' + m.id + ']  ' + (有.join(' ') || '（没登记内容）'));
+        });
+        console.groupEnd();
+      } catch (e) { }
+      return a;
+    }
+  };
+
+  /* 中文方法同时挂到 ModLoader 上：老模组里写 ModLoader.加英雄(...) 也能跑 */
+  /* 老写法 ModLoader.加英雄(...) 也能用；这一路没有句柄，不记内容统计 */
+  Object.keys(实现).forEach(function (名) { ML[名] = function () { return 实现[名].apply(null, arguments); }; });
+  ML.接口版本 = 枪战模组.接口版本;
+  ML.模组表 = 模组表;
+
+  window.枪战模组 = 枪战模组;
+  try { window.模组接口版本 = 枪战模组.接口版本; } catch (e) { }
+
   // 顺序加载一个脚本，返回 Promise（保证按清单顺序执行）
   function loadOne(src) {
     return new Promise(function (resolve) {
