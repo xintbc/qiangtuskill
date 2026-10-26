@@ -771,7 +771,13 @@
       if (SPIKE._inGame && SPIKE.mySpawn) {
         camera.position.set(SPIKE.mySpawn[0], GROUND_Y, SPIKE.mySpawn[1]);
         S.velY = 0; S.onGround = true; S.onLadder = false; S.mantle = 0; S.landKick = 0;
-        NET.dead = false; updateHp();
+        /* 【batch238】新回合＝一次完整复活，口径必须和普通模式 respawn 一致：
+           死亡标记 / 死亡倒计时 / 身上所有正负效果 / 血量 —— 少清一样就会"人活了但还是躺着的姿势"
+           或者"血条还是 0"。以前只清了 NET.dead，血量和减速/致盲/虚化这些都留在身上。 */
+        NET.dead = false; NET.deadUntil = 0;
+        try { if (typeof clearAllStatusFx === 'function') clearAllStatusFx(); } catch (e) { }
+        S.hp = (typeof m.hp === 'number' && m.hp > 0) ? m.hp : S.maxHp;
+        updateHp();
         var nd = el('netDeath'); if (nd) nd.style.display = 'none';
         try { if (!isTouch && typeof lockPointer === 'function') lockPointer(); } catch (e) { }
       }

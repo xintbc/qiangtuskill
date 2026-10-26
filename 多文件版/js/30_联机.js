@@ -364,9 +364,12 @@ function netPingHost(host,cb){
   ws.onopen=function(){ if(done)return; done=true; clearTimeout(t); try{ws.close();}catch(e){} cb(true); };
   ws.onerror=function(){ if(done)return; done=true; clearTimeout(t); try{ws.close();}catch(e){} cb(false); };
 }
+var NET_PROBING=false;          /* 【batch238】探测中：防连点。连着戳会一口气开十几条连接，
+                                   撞上服务端「同 IP 10 秒内最多新建 20 条」的闸门 → 真的连不上 */
 function netMultiClick(){
   if(typeof NET==='undefined')return;
   if(NET.connected&&NET.server){netPlayMulti(NET.server);return;}
+  if(NET_PROBING)return;
   /* 候选顺序：上次连过的服务器 → 页面自己的地址（真的是对战服务器时 netHostFromPage 才给值）
      ⚠️ 不能直接信 netAutoMode：普通静态服务器（客户端内置的读文件服务、python -m http.server）
      也会被判成 true，拿页面地址去连必然失败。所以一律先探一下，通了才真连。 */
@@ -375,8 +378,10 @@ function netMultiClick(){
   try{ if(netAutoMode()){ var pg=netHostFromPage(); if(pg&&候选.indexOf(pg)<0)候选.push(pg); } }catch(e){}
   if(!候选.length){netOpenPanel();return;}
   var i=0;
+  NET_PROBING=true;
   (function 试下一个(){
     if(i>=候选.length){
+      NET_PROBING=false;
       netOpenPanel();
       var 话=(上次?('连不上 '+上次+'，确认地址后再点「连接」'):'没找到可用的服务器，先填地址');
       if(typeof window.netBarSay==='function'){ try{ window.netBarSay(话,'bad'); }catch(e){} }
@@ -387,7 +392,7 @@ function netMultiClick(){
     }
     var h=候选[i++];
     try{ if(typeof showMsg==='function')showMsg('正在连接 '+h+' …','#8fd6ff'); }catch(e){}
-    netPingHost(h,function(通){ if(通)netPlayMulti(h); else 试下一个(); });
+    netPingHost(h,function(通){ if(通){ NET_PROBING=false; netPlayMulti(h); } else 试下一个(); });
   })();
 }
 (function netUIInit(){
@@ -588,7 +593,20 @@ function netOnMsg(m){
   if(m.t==='train'){trainApplyState(m);return;}
   if(m.t==='trainpos'){ try{ if(typeof TRAIN!=='undefined'){ TRAIN.head=(typeof m.head==='number')?m.head:TRAIN.head; if(typeof m.ti==='number')TRAIN.ti=m.ti; } }catch(e){} return; }
   if(m.t==='trainHit'){ try{ var _kd=(m.dir||1), _tz=null; try{ _tz=TRAIN_TRACKS[TRAIN.ti].z; }catch(e3){ _tz=camera.position.z; } if(typeof trainBlastAway==='function'){ trainBlastAway(_kd,_tz,m.px,m.pz); } else { if(typeof m.pz==='number'){ camera.position.x=(typeof m.px==='number')?m.px:camera.position.x; camera.position.z=m.pz; } else { var _kx=camera.position.x+_kd*9; if(typeof playerBlocked==='function'&&!playerBlocked(_kx,camera.position.z,standEyeY()))camera.position.x=_kx; } } S.velY=(typeof m.vy==='number')?m.vy:6.5;SK.slow=Math.max(SK.slow,1.2); if(typeof spawnParticle==='function')spawnParticle(camera.position.clone(),0xffdd66,16,0.5,true); if(typeof showMsg==='function')showMsg('🚆 被列车撞飞！','#ff6b6b'); }catch(e){} return; }   // 扣血由服务端 applyDamage 权威处理；【batch188】击飞落点也由服务端下发（px/pz），避免推不动卡在车体里
-  if(m.t==='push'){ try{ if(typeof m.x==='number')camera.position.x=m.x; if(typeof m.z==='number')camera.position.z=m.z; SK.slow=Math.max(SK.slow,0.35); if(typeof showMsg==='function'){ if(m.why==='train')showMsg('🚉 列车把卡住的你挤了出来','#8fd6ff'); else if(m.why==='tp')showMsg('⚠ 位移异常，已把你拉回原地','#ffd166'); } }catch(e){} return; }   // 【batch188】服务端停靠兜底：把人从车体里挪出来
+  if(m.t==='push'){ try{
+      if(typeof m.x==='number')camera.position.x=m.x;
+      if(typeof m.z==='number')camera.position.z=m.z;
+      /* 【batch238】两种 push 的收尾不一样：
+         · train＝被列车挤出来：给一点减速，免得刚出来又冲回车厢；
+         · tp＝防瞬移抓回：**速度直接清零**（人被拽回来了还在往前跑，会一帧一帧地被反复抓），
+           并且不加 slow —— 守规矩的玩家不该莫名其妙变慢。 */
+      if(m.why==='train'){ SK.slow=Math.max(SK.slow,0.35); }
+      else { S.velX=0; S.velZ=0; }
+      if(typeof showMsg==='function'){
+        if(m.why==='train')showMsg('🚉 列车把卡住的你挤了出来','#8fd6ff');
+        else showMsg('⚠ 位移异常，已把你拉回原地','#ffd166');
+      }
+    }catch(e){} return; }   // 【batch188】服务端停靠兜底：把人从车体里挪出来
   if(m.t==='portal'){heroPortalRemote(m);return;}   // 【batch145】别人的日蚀之门（一对门）→ 本地也开出来
   if(m.t==='flash'){var _bd=(m.dur||3000)/1000;SK.blind=Math.max(SK.blind,_bd);SK.blindDur=Math.max(SK.blindDur||0,_bd);heroBlindSync();return;}   // 被对方闪光弹致盲：整屏泛白（【batch183】dur 可能是 2.5s 日冕喷发 / 4s 白夜，淡出按真实时长算）
   if(m.t==='buff'){heroApplyBuff(m.b,(m.dur||3000)/1000);return;}   // 队友的技能增益共享到自己
@@ -1421,6 +1439,9 @@ function netNadeMesh(code){
 /* 按 tw / nv 切换对手手上的东西：投掷物 > 刀 > 枪 */
 function netUpdateHeld(e){
   if(!e)return;
+  /* 【batch238】尸体不举东西：人躺下了手里还举着陨石/掩体墙，看着像在摆拍。
+     手里原来的枪/刀保持最后状态（别把人"扒光"）。复活后 e.alive=true 立刻恢复正常。 */
+  if(e.alive===false){ if(e.nadeRig)e.nadeRig.visible=false; return; }
   var code=(e.nv|0)||0, knife=((e.tw|0)===1), held=(code>0);
   if(e.nadeRig&&e._nadeCode!==code){                 // nv 变了才重建投掷物网格（省性能）
     e._nadeCode=code;

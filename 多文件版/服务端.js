@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.7.7';
+const SRV_VER = '1.7.8';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -1234,7 +1234,7 @@ function spikeStartRound(rk) {
     q.x = sp[0]; q.z = sp[1];
     q.spawnPt = sp;                    // 准备时间内不能走出这个点附近
     q.hp = MAX_HP; q.alive = true; q.downed = false; q.downedUntil = 0; q.respawnAt = 0;
-    try { sendTo(q, { t: 'spikeYou', team: q.team, spawn: sp }); } catch (e) { }   // 告诉本人：你是哪队、出生点在哪
+    try { sendTo(q, { t: 'spikeYou', team: q.team, spawn: sp, hp: MAX_HP }); } catch (e) { }   // 告诉本人：你是哪队、出生点在哪（【batch238】hp：上回合死的人血要一起回满）
     if (q.team === 0) { atk.push(q.id); atkSpawn = sp; }
   });
   /* 【batch169】爆能器开局掉在**专门的掉落点**（远离出生点），进攻方走过去自动捡起；
@@ -1414,6 +1414,8 @@ function publicInfo(p) {
 function spawnState(p) {
   const sp = randSpawn(p.map);                 // 【batch113】按他所处的房间（地图）选出生点
   p.x = sp.x; p.z = sp.z; p.y = 2;
+  p._pAt = 0;                                  // 【batch238】换点＝重新起算，别拿上一个点的时刻判位移
+  p._tpUntil = Date.now() + 1200;              // 并给 1.2 秒宽限：客户端那包可能还在路上
   p.hp = MAX_HP; p.alive = true; p.respawnAt = 0;
   p.downed = false; p.downedUntil = 0;                       // 【batch120】重生：倒地状态一并清掉
   p.vulnUntil = 0;                                           // 【batch121c】重生：易伤也清掉
@@ -1616,7 +1618,6 @@ function killPlayerSrv(from, target, hs, why) {
   target.fortifyZone = 0;
   target.domeUntil = 0; target.domeZone = 0;                  // 【batch173】死了就撤穹顶
   target.vulnUntil = 0;                                       // 【batch121c】死了就撤易伤
-  target.meteor = null;                                       // 【batch236】人没了，挂在他身上的陨石也作废
   target.respawnAt = Date.now() + RESPAWN_MS;
   if (from && from !== target) from.kills++;                  // 自己砸死自己不算人头
   broadcast({ t: 'kill', k: (from && from !== target) ? from.id : 0, kn: (from && from !== target) ? from.name : '',
@@ -1675,7 +1676,11 @@ function applyDamage(from, target, rawDmg, hs, noReflect, nade) {
    · 复活 / 换图 / 突进 / 传送门 / 被列车撞飞 这些**合法瞬移**由 p._tpUntil 开窗口；
    · 死了 / 倒地的人不动，直接跳过（别把尸体拽来拽去）。
    ==========================================================================*/
-const MOVE_MAX_SPEED = 26, MOVE_MIN_STEP = 8, MOVE_MAX_DT = 1.2;
+/* 【batch238】参数收紧一点：
+   · 最低 3 米（原来是 8 米 —— 8 米意味着"每包都能跳 8 米"，闪现根本拦不住）；
+   · 间隔最多按 0.45 秒算（原来 1.2 秒 → 最远能放行 31 米，卡一下就能从 A 点飘到 B 点）。
+   跑动 6~9 m/s，26 m/s 的余量足够；真正合法的瞬移（突进/传送/列车/重生）都开了窗口，不靠这里放水。 */
+const MOVE_MAX_SPEED = 26, MOVE_MIN_STEP = 3, MOVE_MAX_DT = 0.45;
 function moveGuard(p, x, z) {
   const now = Date.now();
   /* 第一个状态包只当基准（刚进服 / 刚重生时客户端还在对齐出生点，不该判瞬移） */
@@ -1688,7 +1693,11 @@ function moveGuard(p, x, z) {
   const d = Math.sqrt(dx * dx + dz * dz);
   const allow = Math.max(MOVE_MIN_STEP, dt * MOVE_MAX_SPEED);
   if (d <= allow) return true;
-  log('抓回瞬移：' + p.code + ' ' + p.name + ' 一步 ' + d.toFixed(1) + ' 米（允许 ' + allow.toFixed(1) + '，间隔 ' + Math.round(dt * 1000) + 'ms）');
+  /* 日志节流：网络差的时候一秒能被抓几十次，不掐会把黑窗口刷爆、也拖慢主循环 */
+  if (!p._mgLogAt || now - p._mgLogAt > 3000) {
+    p._mgLogAt = now;
+    log('抓回瞬移：' + p.code + ' ' + p.name + ' 一步 ' + d.toFixed(1) + ' 米（允许 ' + allow.toFixed(1) + '，间隔 ' + Math.round(dt * 1000) + 'ms）');
+  }
   return false;
 }
 
@@ -2367,7 +2376,10 @@ function handleMsg(sock, raw) {
   } else if (m.t === 'hit') {
     handleHit(p, m);
   } else if (m.t === 'tp') {                       // 【batch237】客户端主动开瞬移窗口（踩传送点 / 模组传送）
-    p._tpUntil = Date.now() + 800;
+    /* 【batch238】限频 1.2 秒一次：以前连发就能一直开着窗口＝防瞬移形同虚设。
+       地图传送点本身有 1 秒多的冷却，正常玩不会卡到这个上限。 */
+    const _tpNow = Date.now();
+    if (!p._tpReqAt || _tpNow - p._tpReqAt > 1200) { p._tpReqAt = _tpNow; p._tpUntil = _tpNow + 800; }
   } else if (m.t === 'meteor') {                   // 【batch236】流火 SP·天陨：起手落点（落地由服务端掐表触发）
     handleMeteor(p, m);
   } else if (m.t === 'aihit') {                   // 【batch227】本地 AI / 剧情 BOSS 打中玩家：客户端上报，纳入权威

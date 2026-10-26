@@ -585,7 +585,7 @@ function _准星刷新(dt){
   var 散弹=!!(wd&&(wd.type==='shotgun'||wd.spreadReticle===true));
   var 红点开镜=!!(wd&&wd.redDot)&&S.aimProgress>0.35;
   /* 散弹枪的准星就是散布圆；红点镜开镜后交给浮层红点；开镜到 0.6 之后其它枪也收起来 */
-  var 显示=!(散弹||红点开镜||S.aimProgress>0.6);
+  var 显示=!(散弹||红点开镜||S.aimProgress>0.6||(typeof NET!=='undefined'&&NET&&NET.dead));   /* 【batch238】阵亡不显示准星 */
   var 通用显=显示&&!是纪念;
   var 纪念显=显示&&是纪念;
   var op=通用显?'1':'0';
@@ -629,6 +629,24 @@ function updatePlayer(){
     S.sprinting=false;S.sprintLatch=false;S.joySprint=false;
   }
   var now=performance.now(),dt=Math.min((now-lastFrameTime)/1000,0.05);lastFrameTime=now;
+  /* 【batch238】第一人称枪/手：活着显示、联机阵亡时收起。放在这里（每帧同步）而不是只写在
+     死亡报文分支里 —— 退出对局 / 换图 / 被接管都可能直接把 NET.dead 清掉，写一处就会漏。 */
+  try{
+    var _枪该显示=!(typeof NET!=='undefined'&&NET&&NET.dead);
+    /* recoilPivot 下面挂着「枪 + 左手 anchor」，一刀切最省事（拿枪的情况全靠它） */
+    if(typeof recoilPivot!=='undefined'&&recoilPivot&&recoilPivot.visible!==_枪该显示)recoilPivot.visible=_枪该显示;
+    /* 拿刀时的左手是挂在相机上的（不在 recoilPivot 里）→ 单独掩一下。
+       只认「是不是我藏起来的」：复活那一刻按当时手里拿的东西决定要不要还回去，
+       不去碰爬梯那套（climbHands 由爬梯逻辑自己管），免得凭空多出一只手。 */
+    if(typeof leftHandCamGroup!=='undefined'&&leftHandCamGroup){
+      if(!_枪该显示){
+        if(leftHandCamGroup.visible){leftHandCamGroup.visible=false;leftHandCamGroup.userData._死藏=1;}
+      }else if(leftHandCamGroup.userData._死藏){
+        leftHandCamGroup.userData._死藏=0;
+        leftHandCamGroup.visible=(currentWeapon===WEAPON_KNIFE);
+      }
+    }
+  }catch(_eGunVis){}
   /* 【batch237】联机阵亡：人躺在地上动不了，镜头贴地 + 侧倒，只能转头看别人；
      3 秒后服务端发 respawn 再站起来（爆能器那种回合制则等下一回合）。 */
   if(typeof NET!=='undefined'&&NET&&NET.dead){
@@ -636,6 +654,20 @@ function updatePlayer(){
     mouseDown=false;rightMouseDown=false;
     S.aiming=false;S.sprinting=false;S.sprintLatch=false;S.joySprint=false;S.crouch=false;
     S.velX=0;S.velZ=0;S.velY=0;
+    /* 【batch238】死了就别再端着枪、别再探头：上一轮只把镜头放倒，第一人称的枪还挂在镜头前，
+       躺着"举枪"很出戏；开镜的话 FOV 也会一直冻在倍镜下（死亡分支 return 得早，
+       下面那句 fov 更新根本跑不到）。这里一次性收干净。 */
+    S.lean=0;
+    if(S.aimProgress){S.aimProgress=0;if(Math.abs(camera.fov-75)>0.05){camera.fov=75;camera.updateProjectionMatrix();}}
+    /* 手里的技能（陨石/掩体墙/小太阳…）放下：不放下的话预览圈还跟着准星走、
+       第一人称还举着一坨东西，人就躺地上了手还在比划。heroHoldCancel 自己会退冷却，
+       SK.hold 已经是空的时候直接返回 —— 每帧调是安全的。 */
+    if(typeof SK!=='undefined'&&SK&&SK.hold){ try{ if(typeof heroHoldCancel==='function')heroHoldCancel(); }catch(_eHC){} }
+    /* 准星：平时在 updatePlayer 末尾的 _准星刷新() 里更新，这里提前 return 了所以要自己关 */
+    try{
+      var _ch=document.getElementById('crosshair'); if(_ch&&_ch.style.opacity!=='0')_ch.style.opacity='0';
+      var _mc=document.getElementById('memCross'); if(_mc&&_mc.style.opacity!=='0')_mc.style.opacity='0';
+    }catch(_eCH){}
     /* 脚下的面（1 楼 0 / 2 楼楼板…）→ 眼高降到 0.55，像躺在地上 */
     var _gd=0;
     try{ _gd=(typeof standSurfY==='function')?standSurfY():0; }catch(e){ _gd=0; }
