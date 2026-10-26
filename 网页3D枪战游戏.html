@@ -10354,9 +10354,14 @@ function netPlayMulti(v){
   var 自动='';
   try{ 自动=localStorage.getItem(NET_AUTO_KEY)||''; }catch(e){}
   if(自动&&!单人){
-    var host=netNormHost(自动);
+    /* 【batch238】存的地址如果就是**当前页面自己的 host**（隧道域名 / 反代），
+       不能再按"裸主机名"补 :8765 —— 隧道只转 443，补了端口就永远连不上。
+       协议也跟着页面走：页面是 https，就是 wss。 */
+    var _是页面=(自动===netHostFromPage());
+    var host=netNormHost(自动,_是页面);
     if(host){
-      NET.raw=自动; NET.server=host; NET.secure=netSecureOf(自动);
+      NET.raw=自动; NET.server=host;
+      NET.secure=_是页面?(location.protocol==='https:'):netSecureOf(自动);
       NET.enabled=true; NET._autoStart=1;          // 标记：一会儿由「服务器连接条」真的发起连接
       return;
     }
@@ -10387,9 +10392,15 @@ function netLastHost(){
   }catch(e){ return String((NET&&NET.raw)||''); }
 }
 function netPingHost(host,cb){
-  var h='';try{ h=netNormHost(host); }catch(e){ h=''; }
+  var h='';try{
+    /* 【batch238】和 netPlayMulti 同一套口径：传来的如果就是页面自己的地址，
+       不补端口、协议按页面走（隧道 = https → wss） */
+    var _是页面=(String(host||'')===netHostFromPage());
+    h=netNormHost(host,_是页面);
+    var secure=_是页面?(location.protocol==='https:'):netSecureOf(host);
+    if(!h){cb(false);return;}
+  }catch(e){ h=''; }
   if(!h){cb(false);return;}
-  var secure=false;try{ secure=netSecureOf(host); }catch(e){}
   var url=(secure?'wss://':'ws://')+h+'/ws';
   var done=false,ws=null;
   var t=setTimeout(function(){ if(done)return; done=true; try{ws&&ws.close();}catch(e){} cb(false); },2500);
