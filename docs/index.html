@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>枪战突击 · 版本与模组中心</title>
+<title>枪战突击 · 下载中心（客户端 / 版本 / 模组）</title>
 <style>
   :root{ --bg:#0b0e17; --card:#151a2b; --card2:#1a2034; --line:#2a3350;
          --txt:#e8ecf5; --dim:#8b94ad; --acc:#ff4d4d; --acc2:#4da6ff; --gold:#ffc94d; }
@@ -50,6 +50,18 @@
   .hint b{color:#fff}
   .foot{text-align:center;color:var(--dim);font-size:12px;margin-top:60px}
   #loading{text-align:center;color:var(--dim);padding:40px}
+  /* 【1.7.8】客户端下载卡：手机 / 电脑两个大按钮，比版本卡更醒目 */
+  .card.client{padding:24px 22px}
+  .card.client .plat{font-size:30px;line-height:1}
+  .card.client .v{font-size:22px;margin-top:8px}
+  .card.client.android a{background:linear-gradient(135deg,#3ddc84,#1f9e5c)}
+  .card.client.windows a{background:linear-gradient(135deg,#4da6ff,#2a6fd0)}
+  .card.client.zip a{background:linear-gradient(135deg,#8b7bff,#5b46c9)}
+  .card.client a{display:block;text-align:center;margin-top:18px;padding:12px 22px;font-size:15px}
+  .card.client .step{color:var(--dim);font-size:12px;margin-top:12px;line-height:1.75}
+  .card.client .step b{color:#cfe0ff}
+  .card.disabled{opacity:.55}
+  .card.disabled a{background:#2a3350;pointer-events:none}
   .hide{display:none!important}
   .ai{color:#ffb3b3}
 </style>
@@ -57,16 +69,28 @@
 <body>
 <header>
   <h1>🔫 枪战突击</h1>
-  <div class="sub">版本与模组中心 · 启动器 / 手动下载都从这里取</div>
+  <div class="sub">客户端 · 版本 · 模组，一站下载 · 手机 / 电脑 / 浏览器都能玩</div>
   <div class="ver-chip" id="latestChip">加载中…</div>
 </header>
 <nav>
-  <button class="on" data-t="ver">📦 版本</button>
+  <button class="on" data-t="client">📱 客户端</button>
+  <button data-t="ver">📦 版本</button>
   <button data-t="mod">🧩 模组</button>
   <button data-t="about">ℹ️ 说明</button>
 </nav>
 <div class="wrap">
   <div id="loading">正在读取清单…</div>
+
+  <section id="sec-client" class="hide"><h2>📱 客户端下载</h2>
+    <div class="grid" id="clientGrid"></div>
+    <div class="hint" id="clientHint">
+      <b>装哪个？</b> 手机就下 <b>APK</b>，电脑就下 <b>安装程序</b> —— 都是点开就能装，不用解压。<br><br>
+      <b>安卓</b>：下载完点开 apk，系统提示「未知来源」时选允许即可；装完桌面会出现「枪战突击」。<br>
+      <b>电脑</b>：双击安装程序 → 选个目录 → 自动建桌面快捷方式；装完双击图标进游戏。<br><br>
+      <b>想联机？</b> 装好后在游戏里点「多人游戏」，填服务器地址（<b>IP:8765</b> 或朋友给的域名）。<br>
+      不想装东西、只想在浏览器里玩？下上面的 <b>绿色版</b>，解压后双击 <b>枪战突击.exe</b> 或直接打开 <b>index.html</b>。
+    </div>
+  </section>
 
   <section id="sec-ver" class="hide"><h2>📦 所有版本</h2><div class="grid" id="verGrid"></div></section>
   <section id="sec-mod" class="hide"><h2>🧩 模组</h2><div class="grid" id="modGrid"></div></section>
@@ -75,8 +99,9 @@
       <b>这是什么？</b> 这里是《枪战突击》的版本与模组分发中心。每个版本独立打包，互不影响；
       模组是玩家自己往游戏 <b>mode/模组/</b> 目录里放的扩展（新英雄 / 新枪 / 新地图）。
       <br><br>
-      <b>怎么用？</b> ① 下载「启动器」，打开后自动从本页拉取清单，点版本即可多线程下载、解压到独立目录、一键启动；
-      ② 也可以手动下载下面的 zip 解压，浏览器打开 <b>index.html</b> 即玩；联机再单独跑 <b>服务端.js</b>。
+      <b>怎么用？</b> ① 只想玩 → 到「📱 客户端」页下 <b>安卓 APK</b>（手机）或 <b>电脑安装程序</b>（Windows），装完就能进；
+      ② 喜欢绿色版 → 到「📦 版本」页下 zip，解压后双击 <b>枪战突击.exe</b>，或者浏览器打开 <b>index.html</b> 即玩；
+      ③ 联机再单独跑 <b>服务端.js</b>（或连朋友的服务器）。
       <br><br>
       <b>模组放哪？</b> 下载的 <b>.js</b> 模组丢进对应版本目录下的 <b>mode/模组/</b> 即可生效（启动器会帮你放）。
       <br><br>
@@ -102,6 +127,48 @@
     var ver=data['版本']||[], mod=data['模组']||[];
     // 最新版
     if(ver.length){var n=ver[0];document.getElementById('latestChip').textContent='最新版本 v'+n['版本']+' · '+格式大小(n['大小']);}
+
+    /* 【1.7.8】客户端安装包（手机 APK / 电脑安装程序）。清单里没有就给出兜底提示，
+       不能让手机玩家对着 zip 发呆。 */
+    var 客=data['客户端']||{};
+    var cg=document.getElementById('clientGrid');cg.innerHTML='';
+    var 平台们=Object.keys(客);
+    if(!平台们.length){
+      cg.innerHTML='<div class="card client disabled"><div class="plat">📦</div><div class="v">安装包暂缺</div>'+
+        '<div class="desc">这一版还没上传安装包，请到「📦 版本」页下载 zip，解压后运行里面的 <b>枪战突击.exe</b>（电脑）或打开 index.html（浏览器）。</div>'+
+        '<a>暂不可用</a></div>';
+    }
+    平台们.forEach(function(k){
+      var c0=客[k];
+      var cls=(k==='安卓')?'android':'windows';
+      var ico=(k==='安卓')?'📱':'💻';
+      var 步骤=(k==='安卓')
+        ? '<b>1.</b> 点下面按钮下载 APK<br><b>2.</b> 点开安装，允许「未知来源」<br><b>3.</b> 桌面出现「枪战突击」就能玩'
+        : '<b>1.</b> 点下面按钮下载安装程序<br><b>2.</b> 双击运行，选个安装目录<br><b>3.</b> 桌面快捷方式进游戏';
+      var c=document.createElement('div');c.className='card client '+cls;
+      c.innerHTML='<div class="plat">'+ico+'</div>'+
+        '<div class="v">'+k+'版</div>'+
+        '<div class="date">v'+(c0['版本']||'')+'　·　'+格式大小(c0['大小']||0)+'　·　'+(c0['日期']||'')+'</div>'+
+        '<div class="desc">'+(k==='安卓'?'手机直接安装（Android 7 以上）。':'Windows 安装程序（自带 WebView2 内核，装完就是独立程序）。')+'</div>'+
+        '<div class="step">'+步骤+'</div>'+
+        '<div class="meta"><span>MD5 '+(c0['md5']||'').slice(0,8)+'</span></div>'+
+        '<a href="版本/'+encodeURIComponent(c0['文件'])+'" download>⬇ 下载'+(k==='安卓'?' APK':'安装程序')+'</a>';
+      cg.appendChild(c);
+    });
+    /* 第三张：绿色版（最新版本 zip）。不想装东西 / 想自己改文件的玩家走这条 ——
+       顺便把「两张卡右边空一格」的排版补满。 */
+    if(ver.length){
+      var nv=ver[0];
+      var cz=document.createElement('div');cz.className='card client zip';
+      cz.innerHTML='<div class="plat">📦</div>'+
+        '<div class="v">绿色版</div>'+
+        '<div class="date">v'+nv['版本']+'　·　'+格式大小(nv['大小'])+'　·　'+(nv['日期']||'')+'</div>'+
+        '<div class="desc">免安装的完整游戏包：解压后双击 <b>枪战突击.exe</b>，或用浏览器打开 <b>index.html</b>。</div>'+
+        '<div class="step"><b>1.</b> 下载并解压到任意目录<br><b>2.</b> 双击 <b>枪战突击.exe</b><br><b>3.</b> 想联机就再跑一次 <b>服务端.js</b></div>'+
+        '<div class="meta"><span>MD5 '+(nv['md5']||'').slice(0,8)+'</span></div>'+
+        '<a href="版本/'+encodeURIComponent(nv['文件'])+'" download>⬇ 下载版本包</a>';
+      cg.appendChild(cz);
+    }
 
     var vg=document.getElementById('verGrid');vg.innerHTML='';
     ver.forEach(function(v,i){
@@ -139,10 +206,10 @@
       document.querySelectorAll('nav button').forEach(function(x){x.classList.remove('on');});
       b.classList.add('on');
       var t=b.dataset.t;
-      ['ver','mod','about'].forEach(function(k){document.getElementById('sec-'+k).classList.toggle('hide',k!==t);});
+      ['client','ver','mod','about'].forEach(function(k){document.getElementById('sec-'+k).classList.toggle('hide',k!==t);});
     });
   });
-  document.getElementById('sec-ver').classList.remove('hide');
+  document.getElementById('sec-client').classList.remove('hide');
 })();
 </script>
 </body>
