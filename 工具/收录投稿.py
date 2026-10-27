@@ -14,6 +14,8 @@ import io, json, os, re, sys
 仓库根 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 模组目录 = os.path.join(仓库根, 'docs', '模组')
 结果文件 = os.path.join(仓库根, '工具', '收录结果.json')
+# 这是机器人每次运行重写的产物，已加入 .gitignore，别手动提交它。
+# Action 的「回帖并关闭」步骤当场读它；读不到时有兜底默认值，不会崩。
 
 # 模组是**玩家本地会执行的 JS**，这里只做能一眼看出来的坏事拦截。
 # 不是沙箱（真要做坏事总能绕过），主要是挡住"顺手清存档 / 偷偷上传数据 / 弹外链"这类。
