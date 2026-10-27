@@ -10,6 +10,8 @@
 多文件版/手机版安卓/*.apk
 多文件版/手机版安卓/*.idsig
 *.keystore
+# 【例外】手机版的发布签名：必须进仓库，丢了就再也无法覆盖更新（详见 签名说明.txt）
+!多文件版/手机版安卓/debug.keystore
 local.properties
 
 # 系统杂物

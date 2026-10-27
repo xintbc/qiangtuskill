@@ -20,7 +20,7 @@ if errorlevel 1 (
 )
 
 "%GCC%" -O2 -std=gnu99 -w -municode -mwindows -finput-charset=UTF-8 -I sdk ^
-  客户端.c 网页视图.c -o 枪战客户端.exe ^
+  客户端.c 网页视图.c 本地服务.c %资源% -o 枪战客户端.exe ^
   -lws2_32 -lole32 -loleaut32 -lcomctl32 -lshell32 -luser32 -lgdi32 -ladvapi32 -luuid
 
 if errorlevel 1 (

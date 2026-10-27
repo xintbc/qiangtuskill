@@ -61,6 +61,16 @@
   .card.client .step{color:var(--dim);font-size:12px;margin-top:12px;line-height:1.75}
   .card.client .step b{color:#cfe0ff}
   .card.disabled{opacity:.55}
+  /* 【1.7.9】旧版本安装包：一行一个版本，安卓/电脑两个小按钮 */
+  .histTitle{font-size:15px;color:var(--dim);margin:30px 0 12px;font-weight:600}
+  .histList{display:flex;flex-direction:column;gap:8px}
+  .histRow{display:flex;align-items:center;gap:10px;background:rgba(21,26,43,.6);
+    border:1px solid var(--line);border-radius:10px;padding:10px 14px;flex-wrap:wrap}
+  .histRow .hv{color:#fff;font-weight:700;font-size:14px;min-width:66px}
+  .histBtn{display:inline-block;padding:6px 14px;border-radius:7px;text-decoration:none;font-size:13px;
+    background:rgba(77,166,255,.16);border:1px solid rgba(77,166,255,.38);color:#bfe0ff;transition:.2s}
+  .histBtn:hover{background:rgba(77,166,255,.3);color:#fff}
+  .histBtn.off{background:transparent;border-color:var(--line);color:var(--dim);cursor:default}
   .card.disabled a{background:#2a3350;pointer-events:none}
   .hide{display:none!important}
   .ai{color:#ffb3b3}
@@ -83,6 +93,7 @@
 
   <section id="sec-client" class="hide"><h2>📱 客户端下载</h2>
     <div class="grid" id="clientGrid"></div>
+    <div id="clientOld"></div>
     <div class="hint" id="clientHint">
       <b>装哪个？</b> 手机就下 <b>APK</b>，电脑就下 <b>安装程序</b> —— 都是点开就能装，不用解压。<br><br>
       <b>安卓</b>：下载完点开 apk，系统提示「未知来源」时选允许即可；装完桌面会出现「枪战突击」。<br>
@@ -129,17 +140,25 @@
     if(ver.length){var n=ver[0];document.getElementById('latestChip').textContent='最新版本 v'+n['版本']+' · '+格式大小(n['大小']);}
 
     /* 【1.7.8】客户端安装包（手机 APK / 电脑安装程序）。清单里没有就给出兜底提示，
-       不能让手机玩家对着 zip 发呆。 */
-    var 客=data['客户端']||{};
+       不能让手机玩家对着 zip 发呆。
+       【1.7.9】清单里现在是**数组**（每个版本各一条，历史都留着）：
+       最新版本渲染成三张大卡，旧版本收到底下的「旧版本安装包」列表里。 */
+    var 客=data['客户端']||[];
+    if(!Array.isArray(客)){
+      客=Object.keys(客).map(function(k){var o=Object.assign({},客[k]);o['平台']=k;return o;});
+    }
+    var 最新版=(ver.length?ver[0]['版本']:'');
+    var 最新客=客.filter(function(x){return String(x['版本'])===String(最新版);});
+    var 旧版客=客.filter(function(x){return String(x['版本'])!==String(最新版);});
     var cg=document.getElementById('clientGrid');cg.innerHTML='';
-    var 平台们=Object.keys(客);
+    var 平台们=最新客;
     if(!平台们.length){
       cg.innerHTML='<div class="card client disabled"><div class="plat">📦</div><div class="v">安装包暂缺</div>'+
         '<div class="desc">这一版还没上传安装包，请到「📦 版本」页下载 zip，解压后运行里面的 <b>枪战突击.exe</b>（电脑）或打开 index.html（浏览器）。</div>'+
         '<a>暂不可用</a></div>';
     }
-    平台们.forEach(function(k){
-      var c0=客[k];
+    平台们.forEach(function(c0){
+      var k=c0['平台'];
       var cls=(k==='安卓')?'android':'windows';
       var ico=(k==='安卓')?'📱':'💻';
       var 步骤=(k==='安卓')
@@ -168,6 +187,32 @@
         '<div class="meta"><span>MD5 '+(nv['md5']||'').slice(0,8)+'</span></div>'+
         '<a href="版本/'+encodeURIComponent(nv['文件'])+'" download>⬇ 下载版本包</a>';
       cg.appendChild(cz);
+    }
+
+    /* 旧版本安装包：一行一个版本（想回旧版的人随时能下） */
+    var og=document.getElementById('clientOld');
+    if(!旧版客.length){ og.innerHTML=''; }
+    else{
+      var 按版本={};
+      旧版客.forEach(function(x){ var v=String(x['版本']); (按版本[v]=按版本[v]||[]).push(x); });
+      var 版本们=Object.keys(按版本).sort(function(a,b){
+        var A=a.split('.').map(Number), B=b.split('.').map(Number);
+        for(var i=0;i<3;i++){ if((A[i]||0)!==(B[i]||0)) return (B[i]||0)-(A[i]||0); }
+        return 0;
+      });
+      var h='<div class="histTitle">🗂 旧版本安装包（'+版本们.length+' 个版本，长期保留）</div><div class="histList">';
+      版本们.forEach(function(v){
+        h+='<div class="histRow"><span class="hv">v'+v+'</span>';
+        ['安卓','电脑'].forEach(function(p){
+          var it=(按版本[v]||[]).filter(function(y){return y['平台']===p;})[0];
+          h+= it
+            ? '<a class="histBtn" href="版本/'+encodeURIComponent(it['文件'])+'" download>'+p+' · '+格式大小(it['大小']||0)+'</a>'
+            : '<span class="histBtn off">'+p+'（无）</span>';
+        });
+        h+='</div>';
+      });
+      h+='</div>';
+      og.innerHTML=h;
     }
 
     var vg=document.getElementById('verGrid');vg.innerHTML='';

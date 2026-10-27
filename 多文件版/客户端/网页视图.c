@@ -232,6 +232,116 @@ static void 建目录(const WCHAR *路径)
     CreateDirectoryW(临时, NULL);
 }
 
+/* ============================================================================
+   【batch240】存档找回（电脑版"换个安装目录就账号/解锁/键位全没"）
+   ----------------------------------------------------------------------------
+   数据目录一直是「<exe目录>\配置\网页数据」，好处是多开天然隔离，坏处是**换个目录装
+   就等于换了个存档**：玩家从绿色版换到安装版、或者安装包装到了另一个盘，打开就是新号。
+   这里的做法：只有当这个目录**连 配置 文件夹都没有**（＝全新的安装目录）时，才去机器上
+   把最近的旧存档**复制**一份过来。
+     · 玩家故意复制一份目录玩多开 → 那份里带着 配置 → 不动它，隔离照旧；
+     · 旧目录原样保留（复制不是移动），玩家想回去还能回去。
+   找的顺序：每个固定盘根 → %LOCALAPPDATA% → %APPDATA% → 桌面，取"最新"的那份。
+   ==========================================================================*/
+/* WebView2 的布局有两代：
+       新：<数据目录>\EBWebView\Default\Local Storage
+       旧：<数据目录>\Default\Local Storage
+   ⚠️ 只认后一种会漏掉几乎所有机器（实测 E 盘那份就是 EBWebView 结构），
+   于是"有存档"被判成没存档、迁移永远不触发。两种都认。 */
+static void 存档标记(WCHAR *出, int 容量, const WCHAR *数据目录)
+{
+    WCHAR 临时[MAX_PATH * 2];
+    _snwprintf(临时, MAX_PATH * 2 - 1, L"%s\\EBWebView\\Default\\Local Storage", 数据目录);
+    if (GetFileAttributesW(临时) != INVALID_FILE_ATTRIBUTES) { lstrcpynW(出, 临时, 容量); return; }
+    _snwprintf(出, 容量 - 1, L"%s\\Default\\Local Storage", 数据目录);
+}
+
+static BOOL 有存档(const WCHAR *数据目录)
+{
+    WCHAR 临时[MAX_PATH * 2];
+    存档标记(临时, MAX_PATH * 2, 数据目录);
+    DWORD a = GetFileAttributesW(临时);
+    return (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+static void 递归复制(const WCHAR *源, const WCHAR *目标)
+{
+    WCHAR 模式[MAX_PATH * 2];
+    _snwprintf(模式, MAX_PATH * 2 - 1, L"%s\\*", 源);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(模式, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!lstrcmpW(fd.cFileName, L".") || !lstrcmpW(fd.cFileName, L"..")) continue;
+        WCHAR 从[MAX_PATH * 2], 到[MAX_PATH * 2];
+        _snwprintf(从, MAX_PATH * 2 - 1, L"%s\\%s", 源, fd.cFileName);
+        _snwprintf(到, MAX_PATH * 2 - 1, L"%s\\%s", 目标, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            建目录(到);
+            递归复制(从, 到);
+        } else {
+            CopyFileW(从, 到, FALSE);
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+/* 在某个父目录下找「枪战突击*」的存档，返回最新一份的「配置\网页数据」路径 */
+static void 扫父目录(const WCHAR *父, WCHAR *最佳, int 容量, FILETIME *最佳时间)
+{
+    WCHAR 模式[MAX_PATH * 2];
+    _snwprintf(模式, MAX_PATH * 2 - 1, L"%s\\枪战突击*", 父);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(模式, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        if (!lstrcmpW(fd.cFileName, L".") || !lstrcmpW(fd.cFileName, L"..")) continue;
+        WCHAR 数据[MAX_PATH * 2];
+        _snwprintf(数据, MAX_PATH * 2 - 1, L"%s\\%s\\配置\\网页数据", 父, fd.cFileName);
+        if (!有存档(数据)) continue;
+        /* 用 Local Storage 目录本身的写入时间比新旧 */
+        WCHAR 标记[MAX_PATH * 2];
+        存档标记(标记, MAX_PATH * 2, 数据);
+        WIN32_FILE_ATTRIBUTE_DATA fa;
+        if (!GetFileAttributesExW(标记, GetFileExInfoStandard, &fa)) continue;
+        if (最佳[0] == 0 || CompareFileTime(&fa.ftLastWriteTime, 最佳时间) > 0) {
+            lstrcpynW(最佳, 数据, 容量);
+            *最佳时间 = fa.ftLastWriteTime;
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+/* 找到一份旧存档就返回 TRUE（写进 出：...\配置\网页数据） */
+static BOOL 找旧存档(WCHAR *出, int 容量)
+{
+    FILETIME 最佳时间 = { 0, 0 };
+    出[0] = 0;
+
+    /* ① 每个固定盘（可移动盘跳过：U 盘里的多半不是主存档，扫着还慢） */
+    DWORD 盘 = GetLogicalDrives();
+    for (int i = 0; i < 26; i++) {
+        if (!(盘 & (1u << i))) continue;
+        WCHAR 根[8];
+        _snwprintf(根, 7, L"%c:\\", (WCHAR)(L'A' + i));
+        UINT 型 = GetDriveTypeW(根);
+        if (型 != DRIVE_FIXED) continue;
+        扫父目录(根, 出, 容量, &最佳时间);
+    }
+    /* ② 用户目录下的常见位置（安装包默认就装在这儿）。
+       走环境变量而不是 SHGetFolderPathW：MinGW 下 CSIDL 那套要额外头文件，环境变量一样准。 */
+    WCHAR 基[MAX_PATH * 2] = { 0 };
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", 基, MAX_PATH * 2)) 扫父目录(基, 出, 容量, &最佳时间);
+    if (GetEnvironmentVariableW(L"APPDATA", 基, MAX_PATH * 2))      扫父目录(基, 出, 容量, &最佳时间);
+    if (GetEnvironmentVariableW(L"USERPROFILE", 基, MAX_PATH * 2)) {
+        WCHAR 桌面[MAX_PATH * 2];
+        _snwprintf(桌面, MAX_PATH * 2 - 1, L"%s\\Desktop", 基);
+        扫父目录(桌面, 出, 容量, &最佳时间);
+    }
+    return 出[0] != 0;
+}
+
 /* 注入到每个 document 创建时（早于页面自己的脚本）：
    ① 把客户端探测到的服务器地址写进 localStorage —— 游戏"多人"面板会自动填；
    ② 打一个标记，页面/排查时能知道"我在客户端里跑"。 */
@@ -486,6 +596,25 @@ BOOL 网页视图_启动(HWND 父窗口, const wchar_t *根目录, const char *�
     取exe目录(exe目录, MAX_PATH * 2);
     WCHAR 配置目录[MAX_PATH * 2];
     拼路径(配置目录, MAX_PATH * 2, exe目录, L"配置\\网页数据");
+
+    /* 【batch240】全新安装目录（连 配置 文件夹都没有）→ 把机器上最近的旧存档复制一份过来。
+       换目录装、从绿色版换到安装版，都不会再"账号没了 / 解锁没了 / 键位没了"。
+       故意复制一份目录玩多开的情况带着 配置，这里不会动它。 */
+    {
+        WCHAR 配置根[MAX_PATH * 2];
+        拼路径(配置根, MAX_PATH * 2, exe目录, L"配置");
+        if (GetFileAttributesW(配置根) == INVALID_FILE_ATTRIBUTES) {
+            WCHAR 旧存档[MAX_PATH * 2] = { 0 };
+            if (找旧存档(旧存档, MAX_PATH * 2)) {
+                写日志(L"全新目录：发现旧存档 %s，正在复制…", 旧存档);
+                建目录(配置目录);
+                递归复制(旧存档, 配置目录);
+                写日志(L"旧存档已迁移：%s → %s", 旧存档, 配置目录);
+            } else {
+                写日志(L"全新目录：没找到旧存档，从零开始");
+            }
+        }
+    }
     建目录(配置目录);
 
     /* ★ 起内置 HTTP 服务：页面用 http://127.0.0.1:端口 打开。
