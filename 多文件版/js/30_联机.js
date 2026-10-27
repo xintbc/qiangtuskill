@@ -276,10 +276,13 @@ function netOpenPanel(){
 function netClosePanel(){var p=document.getElementById('netPanel');if(p)p.classList.remove('on');}
 function netEnterGame(){
   if(S.playing&&!S.paused&&!S.over){if(!NET.connected){NET.reconnecting=false;netConnect();}return;}  // 已在局中：只补连接，不重开
-  /* 【batch237】进多人前先把"玩家上次真正选的那张图"读回来 ——
-     上一局（剧情 / 联机房间）可能把 curMapId 改成别的图了，不读回来就会"选的是日蚀、进的却是哨塔"。 */
-  try{ if(typeof mapLoad==='function')mapLoad(); }catch(e){}
   enterGame();
+  /* 【多人默认哨塔】多人模式永远用「经典·哨塔竞技场」(classic)，不沿用上次单人选的图
+     （上次选十日环城、下意识点多人却进哨塔，会让玩家困惑）。单人选图仍按 localStorage 原样保留，
+     这里强制切到 classic 且不写回存档（不存=true），不影响单人模式记忆；同时本地重建这张图，
+     避免"进多人沿用上一局单人选的图"的混乱。 */
+  try{ if(typeof setMap==='function')setMap('classic',true); }catch(e){}
+  if(typeof curMapId!=='undefined')curMapId='classic';
   netStart();
   setTimeout(function(){
     if(!NET.connected){showMsg('暂时连不上服务器，正在重试…请检查地址和网络','#f66');}

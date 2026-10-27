@@ -18,6 +18,8 @@ local.properties
 .DS_Store
 Thumbs.db
 desktop.ini
+*.lnk
+多文件版/mode/模组/*.zip
 
 # 运行时数据（每人本地不同，不进仓库）
 多文件版/名字库.dat

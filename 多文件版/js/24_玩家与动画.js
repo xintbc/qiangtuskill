@@ -701,10 +701,12 @@ function updatePlayer(){
   sp*=heroSpeedMul();   // 英雄技能：冲锋 / 肾上腺素加速，反射力场 / 堡垒 / 被减速则变慢
   if(currentWeapon===WEAPON_KNIFE&&switchAnimState===ANIM_IDLE)sp*=KNIFE_SPEED_BONUS;
   camera.position.x-=S.leanX;camera.position.z-=S.leanZ;S.leanX=0;S.leanZ=0;
-  /* 碰撞盒口径：一律"站直口径"（standEyeY 已把蹲下压低的那段加回来）。
-     （趴下曾在这里有"回收前伸 + 扁盒口径"，已随趴下功能一起删除 —— 那套前伸位移
-      就是"趴着贴墙头插墙 / 转身绕脚飘圈 / 子弹差 1.7 米"等一系列 bug 的源头。） */
-  var _bcPy=standEyeY(),_bcEye=GROUND_Y;
+  /* 碰撞盒口径：默认"站直口径"（standEyeY 已把蹲下压低的那段加回来）。
+     【蹲下降低碰撞盒】蹲下时把「盒顶」按 CROUCH_DROP*crP 一起降下来，
+     但脚底（feet=py-eye）保持不变 —— 这样蹲下既能压低视角、又能钻进比站姿矮一头的地方，
+     又不会因为 feet 算低而穿楼板（地面判定仍走 standEyeY 站直口径，见下一行 groundHeightAt）。 */
+  var _cd=(typeof CROUCH_DROP==='number'?CROUCH_DROP:0)*(S.crP||0);
+  var _bcPy=standEyeY()-_cd,_bcEye=GROUND_Y-_cd;
   // ---- 翻上哨塔(mantle)：到顶双手撑地往上攀爬一下 ----
   if(S.mantle>0){
     S.mantle-=dt;
