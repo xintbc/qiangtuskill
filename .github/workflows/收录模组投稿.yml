@@ -1,0 +1,75 @@
+name: 收录模组投稿
+
+# 玩家/创作者在 GitHub 提一条 Issue（标题「[模组] 名字」，正文里放 ```js 代码块），
+# 机器人自动：体检 → 写进 docs/模组/ → 刷新 manifest → 提交 → 回帖并关闭 Issue。
+# 发布中心「🧩 模组」页随即出现，玩家在游戏里一键下载。
+#
+# 为什么走 Issue 而不是网页直传：GitHub Pages 是纯静态托管，没有后端。
+# Issue 这条链路零成本、有记录、能反悔（编辑 Issue 会重新检查），也不用把任何密钥放进网页。
+
+on:
+  issues:
+    types: [opened, edited]
+
+# 多人同时投稿时排队，避免两条流水线同时改 manifest 冲突
+concurrency:
+  group: 模组投稿
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  收录:
+    # 只处理「[模组] …」标题的 Issue（别的 Issue 不动）
+    if: startsWith(github.event.issue.title, '[模组]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 解析并写入模组文件
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_USER: ${{ github.event.issue.user.login }}
+        run: python 工具/收录投稿.py
+
+      - name: 提交到仓库
+        run: |
+          git config user.name "模组投稿机器人"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/模组 docs/manifest.json
+          if git diff --staged --quiet; then
+            echo "没有变化（可能是重复提交或已被驳回）"
+          else
+            git commit -m "收录模组投稿 #${{ github.event.issue.number }}"
+            git push
+          fi
+
+      - name: 回帖并关闭
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let r = { ok: false, 消息: '机器人没跑出结果，请稍后编辑一下这条 Issue 重试。', 文件: '' };
+            try { r = JSON.parse(fs.readFileSync('工具/收录结果.json', 'utf8')); } catch (e) {}
+            const 站 = 'https://xintbc.github.io/qiangtuskill/';
+            const body = r.ok
+              ? `✅ **已收录**\n\n${r.消息}\n\n- 文件：\`${r.文件}\`\n- 发布中心：${站}（「🧩 模组」页）\n\n玩家在游戏里打开 **设置 → 🧩 模组 → 下载** 就能装上。想改内容直接编辑这条 Issue，机器人会重新检查。`
+              : `❌ **这次没有收录**\n\n${r.消息}\n\n改好之后**编辑这条 Issue**（不用重开），机器人会自动重新检查。`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, body
+            });
+            if (r.ok) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, state: 'closed'
+              });
+            }

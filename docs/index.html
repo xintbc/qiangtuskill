@@ -42,6 +42,7 @@
   .card a:hover{filter:brightness(1.15)}
   .mod{background:var(--card2)}
   .mod .name{font-size:16px;font-weight:600;color:#fff;word-break:break-all}
+  .mod .author{color:#9db4d6;font-size:12px;margin-top:6px}
   .mod .compat{color:var(--gold);font-size:12px;margin-top:6px}
   .mod .meta{color:var(--dim);font-size:11px;margin-top:6px}
   .mod a{background:linear-gradient(135deg,var(--acc2),#2a6fd0)}
@@ -71,6 +72,27 @@
     background:rgba(77,166,255,.16);border:1px solid rgba(77,166,255,.38);color:#bfe0ff;transition:.2s}
   .histBtn:hover{background:rgba(77,166,255,.3);color:#fff}
   .histBtn.off{background:transparent;border-color:var(--line);color:var(--dim);cursor:default}
+  /* 【1.7.10】模组投稿表单 */
+  .form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;display:flex;
+    flex-direction:column;gap:14px;max-width:820px}
+  .form label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--dim)}
+  .form input[type=text]{background:#0e1220;border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    color:var(--txt);font-size:14px;font-family:inherit;outline:none}
+  .form input[type=text]:focus{border-color:rgba(77,166,255,.6)}
+  .form textarea{background:#0e1220;border:1px solid var(--line);border-radius:8px;padding:12px;
+    color:#cfe6ff;font-size:12.5px;font-family:Consolas,Menlo,monospace;line-height:1.55;min-height:260px;
+    resize:vertical;outline:none;white-space:pre;overflow:auto}
+  .form textarea:focus{border-color:rgba(77,166,255,.6)}
+  .form .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:#1a2034;color:var(--txt);border-radius:9px;padding:11px 20px;
+    font-size:14px;cursor:pointer;font-family:inherit;transition:.2s}
+  .btn:hover{border-color:#3d4a70;color:#fff}
+  .btn.primary{background:linear-gradient(135deg,var(--acc),#c22);border:none;color:#fff;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.15)}
+  .btn.mini{padding:4px 12px;font-size:12px;margin-left:8px;vertical-align:middle}
+  .msg{font-size:13px;color:var(--dim)}
+  .msg.ok{color:#6f6}.msg.bad{color:#ff9a9a}
+  .uplStep{color:#bcd8ff;font-size:13px;line-height:1.9}
   .card.disabled a{background:#2a3350;pointer-events:none}
   .hide{display:none!important}
   .ai{color:#ffb3b3}
@@ -86,6 +108,7 @@
   <button class="on" data-t="client">📱 客户端</button>
   <button data-t="ver">📦 版本</button>
   <button data-t="mod">🧩 模组</button>
+  <button data-t="upl">📤 投稿</button>
   <button data-t="about">ℹ️ 说明</button>
 </nav>
 <div class="wrap">
@@ -105,6 +128,48 @@
 
   <section id="sec-ver" class="hide"><h2>📦 所有版本</h2><div class="grid" id="verGrid"></div></section>
   <section id="sec-mod" class="hide"><h2>🧩 模组</h2><div class="grid" id="modGrid"></div></section>
+  <section id="sec-upl" class="hide"><h2>📤 模组投稿（所有人都能投）</h2>
+    <div class="form">
+      <label>模组名（必填）
+        <input type="text" id="upName" placeholder="例：火焰喷射器" maxlength="30">
+      </label>
+      <label>作者（可留空，默认用你的 GitHub 名）
+        <input type="text" id="upAuthor" placeholder="游戏昵称 / 网名" maxlength="30">
+      </label>
+      <label>一句话说明
+        <input type="text" id="upDesc" placeholder="例：一把会点燃敌人的喷火枪，射程短、伤害高" maxlength="120">
+      </label>
+      <label>模组代码
+        <span style="color:var(--dim)">把整个 <b>.js</b> 的内容粘进来，或
+          <button class="btn mini" id="upPick" type="button">选择 .js 文件</button>
+          <input type="file" id="upFile" accept=".js,text/javascript" style="display:none">
+        </span>
+        <textarea id="upCode" spellcheck="false" placeholder="// 从 (function(){ 开始，把整个模组代码粘贴到这里"></textarea>
+      </label>
+      <div class="row">
+        <button class="btn primary" id="upIssue" type="button">📮 去 GitHub 投稿</button>
+        <button class="btn" id="upDownload" type="button">⬇ 下载成 .js</button>
+        <span class="msg" id="upMsg"></span>
+      </div>
+    </div>
+    <div class="hint">
+      <b>怎么投？</b> 填好上面 → 点「📮 去 GitHub 投稿」→ 会给你的浏览器开一条**已经写好内容的 GitHub 新建 Issue 页**
+      （标题和代码都填好了）→ 直接点 **Submit new issue**。
+      <br><br>
+      <b>没有 GitHub 账号？</b> 点「⬇ 下载成 .js」，把文件发给服务器主/群主，让他手动放进 <b>docs/模组/</b>。
+      <br><br>
+      <b>投完会怎样？</b> 机器人会自动检查（格式、体积、危险代码），通过后**几秒内**就出现在「🧩 模组」页；
+      不通过会在这条 Issue 下面写原因，改完直接编辑那条 Issue 就会重新检查，不用重投。
+      <br><br>
+      <b>不能做这些</b>（会被直接驳回）：读 <b>document.cookie</b>、清 <b>localStorage</b>、
+      删 <b>indexedDB</b>、用 <b>eval / new Function</b> 动态执行代码、用 <b>XMLHttpRequest</b> 偷偷发数据、
+      把玩家 <b>window.location</b> 跳到别的网站。
+      <br><br>
+      <b>写模组卡住了？</b> 版本包里带 <b>mode/模组/模组开发教程.md</b>（14 章，含完整模板）；
+      接口总表在「ℹ️ 说明」页下方。
+    </div>
+  </section>
+
   <section id="sec-about" class="hide"><h2>ℹ️ 说明</h2>
     <div class="hint">
       <b>这是什么？</b> 这里是《枪战突击》的版本与模组分发中心。每个版本独立打包，互不影响；
@@ -230,7 +295,9 @@
     if(!mod.length)mg.innerHTML='<div style="color:var(--dim)">暂无模组</div>';
     mod.forEach(function(m){
       var c=document.createElement('div');c.className='card mod';
+      /* 【1.7.10】加作者行：投稿来的模组带 @author，内置的没写就显示"官方出品" */
       c.innerHTML='<div class="name">🧩 '+m['名字']+'</div>'+
+        '<div class="author">👤 '+(m['作者']||'官方出品')+'</div>'+
         '<div class="compat">'+(m['兼容']||'通用')+'</div>'+
         '<div class="meta">'+格式大小(m['大小'])+'　·　MD5 '+(m['md5']||'').slice(0,8)+'</div>'+
         '<a href="模组/'+encodeURIComponent(m['名字'])+'" download>⬇ 下载模组</a>';
@@ -251,9 +318,75 @@
       document.querySelectorAll('nav button').forEach(function(x){x.classList.remove('on');});
       b.classList.add('on');
       var t=b.dataset.t;
-      ['client','ver','mod','about'].forEach(function(k){document.getElementById('sec-'+k).classList.toggle('hide',k!==t);});
+      ['client','ver','mod','upl','about'].forEach(function(k){document.getElementById('sec-'+k).classList.toggle('hide',k!==t);});
     });
   });
+  // ==================== 模组投稿（所有人都能投） ====================
+  // 网页是纯静态托管，没法直接收文件 —— 所以走「生成 GitHub Issue」这条路：
+  // 填好的标题/代码直接预填进新建 Issue 页面，提交后机器人自动收录进 docs/模组/。
+  (function(){
+    var $ = function(id){ return document.getElementById(id); };
+    function 提示(t, cls){ var m=$('upMsg'); if(m){ m.textContent=t; m.className='msg'+(cls?(' '+cls):''); } }
+    function 取值(){
+      return { 名:($('upName').value||'').trim(), 作者:($('upAuthor').value||'').trim(),
+               说明:($('upDesc').value||'').trim(), 代码:($('upCode').value||'') };
+    }
+    function 校验(v){
+      if(!v.名){ 提示('先填模组名','bad'); return false; }
+      if(!v.代码.trim()){ 提示('还没粘代码','bad'); return false; }
+      if(v.代码.length < 200){ 提示('代码只有 '+v.代码.length+' 字符，不像一个完整模组（至少 200）','bad'); return false; }
+      if(v.代码.indexOf('```') >= 0){ 提示('代码里有三个反引号（` ` `），会把投稿格式弄乱 —— 先删掉或改写','bad'); return false; }
+      return true;
+    }
+    function 正文(v){
+      var t = '### 模组信息\n';
+      t += '- 名字：' + (v.名 || '未命名模组') + '\n';
+      t += '- 作者：' + (v.作者 || '（用我的 GitHub 名）') + '\n';
+      t += '- 说明：' + (v.说明 || '（没写）') + '\n\n';
+      t += '### 代码\n```js\n' + v.代码.replace(/\s+$/, '') + '\n```\n';
+      return t;
+    }
+    var 投稿页 = 'https://github.com/xintbc/qiangtuskill/issues/new';
+
+    $('upPick').addEventListener('click', function(){ $('upFile').click(); });
+    $('upFile').addEventListener('change', function(){
+      var f = this.files && this.files[0]; if(!f) return;
+      if(f.size > 512*1024){ 提示('文件 '+(f.size/1024|0)+'KB，超过 512KB 上限','bad'); return; }
+      var r = new FileReader();
+      r.onload = function(){
+        $('upCode').value = String(r.result || '');
+        if(!$('upName').value) $('upName').value = f.name.replace(/\.js$/i, '');
+        提示('已读入 ' + f.name + '（' + (f.size/1024).toFixed(1) + 'KB）', 'ok');
+      };
+      r.readAsText(f, 'utf-8');
+    });
+
+    $('upIssue').addEventListener('click', function(){
+      var v = 取值(); if(!校验(v)) return;
+      var url = 投稿页 + '?title=' + encodeURIComponent('[模组] ' + v.名) +
+                '&body=' + encodeURIComponent(正文(v)) +
+                '&labels=' + encodeURIComponent('模组投稿');
+      if(url.length > 7000){
+        提示('代码太长（整条链接 ' + url.length + ' 字符），浏览器会截断：已打开空白投稿页，请把代码粘进去', 'bad');
+        window.open(投稿页, '_blank'); return;
+      }
+      提示('已在新标签页打开投稿页 —— 点 Submit new issue 就发出去了', 'ok');
+      window.open(url, '_blank');
+    });
+
+    $('upDownload').addEventListener('click', function(){
+      var v = 取值(); if(!校验(v)) return;
+      var blob = new Blob([v.代码], { type: 'text/javascript;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (v.名 || '我的模组') + '.js';
+      document.body.appendChild(a); a.click(); a.remove();
+      var href = a.href;
+      setTimeout(function(){ URL.revokeObjectURL(href); }, 3000);
+      提示('已下载 ' + a.download + '，发给服务器主/群主就能手动收录', 'ok');
+    });
+  })();
+
   document.getElementById('sec-client').classList.remove('hide');
 })();
 </script>
