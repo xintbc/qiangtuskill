@@ -277,12 +277,15 @@ function netClosePanel(){var p=document.getElementById('netPanel');if(p)p.classL
 function netEnterGame(){
   if(S.playing&&!S.paused&&!S.over){if(!NET.connected){NET.reconnecting=false;netConnect();}return;}  // 已在局中：只补连接，不重开
   enterGame();
-  /* 【多人默认哨塔】多人模式永远用「经典·哨塔竞技场」(classic)，不沿用上次单人选的图
-     （上次选十日环城、下意识点多人却进哨塔，会让玩家困惑）。单人选图仍按 localStorage 原样保留，
-     这里强制切到 classic 且不写回存档（不存=true），不影响单人模式记忆；同时本地重建这张图，
-     避免"进多人沿用上一局单人选的图"的混乱。 */
-  try{ if(typeof setMap==='function')setMap('classic',true); }catch(e){}
+  /* 【多人默认哨塔】进多人时本地先用「经典·哨塔竞技场」(classic) 当默认地图建一张图：
+     ① 让"自己建房"时服务器按 classic 建房间（默认哨塔，不继承上次单人选的十日环城）；
+     ② 连上之前玩家屏幕不至于空着。
+     但最终进哪张图一律以服务器 welcome 下发的 m.map 为准（见 welcome 分支的 setMap 重建）——
+
+     加入别人的火车站房间时，服务器下发火车站，客户端会切过去；单人选图仍按 localStorage
+     原样保留（这里 setMap 都传 不存=true，不写回存档）。 */
   if(typeof curMapId!=='undefined')curMapId='classic';
+  try{ if(typeof setMap==='function')setMap('classic',true); }catch(e){}
   netStart();
   setTimeout(function(){
     if(!NET.connected){showMsg('暂时连不上服务器，正在重试…请检查地址和网络','#f66');}
@@ -497,8 +500,14 @@ function netOnMsg(m){
     }
     if(typeof refreshMyIdLine==='function')refreshMyIdLine();
     /* 【batch167】服务端确认的「地图 / 玩法模式 / 房号」—— 一律以服务端为准（它才权威）。
-       地图：以前客户端自己选了自己显示、服务端却按 classic 算，两边对不上。 */
-    try{ if(m.map&&typeof mapById==='function'&&mapById(m.map))curMapId=m.map; }catch(e){}
+       地图：以前客户端自己选了自己显示、服务端却按 classic 算，两边对不上。
+       【修复·多人地图回归】之前这里只改 curMapId 不重建地图，导致客户端永远是进多人前
+       （netEnterGame 里）强制建的哨塔图，服务器房间其实是火车站也照样进哨塔。
+       现在按服务器权威地图真正重建：服务器是火车站就进火车站、是哨塔(classic)就进哨塔。 */
+    try{ if(m.map&&typeof mapById==='function'&&mapById(m.map)){
+      curMapId=m.map;
+      if(typeof setMap==='function')setMap(m.map,true);   // 真按服务器地图建图（不写存档）
+    } }catch(e){}
     if(typeof m.mode!=='undefined')NET_MODE=String(m.mode||'');
     if(typeof m.room!=='undefined')NET_ROOM=String(m.room||'');
     camera.position.set(m.x,2,m.z);S.velY=0;S.onLadder=false;S.mantle=0;S.landKick=0;
