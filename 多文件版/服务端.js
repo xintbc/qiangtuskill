@@ -3646,6 +3646,14 @@ function startListen() {
             console.log('      · ' + f + info);
           });
           console.log('   [模组系统] 打开游戏后，选人/选图界面会显示模组内容（带「🧩 模组」标记）');
+          /* 【batch243】把核验口径打在启动日志里，服主一眼知道"哪些模组算数" */
+          try {
+            const 表 = 服务器模组表();
+            console.log('   [模组核验] 已开启：客户端带服务器没有的模组 / 模组代码和本机不一致 → 拒绝进入');
+            console.log('   [模组核验] 认可的模组：' + Object.keys(表.允许).map(function (k) { return 表.允许[k].n.replace(/\.js$/i, ''); }).join('、'));
+            const 停 = Object.keys(表.停用).map(function (k) { return 表.停用[k].replace(/\.js$/i, ''); });
+            if (停.length) console.log('   [模组核验] 已停用（客户端也不许带）：' + 停.join('、'));
+          } catch (e) { }
         }
       }
       console.log('----------------------------------------------------------');
