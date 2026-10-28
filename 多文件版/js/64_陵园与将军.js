@@ -233,7 +233,12 @@ function 陵_建直升机(){
   /* 机腹的红色瞄准环（跟着导弹落点走，给玩家"要被打了"的提示） */
   var ring=new THREE.Mesh(new THREE.RingGeometry(2.6,3.1,28),new THREE.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false}));
   ring.rotation.x=-Math.PI/2;ring.visible=false;scene.add(ring);HELI.ring=ring;
-  g.traverse(function(o){o.raycast=function(){};});
+  /* 【batch245】**不要禁用射线**：直升机是敌人，子弹靠 `raycaster.intersectObjects(e.g.children,true)`
+     才打得到。以前这里为了让"特效模型不挡子弹"统一写了 `o.raycast=function(){}`，
+     结果天上那架**根本打不中**（用户：步枪射程内也打不到飞机）。现在反过来给它一个更好打的隐形命中盒。 */
+  var 命中=new THREE.Mesh(new THREE.BoxGeometry(9.5,3.2,3.2),
+    new THREE.MeshBasicMaterial({color:0xff4444,transparent:true,opacity:0.001,depthWrite:false}));
+  命中.position.set(-1.4,0.2,0);命中.name='hitspot';g.add(命中);HELI.hitbox=命中;
   scene.add(g);
   return g;
 }
@@ -293,6 +298,14 @@ function 直升机关闭(){
   陵_导弹.length=0;
 }
 /* --- 导弹：从机腹丢下去，落地炸 90 --- */
+/* 【batch245】"给定高度往下探"的脚下地面高度。
+   ⚠️ 以前这里一律写 `groundHeightAt(x,z,GROUND_Y+2)`（＝按 2 米眼高探）——
+   陵园的中央是三级封土台（1.6 / 3.2 / 4.8 米），2 米探不到台顶，于是
+   **台面被当成基础地面 0.12**：大将军一进 boss 就整只埋进土里（用户：生成在地里、打不到），
+   长矛预览也会在台前"扎空"。凡是"在某个高度上找脚下那张面"，都要把那个高度传进来。 */
+function 陵_脚下(x,z,y){
+  return groundHeightAt(x,z,(typeof y==='number')?y:(GROUND_Y+2))-GROUND_Y;
+}
 function 陵_投导弹(tx,tz){
   var 体=new THREE.Group();
   var 壳=new THREE.MeshLambertMaterial({color:0x4a4a48});
@@ -307,7 +320,7 @@ function 陵_投导弹(tx,tz){
   陵_横幅('⚠ 导弹来袭','#ff7a45',1500);
   if(HELI.ring){
     HELI.ring.visible=true;
-    HELI.ring.position.set(tx,groundHeightAt(tx,tz,GROUND_Y+2)-GROUND_Y+0.06,tz);
+    HELI.ring.position.set(tx,陵_脚下(tx,tz,GROUND_Y+12)+0.06,tz);
   }
 }
 function 陵_导弹Tick(dt){
@@ -319,7 +332,7 @@ function 陵_导弹Tick(dt){
     p.m.position.x+=(p.tx-p.m.position.x)*Math.min(1,dt*1.5);
     p.m.position.z+=(p.tz-p.m.position.z)*Math.min(1,dt*1.5);
     p.m.rotation.x=Math.atan2(-p.vy,2.5);
-    var g=groundHeightAt(p.m.position.x,p.m.position.z,GROUND_Y+2)-GROUND_Y;
+    var g=陵_脚下(p.m.position.x,p.m.position.z,p.m.position.y);   /* 按导弹自己此刻的高度探，台面上空也能正确落地 */
     if(p.m.position.y<=g+0.2||p.life<=0){
       var px=p.m.position.x,py=g+0.3,pz=p.m.position.z;
       陵_爆炸(px,py,pz,HELI_MISSILE_R,HELI_MISSILE_DMG,0xff8a3d);
@@ -508,6 +521,38 @@ HEROES.push({
 });
 var 将军_技能名={g_spear:'爆炸长矛',g_coffin:'石棺',g_clone:'将军分身'};
 
+/* ---------- 【batch245】大将军是「通关奖励」，不是默认开放的 ----------
+   用户：大将军要**打败第四章这个关卡**才能解锁。
+   做法与闪电 / 蚀日者完全一致：只挡「选人 / 换英雄」两个入口，
+   **不动 HEROES 下标、不动技能实现** —— 探针 / 剧情 Boss 照旧能直接用 HERO_GENERAL。
+   解锁字段挂在 UNLOCK.general（js/40），英雄号 → 字段的映射挂在 HERO_UNLOCK_FLAG。 */
+HERO_LOCKED[HERO_GENERAL]='锁定 · 通关剧情第四章「陵园惊梦」后解锁';
+HERO_UNLOCK_FLAG[HERO_GENERAL]='general';
+/* 老存档里可能已经存着「当前英雄＝7」（1.8.0 那一版大将军默认能用）：
+   heroLoad 跑在 js/44（比这个文件早），那时 HERO_LOCKED[7] 还没登记 → 这里补一次回退。 */
+try{
+  if(typeof heroLocked==='function'&&heroLocked(SK.idx)){
+    SK.idx=HERO_SCOUT;
+    if(typeof heroSave==='function')heroSave();
+  }
+}catch(e){}
+/* 1.8.0 通关过第四章的人（只留了 gunGame.story4.v1，没有 UNLOCK.general）：补一次迁移，别把人挡回去 */
+try{
+  if(!UNLOCK.general&&localStorage.getItem('gunGame.story4.v1')){UNLOCK.general=true;unlockSave();}
+}catch(e){}
+/* 解锁（给 console / 调试面板 / 剧情通关用）。返回 true＝这次**新**解锁了 */
+function 将军解锁(静默){
+  var 新=false;
+  try{ 新=storyClearGeneral(); }catch(e){ 新=false; }
+  try{ if(typeof buildHeroGrid==='function')buildHeroGrid(); }catch(e){}
+  try{ if(typeof storyRefreshBtn==='function')storyRefreshBtn(); }catch(e){}
+  if(新&&!静默){
+    try{ if(typeof showMsg==='function')showMsg('⚔ 已解锁「大将军」—— 通关第四章的奖励，现在可以在「🦸 英雄」页选他出战了','#d9c37a'); }catch(e){}
+  }
+  return 新;
+}
+var 解锁大将军=将军解锁;          // 控制台中文别名（与 解锁蚀日者 一致）
+
 /* ---------- 造模型 ---------- */
 function 造将军模型(scale){
   var root=new THREE.Group();
@@ -526,7 +571,10 @@ function 造将军模型(scale){
   bx(1.0,0.9,0.34,暗,0,1.3,0.42);                                           // 披风
   bx(0.26,0.8,0.26,甲,-0.55,1.35,0);bx(0.26,0.8,0.26,甲,0.55,1.35,0);      // 手臂
   root.scale.setScalar(scale||1);
-  root.traverse(function(o){o.raycast=function(){};});
+  /* 【batch245】**不要禁用射线**：这段模型同时也是剧情 Boss 的实体，子弹靠
+     `raycaster.intersectObjects(e.g.children,true)` 才打得到他。
+     以前这里跟特效模型一样写了 `o.raycast=function(){}`，结果大将军站在台上**完全无敌**
+     ——用户报的"我根本就打不到他"就是这个。 */
   return {root:root,g:root,head:null};
 }
 function 造长矛(len){
@@ -589,7 +637,7 @@ function 陵_矛落点(){
   for(t=1.0;t<=maxD;t+=step){
     var x=o.x+d.x*t,y=o.y+d.y*t,z=o.z+d.z*t;
     if(陵_点被挡(x,y,z))return {x:x,y:y,z:z,d:d,dist:t};
-    var g=groundHeightAt(x,z,GROUND_Y+2)-GROUND_Y;
+    var g=陵_脚下(x,z,y);
     if(y<=g+0.05)return {x:x,y:g,z:z,d:d,dist:t};
   }
   return {x:o.x+d.x*maxD,y:o.y+d.y*maxD,z:o.z+d.z*maxD,d:d,dist:maxD};
@@ -707,7 +755,7 @@ function 陵_矛Tick(dt){
       }
     }
     /* 撞墙 / 落地 / 超时就钉住（30 点爆炸，但**没有**那 70 点直伤） */
-    var 地=groundHeightAt(p.x,p.z,GROUND_Y+2)-GROUND_Y;
+    var 地=陵_脚下(p.x,p.z,p.y);                              /* 按长矛自身高度探，扎在封土台上也算落地 */
     if(p.y<=地+0.05||陵_点被挡(p.x,p.y,p.z)||p.life<=0){
       p.stuck={};p.stickT=3.0;
       if(p.y<地+0.05)p.y=地+0.05;
@@ -836,7 +884,7 @@ function 分身Tick(dt){
     var 步=Math.min(d,dt*5.5);
     分身.x+=dx/d*步;分身.z+=dz/d*步;
   }
-  分身.y=groundHeightAt(分身.x,分身.z,GROUND_Y+2)-GROUND_Y;
+  分身.y=(typeof standSurfY==='function')?standSurfY():陵_脚下(分身.x,分身.z,GROUND_Y+5.0);   /* 跟着玩家站在同一张面上 */
   分身.root.position.set(分身.x,分身.y,分身.z);
   分身.root.rotation.y=Math.atan2(camera.position.x-分身.x,camera.position.z-分身.z);
   /* 自己找最近的敌人投矛 */
@@ -959,7 +1007,8 @@ function 陵园_刷兵(n){
 }
 function 陵园_召Boss(){
   var m=造将军模型(1.35);
-  m.root.position.set(0,4.8,-42);                      // 从石殿里走出来
+  var 台顶=陵_脚下(0,-42,GROUND_Y+5.0);                // 石殿前的三级封土台顶（4.8），别写死、也别探到屋顶
+  m.root.position.set(0,台顶,-42);                      // 从石殿里走出来
   scene.add(m.root);
   var e={isNet:false,type:'tank',root:m.root,g:m.root,head:null,
          hp:将军_BOSS.maxHp,maxHp:将军_BOSS.maxHp,sz:1.5,sc:0,gold:0,
@@ -968,7 +1017,7 @@ function 陵园_召Boss(){
   var hb=new THREE.Mesh(new THREE.BoxGeometry(1,0.08,1),new THREE.MeshBasicMaterial({color:0xff4444}));
   hb.visible=false;e.hb=hb;e.hbMat=hb.material;
   enemies.push(e);
-  将军_BOSS.e=e;将军_BOSS.x=0;将军_BOSS.z=-42;将军_BOSS.y=4.8;
+  将军_BOSS.e=e;将军_BOSS.x=0;将军_BOSS.z=-42;将军_BOSS.y=台顶;
   将军_BOSS.spearT=2.5;将军_BOSS.coffinT=9;将军_BOSS.进入=true;
   STORY_.boss=e;
   陵_横幅('大将军 · 复活','#d9c37a',3200);
@@ -1030,16 +1079,19 @@ function 将军_BossTick(dt){
   if(d>想+3)速=1;else if(d<想-4)速=-1;
   if(速!==0){
     var nx=将军_BOSS.x+dx/d*速*3.4*dt, nz=将军_BOSS.z+dz/d*速*3.4*dt;
-    if(typeof isColliding!=='function'||!isColliding(nx,nz,0.7)){
+    if(typeof isColliding!=='function'||!isColliding(nx,nz,0.7,将军_BOSS.y+GROUND_Y+1.0,true)){
       将军_BOSS.x=nx;将军_BOSS.z=nz;
     }else{
       /* 贴墙就侧着挪，别卡死 */
-      if(!isColliding(将军_BOSS.x+dz/d*3*dt,将军_BOSS.z-dx/d*3*dt,0.7)){
+      if(!isColliding(将军_BOSS.x+dz/d*3*dt,将军_BOSS.z-dx/d*3*dt,0.7,将军_BOSS.y+GROUND_Y+1.0,true)){
         将军_BOSS.x+=dz/d*3*dt;将军_BOSS.z-=dx/d*3*dt;
       }
     }
   }
-  将军_BOSS.y=groundHeightAt(将军_BOSS.x,将军_BOSS.z,GROUND_Y+2)-GROUND_Y;
+  /* ⚠️【batch245】这里原来是 GROUND_Y+2 → 站在三级封土台（4.8 米）上的 Boss 被判成站在 0.12 地面，
+     整个人埋进土里、只露半截，玩家打不到、看着像"boss 生成在地里"。
+     探到 5.0 米就够：能看到 4.8 的台顶，又不会一路探到石殿屋顶（10.7）上去。 */
+  将军_BOSS.y=陵_脚下(将军_BOSS.x,将军_BOSS.z,GROUND_Y+5.0);
   b.root.position.set(将军_BOSS.x,将军_BOSS.y,将军_BOSS.z);
   b.root.rotation.y=Math.atan2(px-将军_BOSS.x,pz-将军_BOSS.z);
   /* 投矛：抬手 0.7 秒后投出（给玩家躲的时间） */
@@ -1123,6 +1175,8 @@ function 陵园_登记剧情(){
     reward:function(win){
       if(!win)return;
       try{localStorage.setItem('gunGame.story4.v1',String(Date.now()));}catch(e){}
+      /* 解锁本身由 storyFinish → storyClearGeneral() 统一发（与闪电 / 蚀日者同一条路径），
+         这里只报一句，避免"同一件事两条路径各解一次、提示弹两遍"。 */
       showMsg('✅ 第四章通关：大将军已重新沉睡','#d9c37a');
     },
     done:function(){try{return !!localStorage.getItem('gunGame.story4.v1');}catch(e){return false;}}
@@ -1160,7 +1214,8 @@ window.陵园={
   投核弹:陵_投核弹,清场:陵_清场,
   快进:function(秒){HELI.fieldT=Math.max(HELI.fieldT,秒);},
   状态:function(){return {on:HELI.on,hp:HELI.hp,fieldT:HELI.fieldT,phase:HELI.phase,nukeT:HELI.nukeT,导弹:陵_导弹.length,矛:陵_矛.length,棺:陵_棺.length,分身:分身.on};},
-  召Boss:陵园_召Boss,刷兵:陵园_刷兵,剧情重置:陵园_剧情重置
+  召Boss:陵园_召Boss,刷兵:陵园_刷兵,剧情重置:陵园_剧情重置,
+  将军解锁:将军解锁,将军锁定:function(){UNLOCK.general=false;unlockSave();try{if(typeof buildHeroGrid==='function')buildHeroGrid();}catch(e){}}
 };
 /* 剧情章节：ModLoader 是最后一个 <script>，这里等一拍再登记 */
 setTimeout(function(){try{陵园_登记剧情();}catch(e){}},0);

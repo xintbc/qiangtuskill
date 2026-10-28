@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.8.0';
+const SRV_VER = '1.8.2';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -944,7 +944,7 @@ function nameOwnerOf(n) {
 function unlockOf(n) {
   const rec = nameOwnerOf(n);
   const u = (rec && rec.unlocks) || {};
-  return { lightning: !!u.lightning, eclipse: !!u.eclipse };   // 【batch147】eclipse＝蚀日者（开发者指令解锁）
+  return { lightning: !!u.lightning, eclipse: !!u.eclipse, general: !!u.general };   // 【batch147】eclipse＝蚀日者；【batch245】general＝大将军
 }
 function unlockGet(n, k) {
   const rec = nameOwnerOf(n);
@@ -2518,12 +2518,15 @@ function handleMsg(sock, raw) {
     p.name = String(m.n || p.name).slice(0, 10);
   } else if (m.t === 'clear') {                   // 【batch126】剧情通关上报：把「闪电」永久记到这个名字上
     const k = String(m.k || '').slice(0, 16);
-    /* 【batch147】lightning＝剧情通关；eclipse＝控制台指令解锁；off=1 表示取消 */
-    if (k === 'lightning' || k === 'eclipse') {
+    /* 【batch147】lightning＝剧情通关；eclipse＝控制台指令解锁；off=1 表示取消
+       【batch245】general＝通关剧情第四章「陵园惊梦」→ 解锁「大将军」（只记账，不参与下面的英雄下标校验：
+       下标 7+ 一律当模组英雄放行，否则老客户端的模组英雄会被误伤） */
+    if (k === 'lightning' || k === 'eclipse' || k === 'general') {
       const off = !!m.off;
       const chg = unlockSet(p.name, k, off);
       if (chg) log(off ? ('【解锁】' + p.name + ' 取消了「' + k + '」')
                        : (k === 'lightning' ? ('【剧情】' + p.name + ' 通关了「追捕蚀日者」→ 永久解锁「闪电」')
+                          : k === 'general' ? ('【剧情】' + p.name + ' 通关了「陵园惊梦」→ 永久解锁「大将军」')
                                             : ('【解锁】' + p.name + ' 解锁了「蚀日者」')));
       p.unlocks = unlockOf(p.name);
       sendTo(p, { t: 'unlocks', unlocks: p.unlocks });

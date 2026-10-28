@@ -508,6 +508,7 @@ function netOnMsg(m){
       var _got=[];
       if(m.unlocks.lightning&&!UNLOCK.lightning){UNLOCK.lightning=true;_got.push('⚡ 闪电');}
       if(m.unlocks.eclipse&&!UNLOCK.eclipse){UNLOCK.eclipse=true;_got.push('🌀 蚀日者');}
+      if(m.unlocks.general&&!UNLOCK.general){UNLOCK.general=true;_got.push('⚔ 大将军');}   /* 【batch245】通关第四章的奖励 */
       if(_got.length){
         UNLOCK.code=(netMyCode()||'');UNLOCK.name=S.playerName||'';UNLOCK.t=Date.now();
         unlockSave();storyRefreshBtn();

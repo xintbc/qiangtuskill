@@ -268,20 +268,25 @@ var HERO_YINGYUE=6;                                               // 【batch158
    【重要】锁定只挡「选人 / 换英雄」两个入口，**不动 heroLoad / SK.idx 这些底层** ——
    否则探针里拿 HERO_ECLIPSE 做功能断言会全崩。 */
 var STORY_CLEAR_KEY='gunGame.storyClear.v1';
-var UNLOCK={lightning:false,eclipse:false,station:false,code:'',name:'',t:0};   // 【batch147】eclipse＝蚀日者（控制台指令解锁）；【batch181】station＝第三章「日陨之地」通关记录（无解锁奖励，只作记录）
+var UNLOCK={lightning:false,eclipse:false,station:false,general:false,code:'',name:'',t:0};   // 【batch147】eclipse＝蚀日者（控制台指令解锁）；【batch181】station＝第三章「日陨之地」通关记录（无解锁奖励，只作记录）；【batch245】general＝大将军（打完剧情第四章才解锁）
 var HERO_LOCKED={};
+/* 【batch245】下标 → UNLOCK 里的字段名：新英雄要"通关才解锁"时，在注册英雄的地方挂一行即可，
+   不用再回来改 heroLocked()（这个函数被选人界面 / 读档 / 联机前后好几处调用，改一次容易漏）。 */
+var HERO_UNLOCK_FLAG={};
+HERO_UNLOCK_FLAG[HERO_ECLIPSE]='eclipse';
+HERO_UNLOCK_FLAG[HERO_LIGHTNING]='lightning';
 HERO_LOCKED[HERO_ECLIPSE]='锁定 · 通关剧情第二章「救出蚀日者」后解锁';
 HERO_LOCKED[HERO_LIGHTNING]='通过剧情模式「营救蚀日者」后解锁';
 function unlockLoad(){
   try{
     var v=localStorage.getItem(STORY_CLEAR_KEY);if(!v)return;
     var d=JSON.parse(v)||{};
-    UNLOCK.lightning=!!d.lightning;UNLOCK.eclipse=!!d.eclipse;UNLOCK.station=!!d.station;UNLOCK.code=d.code||'';UNLOCK.name=d.name||'';UNLOCK.t=d.t||0;
+    UNLOCK.lightning=!!d.lightning;UNLOCK.eclipse=!!d.eclipse;UNLOCK.station=!!d.station;UNLOCK.general=!!d.general;UNLOCK.code=d.code||'';UNLOCK.name=d.name||'';UNLOCK.t=d.t||0;
   }catch(e){}
 }
 function unlockSave(){
   try{localStorage.setItem(STORY_CLEAR_KEY,JSON.stringify(
-    {lightning:!!UNLOCK.lightning,eclipse:!!UNLOCK.eclipse,station:!!UNLOCK.station,code:UNLOCK.code||'',name:UNLOCK.name||'',t:UNLOCK.t||Date.now()}));}catch(e){}
+    {lightning:!!UNLOCK.lightning,eclipse:!!UNLOCK.eclipse,station:!!UNLOCK.station,general:!!UNLOCK.general,code:UNLOCK.code||'',name:UNLOCK.name||'',t:UNLOCK.t||Date.now()}));}catch(e){}
 }
 /* 【batch181】第三章通关：只记一笔「打过了」（**不解锁任何东西** —— SP 靠熟练度满级解锁） */
 function storyClearStation(){
@@ -292,12 +297,23 @@ function storyClearStation(){
   try{if(typeof netIsMulti==='function'&&netIsMulti()&&NET.connected)netSend({t:'clear',k:'station'});}catch(e){}
   return true;
 }
+/* 【batch245】第四章「陵园惊梦」通关：解锁暗月新成员「大将军」。
+   和闪电 / 蚀日者走**同一套**存档字段（STORY_CLEAR_KEY）与上报口径（{t:'clear',k:'general'}：
+   本机记一份、连服务器时服务端按身份码再记一份 → 换设备也拿得回）。 */
+function storyClearGeneral(){
+  if(UNLOCK.general)return false;
+  UNLOCK.general=true;UNLOCK.code=(typeof netMyCode==='function'?(netMyCode()||''):'');
+  UNLOCK.name=S.playerName||'';UNLOCK.t=Date.now();
+  unlockSave();
+  try{if(typeof netIsMulti==='function'&&netIsMulti()&&NET.connected)netSend({t:'clear',k:'general'});}catch(e){}
+  return true;
+}
 /* 这个英雄现在能不能选？返回空串＝能用，否则返回"锁定的理由" */
 function heroLocked(i){
   i=i|0;
   if(!HERO_LOCKED[i])return '';
-  if(i===HERO_LIGHTNING&&UNLOCK.lightning)return '';      // 闪电：通关过 = 永久拥有
-  if(i===HERO_ECLIPSE&&UNLOCK.eclipse)return '';          // 【batch147】蚀日者：控制台指令解锁
+  var f=HERO_UNLOCK_FLAG[i];
+  if(f&&UNLOCK[f])return '';          // 挂了解锁字段且已解锁 → 永久拥有
   return HERO_LOCKED[i];
 }
 /* ==================== 【batch147】开发者「控制台指令」 ====================

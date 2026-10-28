@@ -859,12 +859,17 @@ function storyFinish(){
   if(_cf&&typeof _cf.reward==='function'){try{_cf.reward(win);}catch(e){}}
   var firstE=(STORY_.ch===2&&win)?storyClearEclipse():false;   // 【batch149】救出蚀日者＝永久解锁他
   var firstS=(STORY_.ch===3&&win)?storyClearStation():false;   // 【batch181】第三章只记通关（不解锁任何东西）
+  var firstG=(STORY_.ch===4&&win)?storyClearGeneral():false;   // 【batch245】第四章通关＝解锁「大将军」
   /* 【batch129】用户要求：剧情里倒下了，**不要**像平时那样弹通用的「游戏结束」结算面板；
      而是等剧情演完之后，给一个**专门的阵亡提示**（这里就是它）。 */
   var card=storyEl('storyDoneCard'),ttl=storyEl('storyDoneTitle'),sub=storyEl('storyDoneSub');
   if(card){if(win)card.classList.remove('stDead');else card.classList.add('stDead');}
-  if(ttl)ttl.textContent=win?(STORY_.ch===2?'🎬 剧情通关 · 蚀日者获救':(STORY_.ch===3?'🎬 剧情通关 · 焘芯守住了':'🎬 剧情通关')):'☠ 任务失败';
-  if(sub)sub.textContent=(STORY_.ch===3)
+  if(ttl)ttl.textContent=win?(STORY_.ch===2?'🎬 剧情通关 · 蚀日者获救':(STORY_.ch===3?'🎬 剧情通关 · 焘芯守住了':(STORY_.ch===4?'🎬 剧情通关 · 大将军重新沉睡':'🎬 剧情通关'))):'☠ 任务失败';
+  if(sub)sub.textContent=(STORY_.ch===4)
+    ?(win?'大将军跪了下去，甲胄一寸寸裂开 —— 他重新躺回了那口空棺。'
+        :(STORY_.diedByMob?'你被守陵的暗月兵拖垮，倒在了石殿之外。'
+                          :'你倒在了「大将军」的爆炸长矛下。'))
+    :(STORY_.ch===3)
     ?(win?'灰枭被打倒在站台上，暗月残部退出了火车站。'
         :(STORY_.diedByMob?'你被暗月残部拖垮，倒在了通往焘芯基地的入口前。'
                           :'你倒在了「灰枭」手下 —— 她一击就走，你没能撑住。'))
@@ -876,7 +881,17 @@ function storyFinish(){
         :(STORY_.diedByMob?'你被暗月的斥候拖垮，倒在了追上闪电之前。'
                            :'你倒在了「闪电」手下 —— 暗月的人把你扔回了总部。'));
   var body=storyEl('storyDoneBody');
-  if(body)body.innerHTML=(STORY_.ch===3)
+  if(body)body.innerHTML=(STORY_.ch===4)
+    ?('<p class="stLine">结局 · '+(win?'陵园重归寂静':'大将军没能睡回去')+'</p>'
+      +'<p class="stLine dim">'+(win?'石殿的门在你身后合上。这位被叫醒的将军，终于把一件很累的事做完了。'
+                                  :'他走出了石殿，走向山下的夜色。这一次，没人再能让他睡回去。')+'</p>'
+      +'<div class="stUnlock"><b>⚔ 大将军</b> 已'+(win?(firstG?'解锁':'保持解锁'):'仍未解锁')+'：'
+        +(win?'现在可以在「🦸 英雄」页选他出战了（爆炸长矛 / 石棺 / 分身三个技能全开）。'
+             :'把他重新打回石棺里，才会解锁这位暗月新成员。')+'</div>'
+      +'<p class="stLine dim">⛓ 打不过也别硬耗：陵园的天上有直升机在转，它投的导弹一发 90 点血；'
+      +'留到第 15 分钟它会申请核弹 —— 那是全图清场，不是你能扛的。</p>'
+      +'<p class="stLine dim" style="font-size:12px">（剧情到此结束，可以返回主菜单了）</p>')
+    :(STORY_.ch===3)
     ?('<p class="stLine">结局 · '+(win?'焘芯守住了':'火车站失守')+'</p>'
       +'<p class="stLine dim">'+(win?'暗月残部退出了车站。汽笛远去，天光重新落回轨道上。'
                                   :'灰枭带走了焘芯的核心数据。车站的灯，一夜之间全灭了。')+'</p>'
