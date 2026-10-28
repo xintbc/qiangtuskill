@@ -624,24 +624,23 @@ function 造长矛(len){
 /* ---------- 手持：长矛 / 石棺（自己造，不用通用投掷物模型）---------- */
 var 将军_手持=null,将军_手持种类='',将军_蓄力=0,将军_投刺T=0;
 var 将军_手持基准={x:0.30,y:-0.34,z:-1.05};
+function 将军手持清掉(){
+  if(将军_手持){if(将军_手持.parent)将军_手持.parent.remove(将军_手持);将军_手持=null;}
+  将军_手持种类='';
+}
 function 将军持物(kind){
   if(typeof heroHoldShow!=='function')return;
+  将军手持清掉();          /* 换手前先收干净上一件（heroHoldHide 认不到我们的 wrap） */
   heroHoldShow(kind);
-  /* heroHoldShow 给未知 kind 会塞一个烟雾罐；这里换成自己的东西 */
-  try{
-    if(typeof _holdObj!=='undefined'&&_holdObj){
-      camera.remove(_holdObj);_holdObj=null;
-    }
-  }catch(e){}
-  var m=(kind==='g_spear')?造长矛(3.0):(()=>{                    // 石棺：小一号的真棺
-    var g=new THREE.Group();
-    var 石=new THREE.MeshLambertMaterial({color:0x8a8d80});
-    var 金=new THREE.MeshLambertMaterial({color:0xc9a227});
-    var b=new THREE.Mesh(new THREE.BoxGeometry(1.5,2.9,0.5),石);g.add(b);
-    var l=new THREE.Mesh(new THREE.BoxGeometry(1.7,0.3,0.6),金);l.position.y=1.5;g.add(l);
-    g.traverse(function(o){o.raycast=function(){};});
-    return g;
-  })();
+  /* heroHoldShow 对未知 kind 会塞一个烟雾罐；这里换掉 —— 而且**不再交回 _holdObj**。
+     ⚠️【batch249】"长矛根本没有特殊手持动画"的真因：
+       js/41 的 updateHero 每帧都按 HOLD_POSE 重写 _holdObj 的 position / rotation.y / rotation.z
+       （g_spear 没有条目 → 退化成破片手雷的姿势，还带 tt*spin 的自转），
+       我们在这里写的蓄力后拉、投出前刺、握矛角度，下一帧就被整段盖掉。
+       表现就是"一支矛浮在右下角慢慢转"，看着完全没有动画。
+     做法：_holdObj 保持 null（通用那一段整段跳过），wrap 由本分片自己每帧驱动。 */
+  try{ if(typeof _holdObj!=='undefined'&&_holdObj){camera.remove(_holdObj);_holdObj=null;} }catch(e){}
+  var m=(kind==='g_spear')?造长矛(3.0):造石棺(1.25);
   var wrap=new THREE.Group();wrap.add(m);camera.add(wrap);
   if(kind==='g_spear'){
     /* 【batch248】用户："长矛应该有特殊手持动画"。
@@ -651,20 +650,39 @@ function 将军持物(kind){
     m.rotation.set(-0.10,Math.PI,0.16);
     m.scale.setScalar(0.78);
     wrap.position.set(将军_手持基准.x,将军_手持基准.y,将军_手持基准.z);
+    wrap.rotation.set(0,0,0);
     将军_蓄力=0;将军_投刺T=0;
+    /* 握矛的右手：握在矛身后段（wrap 的 +z 是矛尾，矛尖朝 -z 即镜头前方），
+       小臂往右下后方收出画面 —— 有手才像"攥着一支矛"，不是一根飘着的棍子。 */
+    try{
+      var 手材=(typeof gloveMat!=='undefined'&&gloveMat)?gloveMat:new THREE.MeshLambertMaterial({color:0x2b2b2b});
+      var 手=new THREE.Mesh(new THREE.BoxGeometry(0.085,0.075,0.115),手材);
+      手.position.set(-0.01,-0.015,0.62);手.rotation.set(0.12,0,0.10);wrap.add(手);
+      var 臂=new THREE.Mesh(new THREE.BoxGeometry(0.072,0.072,0.46),手材);
+      臂.position.set(0.05,-0.10,0.86);臂.rotation.set(0.32,-0.20,0.12);wrap.add(臂);
+    }catch(e){}
   }else{
-    m.scale.setScalar(0.2);m.rotation.set(0,0.3,0);
-    wrap.position.set(0.34,-0.30,-0.62);
+    /* 石棺：竖着举在右前方，棺面朝前 —— 一眼就是一口棺材 */
+    m.scale.setScalar(0.30);
+    m.rotation.set(0,-0.22,0.04);
+    wrap.position.set(0.40,-0.55,-0.95);
+    wrap.rotation.set(0,0,0);
   }
   将军_手持=wrap;将军_手持种类=kind;
-  try{ _holdObj=wrap; }catch(e){}
+  try{ _holdObj=null; }catch(e){}       /* 【batch249】脱钩：不交给通用姿态系统 */
 }
 /* 长矛手持动画：
    ① 待机 —— 斜握在右下方，矛尖朝准星
    ② 蓄力（按住攻击键看路线）—— 整支矛往后拉 + 微微下沉抬尾，像把标枪拉满
    ③ 投出 —— 0.18 秒的**前刺**（猛地推出去）再收手，不是"一下子消失" */
 function 将军蓄力Tick(dt){
-  if(!将军_手持||将军_手持种类!=='g_spear')return;
+  /* 【batch249】石棺的落点预览必须**每帧**跟着准星动。
+     原来只在"举起"那一瞬间算了一次 → 位置定死，看着像"点了技能就只能放那儿"。 */
+  if(SK&&SK.hold&&SK.hold.kind==='g_coffin')陵_棺预览更新();
+  if(!将军_手持)return;
+  /* 手里这件已经不该举了（被 heroHoldCancel / 死亡 / 换技能清掉），自己收干净 —— 免得矛留在镜头上 */
+  if(将军_投刺T<=0&&(!SK||!SK.hold||SK.hold.kind!==将军_手持种类)){将军收手持();return;}
+  if(将军_手持种类!=='g_spear')return;
   var b=将军_手持基准;
   /* ③ 前刺优先 */
   if(将军_投刺T>0){
@@ -684,7 +702,7 @@ function 将军蓄力Tick(dt){
   将军_手持.rotation.z=0.06*将军_蓄力;
 }
 function 将军收手持(){
-  将军_手持=null;将军_手持种类='';
+  将军手持清掉();
   陵_矛预览隐藏();陵_棺预览隐藏();
   if(typeof heroHoldHide==='function')heroHoldHide();
 }
@@ -842,17 +860,64 @@ function 陵_矛Tick(dt){
 }
 /* ---------- 石棺：立墙 + 血量 + 爆开吐小兵 ---------- */
 var 陵_棺=[];          // 自己立的石棺（记着，打爆了要吐兵）
+/* 【batch249】数一数场上还活着几口棺（可按归属筛）。
+   用户："将军不要乱放墙啊" —— 剧情 BOSS 每 13 秒、分身每 11 秒无条件立一口，
+   一分钟能堆五六口，陵园里路都被墙堵死。现在靠这个数控上限。 */
+function 陵_活棺数(归属){
+  var n=0;
+  for(var i=0;i<陵_棺.length;i++){
+    var c=陵_棺[i];
+    if(!c||c.已爆)continue;
+    if(归属&&c.归属!==归属)continue;
+    n++;
+  }
+  return n;
+}
 var 陵_棺预览=null,陵_棺预览环=null;
 function 造石棺(宽){
   宽=宽||1.25;
   var g=new THREE.Group();
-  var 石=new THREE.MeshLambertMaterial({color:0x8b8e81});
-  var 暗=new THREE.MeshLambertMaterial({color:0x5d6057});
-  var 金=new THREE.MeshLambertMaterial({color:0xb8933a});
-  var 体=new THREE.Mesh(new THREE.BoxGeometry(宽*2,2.7,0.55),石);体.position.y=1.35;g.add(体);
-  var 盖=new THREE.Mesh(new THREE.BoxGeometry(宽*2+0.16,0.28,0.66),暗);盖.position.y=2.72;g.add(盖);
-  var 纹=new THREE.Mesh(new THREE.BoxGeometry(宽*1.2,0.16,0.6),金);纹.position.set(0,1.9,0.03);g.add(纹);
-  var 纹2=new THREE.Mesh(new THREE.BoxGeometry(0.16,1.1,0.6),金);纹2.position.set(0,1.35,0.03);g.add(纹2);
+  var 石=new THREE.MeshLambertMaterial({color:0x9a9d90});
+  var 暗=new THREE.MeshLambertMaterial({color:0x6b6e62,side:THREE.DoubleSide});
+  var 金=new THREE.MeshLambertMaterial({color:0xc9a227});
+  var H=2.75,半=H/2,深=0.60;
+  /* 【batch249】用户："石棺有一点棺材的样子吗"。
+     原来就是 1.5×2.9×0.5 的方盒子 + 一块金条，看着像块石碑。
+     现在按中式**六角棺**的正面剪影挤出：脚端窄 → 肩部最宽 → 头端收 → 圆顶，
+     再加棺盖（外扩一圈、颜色更暗）、金封条（一竖两横）、石座、棺头雕饰。
+     立起来时"脚在下、头在上"，和战场上把棺材竖起来当掩体是一个意思。 */
+  function 棺轮廓(缩){
+    var s2=new THREE.Shape();
+    var 脚=0.70*宽*缩,肩=1.00*宽*缩,腰=0.94*宽*缩,头=0.62*宽*缩;
+    s2.moveTo(-脚,-半);
+    s2.lineTo(脚,-半);
+    s2.lineTo(肩,-半*0.42);
+    s2.lineTo(腰,半*0.42);
+    s2.lineTo(头,半*0.80);
+    s2.quadraticCurveTo(0,半*1.02,-头,半*0.80);
+    s2.lineTo(-腰,半*0.42);
+    s2.lineTo(-肩,-半*0.42);
+    s2.closePath();
+    return s2;
+  }
+  var 体Geo=new THREE.ExtrudeGeometry(棺轮廓(1),
+    {depth:深,bevelEnabled:true,bevelThickness:0.05,bevelSize:0.05,bevelSegments:1,curveSegments:10});
+  体Geo.translate(0,0,-深/2);
+  var 体=new THREE.Mesh(体Geo,石);体.position.y=半;g.add(体);
+  /* 棺盖：比棺身外扩 3.5%，贴在正面 —— 一眼能看出"这是一口盖着的棺" */
+  var 盖Geo=new THREE.ExtrudeGeometry(棺轮廓(1.035),
+    {depth:0.12,bevelEnabled:true,bevelThickness:0.03,bevelSize:0.03,bevelSegments:1,curveSegments:10});
+  var 盖=new THREE.Mesh(盖Geo,暗);盖.position.set(0,半,深/2-0.02);g.add(盖);
+  /* 金封条：一道竖 + 两道横（封棺用的镇棺条） */
+  var 竖=new THREE.Mesh(new THREE.BoxGeometry(0.17,H*0.84,0.05),金);
+  竖.position.set(0,半,深/2+0.12);g.add(竖);
+  for(var i=0;i<2;i++){
+    var 横=new THREE.Mesh(new THREE.BoxGeometry(宽*1.58,0.14,0.05),金);
+    横.position.set(0,半+(i?0.44:-0.44)*半,深/2+0.12);g.add(横);
+  }
+  /* 石座 + 棺头雕饰 */
+  var 座=new THREE.Mesh(new THREE.BoxGeometry(宽*2.12,0.18,1.02),暗);座.position.y=0.09;g.add(座);
+  var 顶=new THREE.Mesh(new THREE.BoxGeometry(宽*0.46,0.15,0.52),金);顶.position.set(0,H*0.96+0.10,0);g.add(顶);
   g.traverse(function(o){o.raycast=function(){};});
   return g;
 }
@@ -1134,12 +1199,18 @@ function 分身Tick(dt){
       陵_投矛(分身.x,分身.y+1.6,分身.z,{x:vx/L,y:vy/L,z:vz/L},'分身',45,18);
     }
   }
-  /* 自己立棺挡枪 */
+  /* 自己立棺挡枪
+     【batch249】别乱放墙：间隔 11→18 秒，场上最多留 1 口，而且不立在玩家脚前 4.5 米内
+     （原来一分钟堆 5 口，把陵园的路全堵了）。 */
   分身.coffinT-=dt;
   if(分身.coffinT<=0){
-    分身.coffinT=11;
-    var ax=-Math.sin(yaw),az=-Math.cos(yaw);
-    陵_立棺(分身.x+ax*1.6,分身.z+az*1.6,分身.y,Math.atan2(ax,az),'分身');
+    分身.coffinT=18;
+    if(陵_活棺数('分身')<1){
+      var ax=-Math.sin(yaw),az=-Math.cos(yaw);
+      var cx=分身.x+ax*1.6,cz=分身.z+az*1.6;
+      var 离p=Math.sqrt((camera.position.x-cx)*(camera.position.x-cx)+(camera.position.z-cz)*(camera.position.z-cz));
+      if(离p>4.5)陵_立棺(cx,cz,分身.y,Math.atan2(ax,az),'分身');
+    }
   }
 }
 /* ---------- 技能：挂进 CUSTOM_SKILLS（heroCast 会优先问这里）---------- */
@@ -1352,12 +1423,18 @@ function 将军_BossTick(dt){
       陵_投矛(将军_BOSS.x,将军_BOSS.y+1.8,将军_BOSS.z,{x:vx/L,y:vy/L,z:vz/L},'将军');
     }
   }
-  /* 立棺当掩体（挡玩家的枪） */
+  /* 立棺当掩体（挡玩家的枪）
+     【batch249】别乱放墙：只在玩家 20 米内（贴脸才有掩体意义）、场上最多 2 口、
+     间隔 13→22 秒、不在玩家脚前 4.5 米内。 */
   将军_BOSS.coffinT-=dt;
   if(将军_BOSS.coffinT<=0){
-    将军_BOSS.coffinT=13;
-    var ax=(px-将军_BOSS.x)/d,az=(pz-将军_BOSS.z)/d;
-    陵_立棺(将军_BOSS.x+ax*1.9,将军_BOSS.z+az*1.9,将军_BOSS.y,Math.atan2(ax,az),'将军');
+    将军_BOSS.coffinT=22;
+    if(d<20&&陵_活棺数('将军')<2){
+      var ax2=(px-将军_BOSS.x)/d,az2=(pz-将军_BOSS.z)/d;
+      var cx2=将军_BOSS.x+ax2*1.9,cz2=将军_BOSS.z+az2*1.9;
+      var 离p2=Math.sqrt((px-cx2)*(px-cx2)+(pz-cz2)*(pz-cz2));
+      if(离p2>4.5)陵_立棺(cx2,cz2,将军_BOSS.y,Math.atan2(ax2,az2),'将军');
+    }
   }
   if(typeof bossBarRefresh==='function')bossBarRefresh();
 }
