@@ -347,9 +347,98 @@ function unlockEclipse(on){
 }
 var 解锁蚀日者=unlockEclipse;            // 中文别名（同一个函数）
 function 指令(){
-  console.log('【可用指令】\n  解锁蚀日者()  /  unlockEclipse()   解锁「蚀日者」\n  unlockEclipse(false)              重新锁定\n  熟练度灌满()  /  spXpFill()        把当前英雄熟练度灌到满级（解锁 SP 形态，测试用）\n  熟练度灌满(1)                      指定英雄下标（0天狼 1流火 2镇岳 3白泽）\n  指令()                            打印这份列表');
+  console.log('【可用指令】\n  管理员()      /  admin() / unlockAll()   一键全解锁（闪电 / 蚀日者 / 大将军 / 四章通关 / 熟练度满级 SP 全开 / 纪念枪）\n  管理员(0)                             全部锁回去（回到新号状态）\n  管理员(1)                             同上并上报服务器（需在联机房间）\n  解锁蚀日者()  /  unlockEclipse()       只解锁「蚀日者」\n  熟练度灌满()  /  spXpFill()            把当前英雄熟练度灌到满级（解锁 SP 形态）\n  熟练度灌满(1)                          指定英雄下标（0天狼 1流火 2镇岳 3白泽 4蚀日者）\n  纪念解锁()                             解锁纪念枪「长明」（作者通道）\n  指令()                                打印这份列表');
   return '见控制台输出';
 }
+
+/* ==================== 【batch247】管理员：一键全解锁（测试用）====================
+   用户：给一个能在控制台输的"管理员代码"，一键拿到所有要解锁的东西，方便测试。
+   用法：F12 → Console
+       管理员()      全部解锁 —— 闪电 / 蚀日者 / 大将军 / 四章通关记录 / 所有英雄熟练度满级（SP 全开）/ 纪念枪
+       管理员(0)     全部锁回去（回到新号状态）
+       管理员(1)     全部解锁 + 把解锁上报服务器（需已经在联机房间里）
+   别名：admin() / 全解锁() / unlockAll()
+   ⚠️ 只动"解锁状态"，不改数值、不发道具；写的是本地存档（换设备要重敲一次，
+      想跨设备保留就用 管理员(1) 在联机房间里上报一次）。 */
+function 管理员(on){
+  var want=(on===undefined)?true:!(on===0||on===false||on==='0'||on==='false');
+  var 前={闪电:!!UNLOCK.lightning,蚀日者:!!UNLOCK.eclipse,大将军:!!UNLOCK.general};
+  /* ① 四个解锁字段：闪电 / 蚀日者 / 第三章记录 / 大将军 */
+  UNLOCK.lightning=want;UNLOCK.eclipse=want;UNLOCK.station=want;UNLOCK.general=want;
+  if(want){UNLOCK.t=Date.now();try{UNLOCK.name=(typeof S!=='undefined'&&S&&S.playerName)||UNLOCK.name;}catch(e){}}
+  unlockSave();
+  /* ② 剧情通关记录：第四章的 done() 读这个键（章节卡的「✅ 已通关」） */
+  try{
+    if(want){ if(!localStorage.getItem('gunGame.story4.v1'))localStorage.setItem('gunGame.story4.v1',String(Date.now())); }
+    else localStorage.removeItem('gunGame.story4.v1');
+  }catch(e){}
+  /* ③ 熟练度：全部满级 → 所有人 SP 形态解锁（关掉时重置回 Lv.1） */
+  var sp='未变';
+  try{
+    if(want){ var okSp=(typeof spXpMaxAll==='function')?spXpMaxAll(true):false; sp=okSp?'全部满级':'失败'; }
+    else if(typeof SP_XP!=='undefined'&&SP_XP){
+      for(var k in SP_XP){ if(Object.prototype.hasOwnProperty.call(SP_XP,k))SP_XP[k]={xp:0,lv:1}; }
+      if(typeof spXpSave==='function')spXpSave();
+      sp='已重置';
+    }
+  }catch(e){ sp='失败'; }
+  /* ④ 纪念枪「长明」（01 分片的作者通道：把登录天数补满，走的就是真实解锁判定） */
+  var 纪念='未变';
+  try{
+    if(typeof 纪念已解锁==='function'){
+      if(want){
+        纪念=(typeof 纪念解锁==='function'&&纪念解锁(true))?'已解锁':'失败';
+      }else{
+        /* 锁回去：清掉纪念存档（回到 0/7 天），并顺手卸下它 */
+        try{localStorage.removeItem('gunGame.memorial.v1');}catch(e){}
+        try{localStorage.removeItem('gunGame.memorial.equipped');}catch(e){}
+        try{_纪念缓存=null;}catch(e){}
+        纪念=(typeof 纪念已解锁==='function'&&!纪念已解锁())?'已锁定':'仍解锁';
+      }
+      try{if(typeof 纪念刷新锁==='function')纪念刷新锁();}catch(e){}
+    }
+  }catch(e){ 纪念='失败'; }
+  /* ⑤ 锁回去时别把人卡在锁着的英雄上 */
+  try{
+    if(!want&&typeof heroLocked==='function'&&heroLocked(SK.idx)){
+      SK.idx=(typeof HERO_SCOUT==='number'?HERO_SCOUT:0);
+      if(typeof heroSave==='function')heroSave();
+      if(typeof heroLoad==='function')heroLoad();
+    }
+  }catch(e){}
+  /* ⑥ 刷新界面：选人卡片 / 剧情入口 / 章节列表 / 技能条 / 武器选择 */
+  try{if(typeof buildHeroGrid==='function')buildHeroGrid();}catch(e){}
+  try{if(typeof storyRefreshBtn==='function')storyRefreshBtn();}catch(e){}
+  try{if(typeof storyBuildChap==='function')storyBuildChap();}catch(e){}
+  try{if(typeof heroHudUpdate==='function')heroHudUpdate(true);}catch(e){}
+  try{if(typeof heroSpSyncUI==='function')heroSpSyncUI();}catch(e){}
+  try{if(typeof buildWeaponList==='function')buildWeaponList();}catch(e){}
+  /* ⑦ 可选上报服务器（k 只认 lightning / eclipse / general） */
+  var 报='未上报（只写本机；要跨设备请用 管理员(1)）';
+  if(on===1||on==='1'||on===true){
+    报='跳过（没在联机房间）';
+    try{
+      if(typeof netIsMulti==='function'&&netIsMulti()&&typeof NET!=='undefined'&&NET&&NET.connected){
+        var ks=['lightning','eclipse','general'];
+        for(var i2=0;i2<ks.length;i2++)netSend({t:'clear',k:ks[i2],off:want?0:1});
+        报='已上报 '+ks.length+' 项';
+      }
+    }catch(e){报='上报失败';}
+  }
+  /* ⑧ 打印一张清单：还剩谁锁着，一眼看全 */
+  var 还锁=[];
+  try{ for(var i=0;i<HEROES.length;i++){ var why=heroLocked(i); if(why)还锁.push(HEROES[i].name+'（'+why+'）'); } }catch(e){}
+  console.log('%c【管理员】'+(want?'🔓 一键全解锁':'🔒 全部锁回去'),
+    'color:'+(want?'#7fffd0':'#ff8a8a')+';font-weight:700;font-size:14px');
+  console.log('  闪电 '+(want?'✅':'❌')+'   蚀日者 '+(want?'✅':'❌')+'   大将军 '+(want?'✅':'❌')+
+              '   第三章记录 '+(want?'✅':'❌')+'   第四章记录 '+(want?'✅':'❌')+'   纪念枪「长明」'+纪念);
+  console.log('  熟练度（SP 形态）：'+sp+'   服务器：'+报);
+  console.log('  还锁着的英雄：'+(还锁.length?(还锁.length+' 个 → '+还锁.join('、')):'没有，全部可选 ✅'));
+  try{if(typeof showMsg==='function')showMsg(want?'🔓 管理员：所有解锁已打开（三英雄 + SP 全开 + 纪念枪）':'🔒 管理员：解锁已全部关闭','#7fffd0');}catch(e){}
+  return {改前:前,现在:{闪电:UNLOCK.lightning,蚀日者:UNLOCK.eclipse,大将军:UNLOCK.general,第三章:UNLOCK.station},
+          熟练度:sp,纪念枪:纪念,服务器:报,还锁着:还锁};
+}
+try{ window['管理员']=管理员; window.admin=管理员; window['全解锁']=管理员; window.unlockAll=管理员; }catch(e){}
 /* 【batch171】熟练度灌满（调试/测试 SP 用，写本地存档） */
 function spXpFill(i){
   try{
