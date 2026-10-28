@@ -156,6 +156,18 @@ function netConnect(){
              /* 【batch203】mem＝我拥有纪念枪皮（累积登录解锁）。服务端把它带给同房其他人，
                 他们的屏幕会升起一条「感谢您这么久的陪伴」—— 只发给别人，自己看不到。 */
              mem:((typeof 纪念拥有==='function'&&纪念拥有())?1:0),
+             /* 【batch243】上报本机**真正加载了**的模组（文件名 + @id + 内容指纹）。
+                服务端据此判断：带了服务器没有的模组 → 拒绝进入并要求禁用；
+                模组代码和服务器那份不一致（同版本下）→ 视为改过模组，也拒绝。 */
+             mods:(function(){
+               try{
+                 if(window.MOD_MGR&&typeof MOD_MGR.连接清单==='function'){
+                   var a=MOD_MGR.连接清单();
+                   if(a&&a.length!==undefined)return Array.prototype.slice.call(a,0,64);
+                 }
+               }catch(e){}
+               return [];
+             })(),
              team:((typeof NET_TEAM==='number'&&NET_TEAM>=0)?NET_TEAM:undefined)});   // 【batch126】通关 / 【batch147】蚀日者解锁；【batch166】mode/room；【batch167】map/team
     /* 【batch225】连上过一次就记住这台服务器：下次打开游戏自动连回去。
        记住的是「玩家填的原文」（NET.raw），过隧道 / 换端口都还能直接用。
@@ -536,6 +548,21 @@ function netOnMsg(m){
       var _我=(typeof GAME_VER!=='undefined'?GAME_VER:'?');
       var _要=(m.min?('服务器要求至少 '+m.min):('服务器大版本为 '+m.sv))+'，你的版本是 '+_我;
       netKickedHome('🚫 版本不符，连不上这台服务器\n'+_要+'\n\n请更新游戏客户端（或换台版本匹配的服务器）');
+    }
+    /* 【batch243】模组不符：客户端带了服务器没有的模组 / 模组代码被改过 → 弹出可操作的拦截面板
+       （列出必须禁用的模组 + 一键禁用并重连）。面板由 js/61 画，这里没有就退回一句提示。 */
+    else if(_why==='mod'){
+      var 拦={extra:m.extra||[],tampered:m.tampered||[],missing:m.missing||[],reason:m.reason||''};
+      var 画了=false;
+      try{
+        if(window.MOD_MGR&&typeof MOD_MGR.拦截面板==='function'){ MOD_MGR.拦截面板(拦); 画了=true; }
+      }catch(_eMod){}
+      if(!画了){
+        var 行=[];
+        if(拦.extra.length)行.push('服务器没有这些模组（请禁用）：'+拦.extra.join('、'));
+        if(拦.tampered.length)行.push('这些模组代码和服务器不一致（请换回服务器那版）：'+拦.tampered.join('、'));
+        netKickedHome('⛔ 模组不符，连不上这台服务器\n'+(行.join('\n')||'请检查你安装的模组'));
+      }
     }
     else showMsg('本页面身份已被另一个窗口占用，已停止自动重连','#fc0');
     return;

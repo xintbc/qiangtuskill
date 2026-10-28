@@ -3219,7 +3219,7 @@ function updateLeftHand(dt){
    服务器启动时会校验这个号：major 不同或版本低于服务器下限 → 连不上也进不去，
    并弹明确提示（在哪看到的：join 时带上 v，服务端比对，不符发 bye why:'ver'）。
    改版本号的规矩：小修 patch+1；上功能 minor+1 且 patch 归 0；动协议/存档 major+1 且其余归 0。 */
-var GAME_VER='1.7.13';
+var GAME_VER='1.7.14';
 /* 【batch234】模组接口版本：1=老的英文接口（ModLoader.addHero…），
    2=1.7.5 起的统一中文接口（window.枪战模组）。模组文件头写 `@api 2` 声明自己按哪版写的。
    加接口（新增一类"能加的东西"）动小版本，改已有接口的参数/语义才动这个数。 */
@@ -10222,6 +10222,18 @@ function netConnect(){
              /* 【batch203】mem＝我拥有纪念枪皮（累积登录解锁）。服务端把它带给同房其他人，
                 他们的屏幕会升起一条「感谢您这么久的陪伴」—— 只发给别人，自己看不到。 */
              mem:((typeof 纪念拥有==='function'&&纪念拥有())?1:0),
+             /* 【batch243】上报本机**真正加载了**的模组（文件名 + @id + 内容指纹）。
+                服务端据此判断：带了服务器没有的模组 → 拒绝进入并要求禁用；
+                模组代码和服务器那份不一致（同版本下）→ 视为改过模组，也拒绝。 */
+             mods:(function(){
+               try{
+                 if(window.MOD_MGR&&typeof MOD_MGR.连接清单==='function'){
+                   var a=MOD_MGR.连接清单();
+                   if(a&&a.length!==undefined)return Array.prototype.slice.call(a,0,64);
+                 }
+               }catch(e){}
+               return [];
+             })(),
              team:((typeof NET_TEAM==='number'&&NET_TEAM>=0)?NET_TEAM:undefined)});   // 【batch126】通关 / 【batch147】蚀日者解锁；【batch166】mode/room；【batch167】map/team
     /* 【batch225】连上过一次就记住这台服务器：下次打开游戏自动连回去。
        记住的是「玩家填的原文」（NET.raw），过隧道 / 换端口都还能直接用。
@@ -10602,6 +10614,21 @@ function netOnMsg(m){
       var _我=(typeof GAME_VER!=='undefined'?GAME_VER:'?');
       var _要=(m.min?('服务器要求至少 '+m.min):('服务器大版本为 '+m.sv))+'，你的版本是 '+_我;
       netKickedHome('🚫 版本不符，连不上这台服务器\n'+_要+'\n\n请更新游戏客户端（或换台版本匹配的服务器）');
+    }
+    /* 【batch243】模组不符：客户端带了服务器没有的模组 / 模组代码被改过 → 弹出可操作的拦截面板
+       （列出必须禁用的模组 + 一键禁用并重连）。面板由 js/61 画，这里没有就退回一句提示。 */
+    else if(_why==='mod'){
+      var 拦={extra:m.extra||[],tampered:m.tampered||[],missing:m.missing||[],reason:m.reason||''};
+      var 画了=false;
+      try{
+        if(window.MOD_MGR&&typeof MOD_MGR.拦截面板==='function'){ MOD_MGR.拦截面板(拦); 画了=true; }
+      }catch(_eMod){}
+      if(!画了){
+        var 行=[];
+        if(拦.extra.length)行.push('服务器没有这些模组（请禁用）：'+拦.extra.join('、'));
+        if(拦.tampered.length)行.push('这些模组代码和服务器不一致（请换回服务器那版）：'+拦.tampered.join('、'));
+        netKickedHome('⛔ 模组不符，连不上这台服务器\n'+(行.join('\n')||'请检查你安装的模组'));
+      }
     }
     else showMsg('本页面身份已被另一个窗口占用，已停止自动重连','#fc0');
     return;
@@ -18436,6 +18463,24 @@ function quitToHome(){
 
   /* ---------------- 给加载器用：准备 / 载入完成 ---------------- */
   var _blobUrl = [];
+  var _生效 = [];        // 【batch243】这一局真正加载了的模组（连服务器时上报给服务端核验）
+
+  /* 【batch243】模组身份与指纹：
+       · id：文件头 `@id nightingale` 那种写法；没写就用文件名（去 .js、转小写）
+       · 指纹：FNV-1a 32 位，只用来判断"内容和服务器上那份一不一样"。
+         算法必须和服务端 服务端.js 的 `简哈希` 完全一致，否则会全员误判"被改过"。
+     服务端拿这两个字段判断：这个模组服务器有没有（多出来的要禁用）、代码有没有被动过。 */
+  function 抽模组ID(文, 名) {
+    var m = 文 ? (/@id\s+([A-Za-z0-9_.\-]+)/.exec(文) || /MOD_ID\s*=\s*['"]([A-Za-z0-9_.\-]+)['"]/.exec(文)) : null;
+    if (m && m[1]) return String(m[1]).toLowerCase();
+    return String(名 || '').replace(/\.js$/i, '').toLowerCase();
+  }
+  function 简哈希(文) {
+    文 = String(文 || '');
+    var h = 2166136261 >>> 0;
+    for (var i = 0; i < 文.length; i++) { h ^= 文.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return ('00000000' + h.toString(16)).slice(-8);
+  }
 
   /* 【batch229】模组版本兼容：模组可在文件头声明版本（两种写法任选）
        // @ver 1.7.0
@@ -18463,7 +18508,14 @@ function quitToHome(){
   /* 读一个模组的文本：保险库走库里读，别的走 fetch（浏览器会缓存，随后真正加载不费二次网络） */
   function 读模组文本(项) {
     if (项._文) return Promise.resolve(项._文);
-    if (_后端 === '保险库') return 库读文案(项.名).then(function (文) { 项._文 = 文 || ''; return 项._文; }).catch(function () { return ''; });
+    if (_后端 === '保险库') {
+      /* 【batch243】保险库里没有（没装过/没覆盖过）就回落到 mode/模组/ 的真实文件 ——
+         不然内置模组的文本是空串：版本抽不到、指纹也全一样，连服务器会被判"被改过"。 */
+      return 库读文案(项.名).then(function (文) {
+        if (文) return 文;
+        return fetch(项.url, { cache: 'force-cache' }).then(function (r) { return r.ok ? r.text() : ''; }).catch(function () { return ''; });
+      }).then(function (文) { 项._文 = 文 || ''; return 项._文; }).catch(function () { return ''; });
+    }
     return fetch(项.url, { cache: 'force-cache' }).then(function (r) { return r.ok ? r.text() : ''; })
       .then(function (文) { 项._文 = 文 || ''; return 项._文; }).catch(function () { return ''; });
   }
@@ -18481,10 +18533,13 @@ function quitToHome(){
         return 读模组文本(it).then(function (文) {
           it.ver = 抽模组版本(文);
           it.api = 抽接口版本(文);
+          it.id = 抽模组ID(文, it.名);          // 【batch243】连服务器时用来对账
+          it.hash = 简哈希(文);                  // 【batch243】代码指纹（防"改了模组当外挂"）
           it.兼容 = 模组兼容(it.ver) && it.api <= 模组接口版本;
           if (it.api > 模组接口版本) it.不兼容原因 = '按接口 v' + it.api + ' 写的，本游戏只到 v' + 模组接口版本;
         });
       })).then(function () {
+        var 生效 = [];
         for (var i = 0; i < 表.length; i++) {
           var it = 表[i];
           /* 【batch226】服务器后端：**载入清单才是权威**。清单里没有（/api/mods 的 on=0）
@@ -18500,6 +18555,7 @@ function quitToHome(){
             continue;
           }
           文件.push({ 名: it.名, url: it.url });
+          生效.push({ n: it.名, id: it.id, v: it.ver || '', h: it.hash });
         }
         /* 保险库里的模组没有真实 URL：现做一个 Blob URL（加载完再统一回收）。
          逐个查库：库里有源码就用 Blob（玩家自己装的，可能还覆盖了同名内置文件），
@@ -18513,13 +18569,17 @@ function quitToHome(){
               var u = URL.createObjectURL(new Blob([文], { type: 'text/javascript' }));
               _blobUrl.push(u);
               文件[idx].url = u;
+              /* 【batch243】指纹要按"真正加载的那份"算（保险库里的可能是玩家自己改过的副本） */
+              if (生效[idx]) 生效[idx].h = 简哈希(文);
             }).catch(function () { });
           })(r));
         }
         return Promise.all(任务).then(function () {
+          _生效 = 生效;
           return { 文件: 文件, 跳过: 跳过, 后端: _后端 };
         });
       }
+      _生效 = 生效;
       return { 文件: 文件, 跳过: 跳过, 后端: _后端 };
       });   /* 【batch229】关闭 Promise.all(版本读取).then */
     });     /* 关闭 探测后端().then */
@@ -18917,6 +18977,107 @@ function quitToHome(){
     else card.appendChild(b);
   }
 
+  /* ---------------- 【batch243】被服务器拦下：告诉玩家哪个模组必须禁用 ---------------- */
+  function 拦截面板(信息) {
+    try { var 旧 = document.getElementById('modBlockPanel'); if (旧 && 旧.parentNode) 旧.parentNode.removeChild(旧); } catch (e) { }
+    信息 = 信息 || {};
+    var 多 = (信息.extra || []).slice(0, 20);
+    var 改 = (信息.tampered || []).slice(0, 20);
+    var 缺 = (信息.missing || []).slice(0, 20);
+
+    var 罩 = document.createElement('div');
+    罩.id = 'modBlockPanel';
+    罩.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,6,12,.9);display:flex;align-items:center;justify-content:center;font-family:"Microsoft YaHei UI",sans-serif;padding:16px;';
+    var 卡 = document.createElement('div');
+    卡.style.cssText = 'width:min(560px,94vw);max-height:86vh;overflow:auto;background:#141a26;border:1px solid rgba(255,120,120,.45);border-radius:14px;padding:18px 20px;color:#e8eef8;box-shadow:0 24px 70px rgba(0,0,0,.65);';
+
+    var 标 = document.createElement('div');
+    标.textContent = '⛔ 无法进入这台服务器';
+    标.style.cssText = 'font-size:19px;font-weight:bold;color:#ff8a8a;margin-bottom:8px;';
+    卡.appendChild(标);
+
+    var 说 = document.createElement('div');
+    说.textContent = '服务器会核对每个人装了哪些模组。你的客户端和服务器不一致，所以被拦下了 —— 这不是网络问题，改好模组就能进。';
+    说.style.cssText = 'font-size:13px;line-height:1.65;color:#b9c6da;';
+    卡.appendChild(说);
+
+    function 段(标题, 说明, 名单, 色) {
+      if (!名单.length) return;
+      var h = document.createElement('div');
+      h.textContent = 标题;
+      h.style.cssText = 'margin:14px 0 6px;font-size:14px;font-weight:bold;color:' + 色 + ';';
+      卡.appendChild(h);
+      var d = document.createElement('div');
+      d.textContent = 说明;
+      d.style.cssText = 'font-size:12.5px;line-height:1.6;color:#9fb0c8;margin-bottom:7px;';
+      卡.appendChild(d);
+      var 行 = document.createElement('div');
+      行.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+      for (var i = 0; i < 名单.length; i++) {
+        var s = document.createElement('span');
+        s.textContent = String(名单[i]);
+        s.style.cssText = 'padding:3px 9px;font-size:12.5px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid ' + 色 + ';';
+        行.appendChild(s);
+      }
+      卡.appendChild(行);
+    }
+    段('🚫 服务器没有这些模组', '它们只能算你本地的私货。要进这台服务器，必须先把它们禁用（点下面的按钮会自动禁用并刷新重连）。', 多, 'rgba(255,120,120,.75)');
+    段('⚠️ 这些模组的代码和服务器上的不一样', '可能是版本不同，也可能是被人改过（改模组骗数据属于外挂）。请用服务器那版的模组，或让服主更新。', 改, 'rgba(255,180,90,.75)');
+    段('📥 服务器有、你这边没加载', '不影响进入，但你和别人的内容会不一致。可以点「同步服务器模组」补齐。', 缺, 'rgba(120,190,255,.7)');
+
+    var 钮行 = document.createElement('div');
+    钮行.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;';
+    function 钮(文字, 色) {
+      var b = document.createElement('button');
+      b.textContent = 文字;
+      b.style.cssText = 'cursor:pointer;padding:9px 16px;font-size:13.5px;font-weight:bold;border-radius:9px;border:1px solid ' + 色 + ';background:rgba(255,255,255,.05);color:' + 色 + ';font-family:inherit;';
+      return b;
+    }
+    var 可写 = false;
+    try { 可写 = 本地可写(); } catch (e) { }
+
+    if (多.length && 可写) {
+      var b1 = 钮('🚫 禁用这些模组并重连', '#ff8a8a');
+      b1.onclick = function () {
+        b1.disabled = true; b1.textContent = '正在禁用…';
+        var 任务 = 多.map(function (n) { return 设启用(n, false).catch(function () { }); });
+        Promise.all(任务).then(function () {
+          b1.textContent = '已禁用，正在刷新重连…';
+          setTimeout(function () { try { location.reload(); } catch (e) { } }, 350);
+        });
+      };
+      钮行.appendChild(b1);
+    } else if (多.length) {
+      var 提 = document.createElement('div');
+      提.textContent = '网页版不能自己改服务器模组：请让服主把这些模组停用，或换用客户端（电脑客户端 / 手机 App）把它们禁用后再进。';
+      提.style.cssText = 'font-size:12.5px;line-height:1.6;color:#ffd166;';
+      卡.appendChild(提);
+    }
+
+    if (缺.length && typeof 同步服务器 === 'function') {
+      var b2 = 钮('🔄 同步服务器模组', '#8fd6ff');
+      b2.onclick = function () {
+        b2.disabled = true; b2.textContent = '正在同步…';
+        var host = (window.NET && NET.server) || location.host;
+        var sec = !!(window.NET && NET.secure) || location.protocol === 'https:';
+        同步服务器(host, sec, false).then(function (n) {
+          b2.textContent = n ? ('同步了 ' + n + ' 个，正在刷新…') : '没有新模组，请手动检查';
+          if (n) setTimeout(function () { try { location.reload(); } catch (e) { } }, 400);
+          else { b2.disabled = false; }
+        }).catch(function () { b2.disabled = false; b2.textContent = '同步失败，点我重试'; });
+      };
+      钮行.appendChild(b2);
+    }
+
+    var b3 = 钮('关闭（继续离线玩）', '#9fb0c8');
+    b3.onclick = function () { try { 罩.parentNode.removeChild(罩); } catch (e) { } };
+    钮行.appendChild(b3);
+
+    卡.appendChild(钮行);
+    罩.appendChild(卡);
+    document.body.appendChild(罩);
+  }
+
   /* ---------------- 对外 ---------------- */
   window.MOD_MGR = {
     准备: 准备,
@@ -18928,6 +19089,10 @@ function quitToHome(){
     设启用: 设启用,
     恢复内置: 恢复内置,
     同步服务器: 同步服务器,
+    /* 【batch243】这一局真正加载的模组清单（连服务器时随 join 上报，服务端据此核验：
+       有没有服务器没有的模组、代码有没有被改过） */
+    连接清单: function () { return _生效.slice(); },
+    拦截面板: 拦截面板,
     列出: function () { return 已扫描.slice(); },
     扫描: function () { return 扫描(内置名单.map(function (x) { return x.名; })); },
     当前后端: function () { return _后端 || '未探测'; },

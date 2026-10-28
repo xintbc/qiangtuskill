@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.7.13';
+const SRV_VER = '1.7.14';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -2199,8 +2199,23 @@ function handleMsg(sock, raw) {
       try { sock.destroy(); } catch (e) { }
       return;
     }
-    // 分房间的上限：每间房各自 15 人（房间 = 模式:房号，或地图）
+    /* 【batch243】模组核验：客户端带了服务器没有的模组，或模组代码和服务器那份不一样 → 不许进。
+       拒绝报文带上名单，客户端弹面板"禁用这些模组并重连"。 */
+    const 模组判定 = 校验客户端模组(m.mods, cv);
+    if (模组判定.bad) {
+      const 多 = 模组判定.extra || [], 改 = 模组判定.tampered || [];
+      log('拒绝模组不符：' + (nm || '(无名)') + (多.length ? ('  多出[' + 多.join('、') + ']') : '') + (改.length ? ('  被改过[' + 改.join('、') + ']') : '') + (模组判定.reason ? ('  原因=' + 模组判定.reason) : ''));
+      try {
+        wsSend(sock, JSON.stringify({
+          t: 'bye', why: 'mod', reason: 模组判定.reason || '',
+          extra: 多, tampered: 改, missing: 模组判定.missing || [], sv: SRV_VER
+        }));
+      } catch (e) { }
+      try { sock.destroy(); } catch (e) { }
+      return;
+    }
     if (!rejoin && onlineCountIn(jkey) >= MAX_PLAYERS) {
+      // 分房间的上限：每间房各自 15 人（房间 = 模式:房号，或地图）
       log('房间「' + jkey + '」已满（' + onlineCountIn(jkey) + '/' + MAX_PLAYERS + '），拒绝：' + (nm || '(无名)'));
       try { wsSend(sock, JSON.stringify({ t: 'bye', why: 'full', max: MAX_PLAYERS, map: jmap })); } catch (e) { }
       try { sock.destroy(); } catch (e) { }
@@ -2631,6 +2646,83 @@ function modAvailablePool() {
   return fs.readdirSync(dir).filter(function (f) {
     return /\.js$/i.test(f) && f !== '载入清单.js';
   }).map(function (f) { return f.replace(/\.js$/i, ''); }).sort();
+}
+
+/* ===== 【batch243】客户端模组核验（join 时） =====
+   服务器只认「载入清单里启用 + 文件存在」的模组。客户端 join 时会上报本机真正加载的模组
+   （文件名 + @id + 内容指纹），这里逐条对账：
+     · 客户端有、服务器没有  → 拒绝进入（客户端要禁用这个模组再来）
+     · 两边都有但指纹不同（且客户端版本和服务器一致）→ 视为"模组代码被改过"，也拒绝
+     · 服务器有、客户端没报  → 只提示（多半是还没同步），不拦
+   ⚠️ 指纹算法必须和 js/61_模组管理.js 的 `简哈希` 一模一样（FNV-1a 32 位）。 */
+function 简哈希(s) {
+  s = String(s || '');
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+function 模组身份(文, 名) {
+  const m = /@id\s+([A-Za-z0-9_.\-]+)/.exec(文 || '') || /MOD_ID\s*=\s*['"]([A-Za-z0-9_.\-]+)['"]/.exec(文 || '');
+  if (m && m[1]) return String(m[1]).toLowerCase();
+  return String(名 || '').replace(/\.js$/i, '').toLowerCase();
+}
+let _模组表缓存 = { at: 0, t: null };
+function 服务器模组表() {
+  const now = Date.now();
+  if (_模组表缓存.t && now - _模组表缓存.at < 5000) return _模组表缓存.t;
+  const 允许 = {}, 停用 = {};
+  try {
+    const 启用 = readEnabledModules();
+    启用.forEach(function (base) {
+      const n = String(base) + '.js';
+      try {
+        const 文 = fs.readFileSync(path.join(modRootDir(), n), 'utf8');
+        允许[模组身份(文, n)] = { n: n, h: 简哈希(文) };
+      } catch (e) { }                                    // 清单里有、磁盘上没有：忽略
+    });
+    modAvailablePool().forEach(function (base) {
+      const n = base + '.js';
+      const k = 模组身份('', n);
+      if (允许[k]) return;
+      try { if (fs.statSync(path.join(modRootDir(), n)).isFile()) 停用[k] = n; } catch (e) { }
+    });
+  } catch (e) { }
+  _模组表缓存 = { at: now, t: { 允许: 允许, 停用: 停用 } };
+  return _模组表缓存.t;
+}
+function 校验客户端模组(mods, cv) {
+  const 表 = 服务器模组表();
+  const 允许 = 表.允许;
+  const 允许id = Object.keys(允许);
+  const 有模组 = 允许id.length > 0 || Object.keys(表.停用).length > 0;
+  const 同版本 = String(cv || '') === String(SRV_VER);
+  const 短名 = function (n) { return String(n || '').replace(/\.js$/i, ''); };
+
+  /* 没上报清单：老客户端（< 1.7.14）放行，新客户端必须报（否则等于关掉了自检） */
+  if (!Array.isArray(mods)) {
+    if (有模组 && verCmp(String(cv || '0.0.0'), '1.7.14') >= 0) {
+      return { bad: true, reason: 'nomods', extra: [], tampered: [], missing: 允许id.map(function (k) { return 短名(允许[k].n); }) };
+    }
+    return { bad: false };
+  }
+
+  const extra = [], tampered = [], seen = {};
+  const 上限 = Math.min(mods.length, 64);
+  for (let i = 0; i < 上限; i++) {
+    const it = mods[i];
+    if (!it || typeof it !== 'object') continue;
+    const 名 = String(it.n || '').slice(0, 120);
+    const id = String(it.id || it.n || '').toLowerCase().replace(/\.js$/i, '').slice(0, 80);
+    if (!id) continue;
+    seen[id] = 1;
+    const 服 = 允许[id];
+    if (!服) { extra.push(短名(名) || id); continue; }
+    if (同版本 && it.h && String(it.h) !== String(服.h)) tampered.push(短名(名) || id);
+  }
+  const missing = [];
+  允许id.forEach(function (k) { if (!seen[k]) missing.push(短名(允许[k].n)); });
+
+  return { bad: (extra.length > 0 || tampered.length > 0), extra: extra, tampered: tampered, missing: missing };
 }
 function modInfo(f) {
   const fp = path.join(modRootDir(), f + '.js');
