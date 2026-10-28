@@ -983,6 +983,9 @@ function heroRemoteHit(e){
 document.addEventListener('keydown',function(e){
   if(e.repeat)return;
   if(typeof keyCaptureAction!=='undefined'&&keyCaptureAction)return;   // 正在改键
+  /* 【batch242】正在打字（聊天框等）时技能键一律不响应。
+     原来这里是"捕获阶段、免疫输入框 stopPropagation"，结果一边打字一边把技能全放了。 */
+  if(typeof 正在打字==='function'&&正在打字())return;
   var idx=-1;
   if(e.code===KEYMAP.skill)idx=0;
   else if(e.code===KEYMAP.skill2)idx=1;
@@ -996,6 +999,7 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if(e.repeat)return;
   if(typeof keyCaptureAction!=='undefined'&&keyCaptureAction)return;   // 正在改键
+  if(typeof 正在打字==='function'&&正在打字())return;                   // 【batch242】打字时不弹武器选择
   if(e.code!=='KeyB')return;
   if(!S.playing||S.over)return;
   e.preventDefault();

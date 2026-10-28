@@ -3219,7 +3219,7 @@ function updateLeftHand(dt){
    服务器启动时会校验这个号：major 不同或版本低于服务器下限 → 连不上也进不去，
    并弹明确提示（在哪看到的：join 时带上 v，服务端比对，不符发 bye why:'ver'）。
    改版本号的规矩：小修 patch+1；上功能 minor+1 且 patch 归 0；动协议/存档 major+1 且其余归 0。 */
-var GAME_VER='1.7.12';
+var GAME_VER='1.7.13';
 /* 【batch234】模组接口版本：1=老的英文接口（ModLoader.addHero…），
    2=1.7.5 起的统一中文接口（window.枪战模组）。模组文件头写 `@api 2` 声明自己按哪版写的。
    加接口（新增一类"能加的东西"）动小版本，改已有接口的参数/语义才动这个数。 */
@@ -7266,6 +7266,36 @@ document.getElementById('wsContinue').addEventListener('click',function(e){e.sto
 
 // ==================== INPUT ====================
 var yaw=0,pitch=0,pointerLocked=false;
+/* 【batch242】"是不是正在往输入框里打字"——聊天框 / 联机地址框 / 取名面板 / 身份码框 都算。
+   为什么要有：打字时按 R / 2 / Q / 空格 / Shift 这些键，以前会被当成游戏按键，
+   一边打字一边把技能放了、把枪切了、人还蹲下了。所有游戏按键处理器开头都要问一句它。
+   注意：这里只"让游戏别响应"，绝不能 stopPropagation —— 那样连输入框自己都收不到按键，就打不了字了。 */
+function 正在打字(){
+  try{
+    if(window.__聊天输入中)return true;                 // 聊天框开着（哪怕焦点一时丢了）
+    var ae=document.activeElement;
+    if(!ae||ae===document.body)return false;
+    var t=(ae.tagName||'').toUpperCase();
+    if(t!=='INPUT'&&t!=='TEXTAREA'&&!ae.isContentEditable)return false;
+    if(ae.disabled||ae.readOnly)return false;
+    /* 只算"看得见"的输入框：某些浏览器里点完「开始」/取完名字，输入框已经藏起来但**焦点还留着**，
+       那种若也算"打字"，全游戏按键就全废了（历史 bug，见 60_剧情模式 取名框那段注释）。 */
+    if(ae.getClientRects&&ae.getClientRects().length===0)return false;
+    return true;
+  }catch(e){}
+  return false;
+}
+window.正在打字=正在打字;
+/* 【batch242】清空按键与鼠标状态。开聊天框时调一次：
+   移动/开火都是每帧去读 _raw / mouseDown 的（不是靠事件），所以按住 W 或左键再按 Enter，
+   人就会一边往前走一边突突突地打字。这里直接抹平，等于"松开所有键"。
+   ⚠️ 只清 _raw 的内容，绝不能写 _raw={} 或 keys={}（会把存取器映射换掉，键位就永久失效了）。 */
+function 清空输入状态(){
+  try{ for(var k in _raw)_raw[k]=false; }catch(e){}
+  mouseDown=false; freshTrigger=false; rightMouseDown=false;
+  try{ S.sprintLatch=false; S.joySprint=false; if(!S.adsToggle)S.aiming=false; }catch(e){}
+}
+window.清空输入状态=清空输入状态;
 // 指针锁重试：Chrome 在按 Esc 退出锁定后的短时间内会拒绝再次锁定，
 // 点「继续」时如果一次没锁上就自动重试几次，避免卡在暂停菜单里动不了。
 var _lockToken=0,_lockErr=0,_lockUnavailable=false;
@@ -7321,7 +7351,7 @@ if(_lockHintEl){
 // 【重要】这里绝不能写 keys={}：keys 是用 Object.defineProperty 存取器实现的，
 // 一旦被替换成普通空对象，所有键位映射会永久失效 → 电脑版「动不了」（刷新才能恢复）。
 window.addEventListener('blur',function(){for(var _bk in _raw)_raw[_bk]=false;mouseDown=false;rightMouseDown=false;S.sprintLatch=false;S.joySprint=false;S.crouch=false;});
-document.addEventListener('keydown',function(e){if(keyCaptureAction){e.preventDefault();keyCaptureSet(e.code);return;}if(e.code==='Escape'){if(weaponSelectOpen()){closeWeaponSelect();return;}if(spOpen){openSettings(false);return;}if(S.playing&&!S.over&&!overlayOpen()){if(S.paused)closeGameMenu();else openGameMenu();}return;}_raw[e.code]=true;if(!S.playing||S.over||S.paused)return;
+document.addEventListener('keydown',function(e){if(keyCaptureAction){e.preventDefault();keyCaptureSet(e.code);return;}if(正在打字())return;if(e.code==='Escape'){if(weaponSelectOpen()){closeWeaponSelect();return;}if(spOpen){openSettings(false);return;}if(S.playing&&!S.over&&!overlayOpen()){if(S.paused)closeGameMenu();else openGameMenu();}return;}_raw[e.code]=true;if(!S.playing||S.over||S.paused)return;
 /* 【蹲下＝点击切换】按一下蹲下键＝蹲/站 切换（不再是长按）。
    同时认 KEYMAP.crouch（设置里可自定义）与左右 Shift，改键后照样能用。 */
 if((e.code===KEYMAP.crouch||e.code==='ShiftLeft'||e.code==='ShiftRight')&&!e.repeat){
@@ -7336,6 +7366,7 @@ document.addEventListener('keyup',function(e){_raw[e.code]=false;if(e.code===KEY
 //  · 触控板两指横扫会发出横向 wheel，被浏览器当成前进/后退手势 → 只认纵向滚动
 //  · 触摸屏/触控板双指捏合会发出 Ctrl+wheel（整页缩放，画面会被缩放毁掉）→ 直接屏蔽
 document.addEventListener('wheel',function(e){
+  if(正在打字())return;                                     // 【batch242】打字时滚轮不切枪
   if(e.ctrlKey){if(e.cancelable)e.preventDefault();return;}
   if(!S.playing||S.over||S.paused)return;
   var _dx=Math.abs(e.deltaX||0),_dy=Math.abs(e.deltaY||0);
@@ -7370,7 +7401,7 @@ document.getElementById('startBtn').addEventListener('click',function(){
   if(S.playing&&S.paused&&!S.over){closeGameMenu();return;}   // 游戏中暂停：这个按钮＝「继续游戏」
   startSoloGame();
 });
-document.addEventListener('mousedown',function(e){if(weaponSelectOpen()||spOpen)return;var target=e.target;while(target&&target!==document.body){if(target.id==='wave-shop'||target.id==='weapon-select'||target.id==='blocker'||target.id==='go'||target.id==='keyPanel'||target.id==='netPanel'||target.id==='lockHint'||target.id==='modPanel')return;target=target.parentElement;}if(S.paused&&!S.over&&S.playing){_lockErr=0;_lockUnavailable=false;if(!isTouch)lockPointer();closeGameMenu();return;}
+document.addEventListener('mousedown',function(e){if(window.__聊天输入中)return;   /* 【batch242】正在打字：别让点一下画面就开枪/锁鼠标 */if(weaponSelectOpen()||spOpen)return;var target=e.target;while(target&&target!==document.body){if(target.id==='wave-shop'||target.id==='weapon-select'||target.id==='blocker'||target.id==='go'||target.id==='keyPanel'||target.id==='netPanel'||target.id==='lockHint'||target.id==='modPanel')return;target=target.parentElement;}if(S.paused&&!S.over&&S.playing){_lockErr=0;_lockUnavailable=false;if(!isTouch)lockPointer();closeGameMenu();return;}
   // 电脑端在游戏中点了画面但指针还没锁上 → 这一下只用来"重新锁定"，不当作开枪
   if(e.button===0&&!isTouch&&S.playing&&!S.over&&!S.paused&&!pointerLocked){_lockErr=0;_lockUnavailable=false;lockPointer();return;}
   if(e.button===0){if(SK.ghost>0){e.preventDefault();heroPortalPlace();return;}   /* 【batch145】虚化中：左键＝放下门 */
@@ -16553,6 +16584,9 @@ function heroRemoteHit(e){
 document.addEventListener('keydown',function(e){
   if(e.repeat)return;
   if(typeof keyCaptureAction!=='undefined'&&keyCaptureAction)return;   // 正在改键
+  /* 【batch242】正在打字（聊天框等）时技能键一律不响应。
+     原来这里是"捕获阶段、免疫输入框 stopPropagation"，结果一边打字一边把技能全放了。 */
+  if(typeof 正在打字==='function'&&正在打字())return;
   var idx=-1;
   if(e.code===KEYMAP.skill)idx=0;
   else if(e.code===KEYMAP.skill2)idx=1;
@@ -16566,6 +16600,7 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if(e.repeat)return;
   if(typeof keyCaptureAction!=='undefined'&&keyCaptureAction)return;   // 正在改键
+  if(typeof 正在打字==='function'&&正在打字())return;                   // 【batch242】打字时不弹武器选择
   if(e.code!=='KeyB')return;
   if(!S.playing||S.over)return;
   e.preventDefault();
@@ -18935,6 +18970,7 @@ var VOICE_KEY = 'gunGame.voice.v1';        // 语音开关
 var PTT_KEY = 'KeyG';                      // 按住说话（T 是英雄第二技能，占了；G 空闲）
 
 var 开 = false;                            // 输入框开着
+var 锁前锁定 = false;                       // 【batch242】打开聊天前鼠标是不是锁着的（只有本来锁着才自动锁回）
 var 语音开 = true;                         // 总开关（设置里改）
 var 说中 = false;                          // 我正在说
 var 录音器 = null;
@@ -19026,14 +19062,19 @@ function 建DOM(){
             return;
         }
         if (!开) return;
-        if (e.code === 'Enter') { e.preventDefault(); 发送(); }
-        else if (e.code === 'Escape') { e.preventDefault(); 关输入(); }
-        else e.stopPropagation();                    // 别让 WASD/R 等透传到游戏
+        /* 【batch242】回车发送 / Esc 取消都要"就地吃掉"这个按键：以前只 preventDefault，
+           Esc 还会继续冒泡到 22 的主处理器 → 顺手把暂停菜单也弹出来（还把刚锁回的鼠标又解了）。 */
+        if (e.code === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); 发送(); }
+        else if (e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); 关输入(); }
+        /* 【batch242】别让 WASD/R/技能键透传到游戏：stopImmediatePropagation 连"同一节点上后面注册的
+           监听"一起挡掉（技能键是 44 在捕获阶段注册的，只在 62 之前跑，所以那边另外加了"正在打字"判断）。 */
+        else { e.stopImmediatePropagation(); e.stopPropagation(); }
     }, true);
 
     /* PTT：按住 G 说话（联机 + 语音开着 + 麦没被禁） */
     document.addEventListener('keydown', function(e){
         if (e.code !== PTT_KEY || 开 || !语音开) return;
+        if (typeof 正在打字 === 'function' && 正在打字()) return;   // 【batch242】打字时 G 是字母不是开麦
         if (typeof S !== 'undefined' && S && S.playing === false) return;
         e.stopPropagation();
         开麦();
@@ -19052,6 +19093,11 @@ function 建DOM(){
 
 function 开输入(){
     开 = true;
+    try{ window.__聊天输入中 = 1; }catch(e){}   // 【batch242】告诉所有游戏按键：现在在打字，别响应
+    锁前锁定 = false;
+    try{ 锁前锁定 = (document.pointerLockElement === document.body); }catch(e){}
+    /* 【batch242】把按住的键和鼠标一起松开：不然按住 W 再按 Enter，人还在往前走 */
+    try{ if (typeof 清空输入状态 === 'function') 清空输入状态(); }catch(e){}
     输入框.style.display = 'block';
     输入框.value = '';
     setTimeout(function(){ try{ 输入框.focus(); }catch(e){} }, 0);
@@ -19064,9 +19110,26 @@ function 开输入(){
 }
 function 关输入(){
     开 = false;
+    try{ window.__聊天输入中 = 0; }catch(e){}
     输入框.style.display = 'none';
     输入框.blur();
-    /* 关输入框后游戏还在暂停态（指针没锁），不用自动锁回 —— 玩家点一下画面就锁（22 里 mousedown 处理） */
+    /* 【batch242】发完消息 / 取消输入后自动把鼠标锁回来。
+       以前这里只 blur，玩家（尤其是多人对战里）还得再点一下画面才能转视角，很别扭。
+       只在本开聊天前鼠标本来是锁着的才锁回：本来就没锁（暂停菜单里、触屏）就别硬抢。 */
+    var 要锁 = 锁前锁定;
+    锁前锁定 = false;
+    if (要锁) 重新锁定鼠标();
+}
+/* 重新请求指针锁（22 的 lockPointer 自带 4 次重试，能扛住浏览器"刚退锁不让立刻锁"的冷却） */
+function 重新锁定鼠标(){
+    try{
+        if (typeof isTouch !== 'undefined' && isTouch) return;
+        if (typeof lockPointer !== 'function') return;
+        if (typeof S === 'undefined' || !S || !S.playing || S.over || S.paused) return;
+        if (document.pointerLockElement === document.body) return;
+        try{ _lockErr = 0; _lockUnavailable = false; }catch(e){}
+        lockPointer();
+    }catch(e){}
 }
 function 发送(){
     var v = String(输入框.value || '').trim();

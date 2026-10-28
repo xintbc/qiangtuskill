@@ -24,6 +24,7 @@ var VOICE_KEY = 'gunGame.voice.v1';        // 语音开关
 var PTT_KEY = 'KeyG';                      // 按住说话（T 是英雄第二技能，占了；G 空闲）
 
 var 开 = false;                            // 输入框开着
+var 锁前锁定 = false;                       // 【batch242】打开聊天前鼠标是不是锁着的（只有本来锁着才自动锁回）
 var 语音开 = true;                         // 总开关（设置里改）
 var 说中 = false;                          // 我正在说
 var 录音器 = null;
@@ -115,14 +116,19 @@ function 建DOM(){
             return;
         }
         if (!开) return;
-        if (e.code === 'Enter') { e.preventDefault(); 发送(); }
-        else if (e.code === 'Escape') { e.preventDefault(); 关输入(); }
-        else e.stopPropagation();                    // 别让 WASD/R 等透传到游戏
+        /* 【batch242】回车发送 / Esc 取消都要"就地吃掉"这个按键：以前只 preventDefault，
+           Esc 还会继续冒泡到 22 的主处理器 → 顺手把暂停菜单也弹出来（还把刚锁回的鼠标又解了）。 */
+        if (e.code === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); 发送(); }
+        else if (e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); 关输入(); }
+        /* 【batch242】别让 WASD/R/技能键透传到游戏：stopImmediatePropagation 连"同一节点上后面注册的
+           监听"一起挡掉（技能键是 44 在捕获阶段注册的，只在 62 之前跑，所以那边另外加了"正在打字"判断）。 */
+        else { e.stopImmediatePropagation(); e.stopPropagation(); }
     }, true);
 
     /* PTT：按住 G 说话（联机 + 语音开着 + 麦没被禁） */
     document.addEventListener('keydown', function(e){
         if (e.code !== PTT_KEY || 开 || !语音开) return;
+        if (typeof 正在打字 === 'function' && 正在打字()) return;   // 【batch242】打字时 G 是字母不是开麦
         if (typeof S !== 'undefined' && S && S.playing === false) return;
         e.stopPropagation();
         开麦();
@@ -141,6 +147,11 @@ function 建DOM(){
 
 function 开输入(){
     开 = true;
+    try{ window.__聊天输入中 = 1; }catch(e){}   // 【batch242】告诉所有游戏按键：现在在打字，别响应
+    锁前锁定 = false;
+    try{ 锁前锁定 = (document.pointerLockElement === document.body); }catch(e){}
+    /* 【batch242】把按住的键和鼠标一起松开：不然按住 W 再按 Enter，人还在往前走 */
+    try{ if (typeof 清空输入状态 === 'function') 清空输入状态(); }catch(e){}
     输入框.style.display = 'block';
     输入框.value = '';
     setTimeout(function(){ try{ 输入框.focus(); }catch(e){} }, 0);
@@ -153,9 +164,26 @@ function 开输入(){
 }
 function 关输入(){
     开 = false;
+    try{ window.__聊天输入中 = 0; }catch(e){}
     输入框.style.display = 'none';
     输入框.blur();
-    /* 关输入框后游戏还在暂停态（指针没锁），不用自动锁回 —— 玩家点一下画面就锁（22 里 mousedown 处理） */
+    /* 【batch242】发完消息 / 取消输入后自动把鼠标锁回来。
+       以前这里只 blur，玩家（尤其是多人对战里）还得再点一下画面才能转视角，很别扭。
+       只在本开聊天前鼠标本来是锁着的才锁回：本来就没锁（暂停菜单里、触屏）就别硬抢。 */
+    var 要锁 = 锁前锁定;
+    锁前锁定 = false;
+    if (要锁) 重新锁定鼠标();
+}
+/* 重新请求指针锁（22 的 lockPointer 自带 4 次重试，能扛住浏览器"刚退锁不让立刻锁"的冷却） */
+function 重新锁定鼠标(){
+    try{
+        if (typeof isTouch !== 'undefined' && isTouch) return;
+        if (typeof lockPointer !== 'function') return;
+        if (typeof S === 'undefined' || !S || !S.playing || S.over || S.paused) return;
+        if (document.pointerLockElement === document.body) return;
+        try{ _lockErr = 0; _lockUnavailable = false; }catch(e){}
+        lockPointer();
+    }catch(e){}
 }
 function 发送(){
     var v = String(输入框.value || '').trim();

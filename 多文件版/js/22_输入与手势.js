@@ -1,5 +1,35 @@
 // ==================== INPUT ====================
 var yaw=0,pitch=0,pointerLocked=false;
+/* 【batch242】"是不是正在往输入框里打字"——聊天框 / 联机地址框 / 取名面板 / 身份码框 都算。
+   为什么要有：打字时按 R / 2 / Q / 空格 / Shift 这些键，以前会被当成游戏按键，
+   一边打字一边把技能放了、把枪切了、人还蹲下了。所有游戏按键处理器开头都要问一句它。
+   注意：这里只"让游戏别响应"，绝不能 stopPropagation —— 那样连输入框自己都收不到按键，就打不了字了。 */
+function 正在打字(){
+  try{
+    if(window.__聊天输入中)return true;                 // 聊天框开着（哪怕焦点一时丢了）
+    var ae=document.activeElement;
+    if(!ae||ae===document.body)return false;
+    var t=(ae.tagName||'').toUpperCase();
+    if(t!=='INPUT'&&t!=='TEXTAREA'&&!ae.isContentEditable)return false;
+    if(ae.disabled||ae.readOnly)return false;
+    /* 只算"看得见"的输入框：某些浏览器里点完「开始」/取完名字，输入框已经藏起来但**焦点还留着**，
+       那种若也算"打字"，全游戏按键就全废了（历史 bug，见 60_剧情模式 取名框那段注释）。 */
+    if(ae.getClientRects&&ae.getClientRects().length===0)return false;
+    return true;
+  }catch(e){}
+  return false;
+}
+window.正在打字=正在打字;
+/* 【batch242】清空按键与鼠标状态。开聊天框时调一次：
+   移动/开火都是每帧去读 _raw / mouseDown 的（不是靠事件），所以按住 W 或左键再按 Enter，
+   人就会一边往前走一边突突突地打字。这里直接抹平，等于"松开所有键"。
+   ⚠️ 只清 _raw 的内容，绝不能写 _raw={} 或 keys={}（会把存取器映射换掉，键位就永久失效了）。 */
+function 清空输入状态(){
+  try{ for(var k in _raw)_raw[k]=false; }catch(e){}
+  mouseDown=false; freshTrigger=false; rightMouseDown=false;
+  try{ S.sprintLatch=false; S.joySprint=false; if(!S.adsToggle)S.aiming=false; }catch(e){}
+}
+window.清空输入状态=清空输入状态;
 // 指针锁重试：Chrome 在按 Esc 退出锁定后的短时间内会拒绝再次锁定，
 // 点「继续」时如果一次没锁上就自动重试几次，避免卡在暂停菜单里动不了。
 var _lockToken=0,_lockErr=0,_lockUnavailable=false;
@@ -55,7 +85,7 @@ if(_lockHintEl){
 // 【重要】这里绝不能写 keys={}：keys 是用 Object.defineProperty 存取器实现的，
 // 一旦被替换成普通空对象，所有键位映射会永久失效 → 电脑版「动不了」（刷新才能恢复）。
 window.addEventListener('blur',function(){for(var _bk in _raw)_raw[_bk]=false;mouseDown=false;rightMouseDown=false;S.sprintLatch=false;S.joySprint=false;S.crouch=false;});
-document.addEventListener('keydown',function(e){if(keyCaptureAction){e.preventDefault();keyCaptureSet(e.code);return;}if(e.code==='Escape'){if(weaponSelectOpen()){closeWeaponSelect();return;}if(spOpen){openSettings(false);return;}if(S.playing&&!S.over&&!overlayOpen()){if(S.paused)closeGameMenu();else openGameMenu();}return;}_raw[e.code]=true;if(!S.playing||S.over||S.paused)return;
+document.addEventListener('keydown',function(e){if(keyCaptureAction){e.preventDefault();keyCaptureSet(e.code);return;}if(正在打字())return;if(e.code==='Escape'){if(weaponSelectOpen()){closeWeaponSelect();return;}if(spOpen){openSettings(false);return;}if(S.playing&&!S.over&&!overlayOpen()){if(S.paused)closeGameMenu();else openGameMenu();}return;}_raw[e.code]=true;if(!S.playing||S.over||S.paused)return;
 /* 【蹲下＝点击切换】按一下蹲下键＝蹲/站 切换（不再是长按）。
    同时认 KEYMAP.crouch（设置里可自定义）与左右 Shift，改键后照样能用。 */
 if((e.code===KEYMAP.crouch||e.code==='ShiftLeft'||e.code==='ShiftRight')&&!e.repeat){
@@ -70,6 +100,7 @@ document.addEventListener('keyup',function(e){_raw[e.code]=false;if(e.code===KEY
 //  · 触控板两指横扫会发出横向 wheel，被浏览器当成前进/后退手势 → 只认纵向滚动
 //  · 触摸屏/触控板双指捏合会发出 Ctrl+wheel（整页缩放，画面会被缩放毁掉）→ 直接屏蔽
 document.addEventListener('wheel',function(e){
+  if(正在打字())return;                                     // 【batch242】打字时滚轮不切枪
   if(e.ctrlKey){if(e.cancelable)e.preventDefault();return;}
   if(!S.playing||S.over||S.paused)return;
   var _dx=Math.abs(e.deltaX||0),_dy=Math.abs(e.deltaY||0);
@@ -104,7 +135,7 @@ document.getElementById('startBtn').addEventListener('click',function(){
   if(S.playing&&S.paused&&!S.over){closeGameMenu();return;}   // 游戏中暂停：这个按钮＝「继续游戏」
   startSoloGame();
 });
-document.addEventListener('mousedown',function(e){if(weaponSelectOpen()||spOpen)return;var target=e.target;while(target&&target!==document.body){if(target.id==='wave-shop'||target.id==='weapon-select'||target.id==='blocker'||target.id==='go'||target.id==='keyPanel'||target.id==='netPanel'||target.id==='lockHint'||target.id==='modPanel')return;target=target.parentElement;}if(S.paused&&!S.over&&S.playing){_lockErr=0;_lockUnavailable=false;if(!isTouch)lockPointer();closeGameMenu();return;}
+document.addEventListener('mousedown',function(e){if(window.__聊天输入中)return;   /* 【batch242】正在打字：别让点一下画面就开枪/锁鼠标 */if(weaponSelectOpen()||spOpen)return;var target=e.target;while(target&&target!==document.body){if(target.id==='wave-shop'||target.id==='weapon-select'||target.id==='blocker'||target.id==='go'||target.id==='keyPanel'||target.id==='netPanel'||target.id==='lockHint'||target.id==='modPanel')return;target=target.parentElement;}if(S.paused&&!S.over&&S.playing){_lockErr=0;_lockUnavailable=false;if(!isTouch)lockPointer();closeGameMenu();return;}
   // 电脑端在游戏中点了画面但指针还没锁上 → 这一下只用来"重新锁定"，不当作开枪
   if(e.button===0&&!isTouch&&S.playing&&!S.over&&!S.paused&&!pointerLocked){_lockErr=0;_lockUnavailable=false;lockPointer();return;}
   if(e.button===0){if(SK.ghost>0){e.preventDefault();heroPortalPlace();return;}   /* 【batch145】虚化中：左键＝放下门 */
