@@ -174,6 +174,10 @@ if(typeof trainTick==='function'){ if(typeof netIsMulti==='function'&&netIsMulti
   var _mn=performance.now();var _mdt=_modeLastT?Math.min((_mn-_modeLastT)/1000,0.12):0.016;_modeLastT=_mn;
   var _mm=curMode();if(_mm&&typeof _mm.tick==='function'){try{_mm.tick(_mdt);}catch(e){}}
   if(window.ModLoader&&ModLoader._physTicks&&ModLoader._physTicks.length){for(var _pi=0;_pi<ModLoader._physTicks.length;_pi++){try{ModLoader._physTicks[_pi](_mdt);}catch(e){}}}
+  /* 【batch244】新分片的每帧入口（typeof 守卫：这两个分片没加载时这里什么都不做）
+     陵园Tick＝直升机 / 爆炸长矛 / 石棺 / 分身；载具Tick＝藏在最后那套驾驶系统（平时空转≈0）。 */
+  if(typeof 陵园Tick==='function'){try{陵园Tick(_mdt);}catch(e){}}
+  if(typeof 载具Tick==='function'){try{载具Tick();}catch(e){}}
   /* updateWave() 平时只在刷波 / 杀怪时才会被调用，倒计时不会走字 ——
      所以玩法模式只要给了 hud()，这里就每帧帮它刷新一次 HUD。 */
   if(_mm&&typeof _mm.hud==='function'){try{updateWave();}catch(e){}}

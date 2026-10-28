@@ -27,7 +27,10 @@ function updateEnemies(){
   var _pGhost=(typeof SK!=='undefined'&&SK&&(SK.ghost>0||SK.shadowT>0));   // 【batch151/158】虚化或遁入暗影中：敌人看不见、听不见、也锁不住你
   var _pbid=(typeof navBuildingAt==='function')?navBuildingAt(curMapId,cp.x,cp.z):-1;   // 【batch131】玩家在不在楼里
   for(var ei=0;ei<n;ei++){
-    var e=enemies[ei];if(e.isNet){netUpdateRemote(e);continue;}if(e.rangeDummy)continue;if(e.hp<=0)continue;   /* 【batch180】靶场假人：不参与 AI（不动、不瞄、不开火） */
+    var e=enemies[ei];if(e.isNet){netUpdateRemote(e);continue;}if(e.rangeDummy)continue;if(e.hp<=0)continue;
+    /* 【batch244】noAI＝不归通用 AI 管（天上的直升机 / 剧情大将军都由自己的分片驱动）。
+       必须放在这里：否则直升机会被当成普通兵去"追玩家 + 开枪"，大将军也会被抢去走位。 */
+    if(e.noAI)continue;   /* 【batch180】靶场假人：不参与 AI（不动、不瞄、不开火） */
     /* 【batch184b】剧情 Boss 在「演出中」（开场 / 登场 / 结局字幕）不能被通用 AI 驱动 ——
        否则它会在自己的登场字幕期间就朝被锁住输入的玩家移动 + 开火，玩家毫无还手之力
        （用户报"剧情还没过完 BOSS 就出现了、根本打不了"）。演出期间冻结它的通用 AI，

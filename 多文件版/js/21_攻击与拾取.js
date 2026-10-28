@@ -102,6 +102,9 @@ if(obsPoint&&typeof spWallHitAt==='function')spWallHitAt(obsPoint,25*S.damageMul
    只吃这条 tracer 的 trainBoxHit）。改成按武器射程算帧数并给 200m 下限，让最远的火车也打得到。 */
 bullets.push({m:b,d:dir,life:Math.max(80,Math.ceil(((typeof S.range==='number'?S.range:80))/2.5))});}if(S.ammo<=0)reload();}}
 function killEnemy(e,idx,hs){
+  /* 【batch244】天上的直升机：它也在 enemies 里（子弹射线才打得到），但"死"要走自己的流程
+     —— 坠机动画 + 解除核弹倒计时。这里直接交出去，别按小兵结算金币/分数/刷怪。 */
+  if(e&&e.helix){ if(typeof 直升机坠毁==='function')直升机坠毁(); return; }
   /* 【batch180】靶场假人：不真的死 —— 重置血量继续测（不进波次结算、不掉金币、不出拾取） */
   if(e&&e.rangeDummy){ if(typeof rangeDummyReset==='function'){try{rangeDummyReset(e);}catch(_){}} return; }
   var gb=e.gold*(hs?2:1);
