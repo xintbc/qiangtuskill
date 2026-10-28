@@ -376,6 +376,7 @@ function 陵_爆炸(x,y,z,r,dmg,色,跳过){
     var e=enemies[i];
     if(!e||e===跳过)continue;
     if(e.isNet?(!e.alive):(e.hp<=0))continue;
+    if(e.友军)continue;                        /* 【batch248】自己石棺里爬出来的兵不吃爆炸（核弹走 陵_清场，单独算） */
     var ep=heroEntWorld(e);
     var dx2=ep.x-x,dy2=(ep.y+1.0)-y,dz2=ep.z-z;
     if(dx2*dx2+dy2*dy2+dz2*dz2>r*r)continue;
@@ -536,15 +537,16 @@ HEROES.push({
   passive:'不坏之躯：受到的手雷 / 爆炸伤害降低 25%，倒地后爬起来的速度更快。',
   skills:[
     {k:'g_spear', name:'爆炸长矛', icon:'🗡', cd:12, dur:0,
-     desc:'按 V **手持长矛** → **点攻击键**先亮出「行动预览」（一条长矛虚影直指落点）→ **再点一次攻击键**投出。'+
+     desc:'按 V **手持长矛** → **长按攻击键**亮出「行动路线」（一条线 + 落点圈 + 长矛虚影）→ **松开攻击键**投出。'+
           '长矛直线飞出，**戳中敌人扣 70 点**并**钉在他身上**，3 秒后原地炸开 **30 点**爆炸伤害；'+
           '**扎在墙上 / 地上没有那 70 点直伤，但 30 点爆炸照样炸**。'},
     {k:'g_coffin', name:'石棺', icon:'⚰', cd:16, dur:0,
      desc:'按 B **举起石棺**，准星指地实时预览落点，**左键放下**：一具立在身前的石棺，**挡子弹、挡人、挡视线**，'+
           '自带 520 点血。**被打爆时棺盖炸开，里面爬出 2 个只听命于大将军的小兵**（它们不攻击大将军，只打其他人）。'},
-    {k:'g_clone', name:'将军分身', icon:'👥', cd:55, dur:30,
-     desc:'按 N 召唤一具**分身**，持续 30 秒：它会跟着你走，**自己投爆炸长矛**（同款 70+30）、'+
-          '**自己立石棺**替你挡枪。分身不挡子弹、也打不死 —— 它只是替你多开一条战线。'}
+    {k:'g_clone', name:'将军分身', icon:'👥', cd:55, dur:25,
+     desc:'按 N 在准星前方召唤一具**分身**（剧情里那位大将军的弱化版），持续 25 秒：'+
+          '它会跟着你走、**自己投爆炸长矛**（45 直伤 + 18 爆）、**自己立石棺**（260 血）替你挡枪。'+
+          '分身是**己方单位**：你的子弹 / 刀 / 爆炸都伤不到它，它的矛也只打敌人。'}
   ]
 });
 var 将军_技能名={g_spear:'爆炸长矛',g_coffin:'石棺',g_clone:'将军分身'};
@@ -620,7 +622,8 @@ function 造长矛(len){
   return g;
 }
 /* ---------- 手持：长矛 / 石棺（自己造，不用通用投掷物模型）---------- */
-var 将军_手持=null,将军_手持种类='';
+var 将军_手持=null,将军_手持种类='',将军_蓄力=0,将军_投刺T=0;
+var 将军_手持基准={x:0.30,y:-0.34,z:-1.05};
 function 将军持物(kind){
   if(typeof heroHoldShow!=='function')return;
   heroHoldShow(kind);
@@ -639,12 +642,46 @@ function 将军持物(kind){
     g.traverse(function(o){o.raycast=function(){};});
     return g;
   })();
-  if(kind==='g_spear'){ m.rotation.set(-0.5,0.35,-0.55); m.scale.setScalar(0.62); }
-  else { m.scale.setScalar(0.2); m.rotation.set(0,0.3,0); }
-  var wrap=new THREE.Group();wrap.add(m);wrap.position.set(0.34,-0.30,-0.62);
-  camera.add(wrap);
+  var wrap=new THREE.Group();wrap.add(m);camera.add(wrap);
+  if(kind==='g_spear'){
+    /* 【batch248】用户："长矛应该有特殊手持动画"。
+       矛模型的 +z 端是矛尖。先转 180° 让**矛尖朝相机前方**（-z），再压一点俯仰/侧倾 ——
+       看起来是"右手握在后段、矛身斜着往前递"，而不是横插在镜头前的一根棍子。
+       按住攻击键蓄力时整支矛往后拉一点（见 将军蓄力Tick）。 */
+    m.rotation.set(-0.10,Math.PI,0.16);
+    m.scale.setScalar(0.78);
+    wrap.position.set(将军_手持基准.x,将军_手持基准.y,将军_手持基准.z);
+    将军_蓄力=0;将军_投刺T=0;
+  }else{
+    m.scale.setScalar(0.2);m.rotation.set(0,0.3,0);
+    wrap.position.set(0.34,-0.30,-0.62);
+  }
   将军_手持=wrap;将军_手持种类=kind;
   try{ _holdObj=wrap; }catch(e){}
+}
+/* 长矛手持动画：
+   ① 待机 —— 斜握在右下方，矛尖朝准星
+   ② 蓄力（按住攻击键看路线）—— 整支矛往后拉 + 微微下沉抬尾，像把标枪拉满
+   ③ 投出 —— 0.18 秒的**前刺**（猛地推出去）再收手，不是"一下子消失" */
+function 将军蓄力Tick(dt){
+  if(!将军_手持||将军_手持种类!=='g_spear')return;
+  var b=将军_手持基准;
+  /* ③ 前刺优先 */
+  if(将军_投刺T>0){
+    将军_投刺T-=dt;
+    var k=1-Math.max(0,将军_投刺T)/0.18;
+    var 推=Math.sin(Math.min(1,k)*Math.PI);          // 0→1→0 的一次推
+    将军_手持.position.set(b.x-0.06*推, b.y+0.05*推, b.z-0.85*推);
+    将军_手持.rotation.x=-0.22*推;
+    将军_手持.rotation.z=0.10*推;
+    if(将军_投刺T<=0){将军_手持=null;将军_手持种类='';if(typeof heroHoldHide==='function')heroHoldHide();}
+    return;
+  }
+  var 想=(SK&&SK.hold&&SK.hold.kind==='g_spear'&&SK.矛预瞄)?1:0;
+  将军_蓄力+=(想-将军_蓄力)*Math.min(1,dt*9);
+  将军_手持.position.set(b.x+0.03*将军_蓄力, b.y-0.035*将军_蓄力, b.z+0.30*将军_蓄力);
+  将军_手持.rotation.x=-0.07*将军_蓄力;
+  将军_手持.rotation.z=0.06*将军_蓄力;
 }
 function 将军收手持(){
   将军_手持=null;将军_手持种类='';
@@ -654,6 +691,7 @@ function 将军收手持(){
 /* ---------- 长矛：预览 / 投出 / 命中 / 粘身爆炸 ---------- */
 var 陵_矛=[];          // 飞行中的长矛
 var 陵_矛预览组=null;
+var 陵_矛尖轴=new THREE.Vector3(0,0,1);      /* 长矛模型的"矛尖方向"：+z（造长矛() 里锥头在 +z） */
 function 陵_矛方向(){
   var d=camera.getWorldDirection(new THREE.Vector3()).normalize();
   return d;
@@ -705,19 +743,29 @@ function 陵_矛预览更新(){
   }
   if(圈){圈.position.set(r.x,r.y+0.06,r.z);}
   if(影){
-    影.position.set(r.x,r.y+0.5,r.z);
-    影.lookAt(camera.position.x,r.y+0.5,camera.position.z);
-    影.rotateX(Math.PI/2);
+    /* 【batch248】矛模型的 +z 是矛尖：直接把 +z 对到飞行方向就是"尖端朝前往前飞"。
+       以前是 lookAt + rotateX(90°) —— 等于把矛身横过来 90°，看着像在空中翻滚（用户："怎么边飞边旋转"）。 */
+    影.position.set(r.x,r.y+0.45,r.z);
+    if(影.quaternion){
+      var _d3=r.d||new THREE.Vector3(0,0,-1);
+      影.quaternion.setFromUnitVectors(陵_矛尖轴,new THREE.Vector3(_d3.x,_d3.y,_d3.z).normalize());
+    }
   }
 }
 function 陵_矛预览隐藏(){if(陵_矛预览组)陵_矛预览组.visible=false;}
-/* 投出：归属 '玩家' / '分身' / '将军' */
-function 陵_投矛(x,y,z,dir,归属){
+/* 投出：归属 '玩家' / '分身' / '将军'
+   【batch248】加了伤害参数：玩家 70、分身弱化到 45（用户要"比剧情 BOSS 弱很多很多"）。
+   粘身爆炸同理（30 / 18），可以在 陵_投矛 第 6 参传。 */
+function 陵_投矛(x,y,z,dir,归属,伤害,爆伤){
   var m=造长矛(3.0);
   m.position.set(x,y,z);
+  m.quaternion.setFromUnitVectors(陵_矛尖轴,new THREE.Vector3(dir.x,dir.y,dir.z).normalize());
   scene.add(m);
   陵_矛.push({m:m,x:x,y:y,z:z,dx:dir.x,dy:dir.y,dz:dir.z,spd:52,life:2.2,t:0,
-              归属:归属||'玩家',stuck:null,stickT:0,ox:0,oy:0,oz:0,hited:null});
+              归属:归属||'玩家',
+              伤害:((typeof 伤害==='number')?伤害:(归属==='分身'?45:70)),
+              爆伤:((typeof 爆伤==='number')?爆伤:(归属==='分身'?18:30)),
+              stuck:null,stickT:0,ox:0,oy:0,oz:0,hited:null});
 }
 function 陵_矛Tick(dt){
   陵_矛预览更新();
@@ -733,7 +781,7 @@ function 陵_矛Tick(dt){
       }
       p.m.position.set(p.x,p.y,p.z);
       if(p.stickT<=0){
-        陵_爆炸(p.x,p.y,p.z,2.6,30,0xff8a3d,p.hited);
+        陵_爆炸(p.x,p.y,p.z,2.6,p.爆伤||30,0xff8a3d,p.hited);
         if(p.m.parent)p.m.parent.remove(p.m);
         陵_矛.splice(i,1);
       }
@@ -741,12 +789,12 @@ function 陵_矛Tick(dt){
     }
     /* --- 飞行 --- */
     p.life-=dt;p.t+=dt;
-    var 步=Math.min(0.06,dt);
     var 移=p.spd*dt;
     p.x+=p.dx*移;p.y+=p.dy*移;p.z+=p.dz*移;
     p.m.position.set(p.x,p.y,p.z);
-    p.m.lookAt(p.x+p.dx,p.y+p.dy,p.z+p.dz);
-    p.m.rotateX(Math.PI/2);
+    /* 【batch248】尖端朝前：把模型的 +z（矛尖）直接对到飞行方向。
+       以前是 lookAt + rotateX(90°)，等于矛身横躺 → 看着像"边飞边旋转"。 */
+    p.m.quaternion.setFromUnitVectors(陵_矛尖轴,new THREE.Vector3(p.dx,p.dy,p.dz).normalize());
     /* 打人：玩家投的矛只打敌人，将军投的矛只打玩家 */
     if(p.归属==='将军'){
       var py=standSurfY()+1.0;
@@ -762,15 +810,16 @@ function 陵_矛Tick(dt){
       for(var k=enemies.length-1;k>=0;k--){
         var e=enemies[k];if(!e||e===HELI.e)continue;
         if(e.isNet?(!e.alive):(e.hp<=0))continue;
+        if(e.友军)continue;                       /* 【batch248】自己石棺里爬出来的兵，矛不会扎自己人 */
         var ep=heroEntWorld(e);
         var ex=ep.x-p.x,ey=(ep.y+1.1)-p.y,ez=ep.z-p.z;
         if(ex*ex+ey*ey+ez*ez<1.7){命中=e;break;}
       }
       if(命中){
         var wp2=heroEntWorld(命中);
-        if(命中.isNet){try{netHitRemote(命中,false,70,new THREE.Vector3(p.x,p.y,p.z));}catch(_){}}
+        if(命中.isNet){try{netHitRemote(命中,false,p.伤害,new THREE.Vector3(p.x,p.y,p.z));}catch(_){}}
         else{
-          命中.hp-=70;命中.flash=0.3;
+          命中.hp-=p.伤害;命中.flash=0.3;
           if(命中.hb)命中.hb.scale.x=Math.max(0,命中.hp/命中.maxHp);
           if(命中.hbMat)命中.hbMat.color.setHex(命中.hp/命中.maxHp>.5?0x00ff00:(命中.hp/命中.maxHp>.25?0xffff00:0xff0000));
           if(命中.hp<=0&&typeof killEnemy==='function')killEnemy(命中,enemies.indexOf(命中),false);
@@ -841,8 +890,9 @@ function 陵_立棺(x,z,wy,rot,归属){
   if(box){obstacles.push(box);try{buildObstacleBoxes();}catch(e){}}
   var z2=null;
   if(typeof spZoneAdd==='function'){
-    /* kind 必须是 'wall'：子弹挡板 / 打墙扣血两套逻辑都只认 'wall' */
-    z2=spZoneAdd({kind:'wall',x:x,z:z,y:wy,r:1.3,dur:9999,mesh:mesh,box:box,rot:rot,hp:520});
+    /* kind 必须是 'wall'：子弹挡板 / 打墙扣血两套逻辑都只认 'wall'
+       【batch248】分身的棺弱化到 260 血（剧情 BOSS 与玩家都是 520） */
+    z2=spZoneAdd({kind:'wall',x:x,z:z,y:wy,r:1.3,dur:9999,mesh:mesh,box:box,rot:rot,hp:(归属==='分身'?260:520)});
   }
   /* 钻地动画 */
   var t0=performance.now();
@@ -869,34 +919,178 @@ function 陵_棺Tick(dt){
         if(c.mesh&&c.mesh.parent)c.mesh.parent.remove(c.mesh);
         spawnParticle(new THREE.Vector3(c.x,c.wy+1,c.z),0x9aa08e,18,0.45,true);
       }catch(e){}
-      /* 棺盖炸开 → 爬出 2 个小兵（只听命于大将军，对其他人都是敌人） */
-      if(c.归属!=='将军'&&typeof createEnemy==='function'){
+      /* 棺盖炸开 → 爬出 2 个小兵
+         【batch248】用户："小兵为什么会打我啊？他是特殊小兵，属于己方单位"。
+         现在按**归属**分两拨：
+           玩家 / 分身立的棺 → 吐**友军**（金色，只打敌方单位：其他小兵 + 敌方玩家，绝不打你）
+           剧情里将军立的棺 → 吐**敌方**（照常打玩家） */
+      if(typeof createEnemy==='function'){
+        var 是自己人=(c.归属!=='将军');
         for(var n=0;n<2;n++){
           var a=Math.random()*6.28,r=1.4+Math.random();
           var mx=c.x+Math.cos(a)*r,mz=c.z+Math.sin(a)*r;
           var e=null;
           try{e=createEnemy('basic',mx,mz);}catch(_){}
-          if(e){try{e.棺兵=1;if(e.g)e.g.scale.setScalar(1.08);}catch(_){}}
+          if(e){
+            try{e.棺兵=1;if(e.g)e.g.scale.setScalar(1.08);}catch(_){}
+            if(是自己人)变友军(e);
+          }
         }
-        if(typeof showMsg==='function')showMsg('⚰ 石棺炸开：里面爬出小兵','#d9c37a');
+        if(typeof showMsg==='function')showMsg(是自己人?'⚰ 石棺炸开：里面爬出 2 个**己方**兵（只打敌人）':'⚰ 石棺炸开：里面爬出 2 个守棺兵','#d9c37a');
       }
       陵_棺.splice(i,1);
     }
   }
 }
-/* ---------- 分身：跟着你、自己扔矛、自己立棺 ---------- */
-var 分身={on:false,root:null,t:0,spearT:2,coffinT:7,x:0,z:0,y:0};
+/* ---------- 友军小兵：己方单位（只打敌方，绝不打你）----------
+   【batch248】用户："二技能召唤的小兵为什么会打我啊？他是特殊小兵，属于己方单位，
+   并且锁敌是锁敌方单位，也就是锁其他的小兵，还有敌方的玩家。"
+   做法：石棺吐出来的兵打上 `友军=1 + noAI=1`（不归通用 AI 管），自己驱动：
+     · 只在 enemies 里挑**非友军**的目标（其他小兵 / 联机里的敌方玩家）
+     · 走过去 → 18 米内每 0.85 秒打 6 点
+     · 场上没敌人就跟着你，不乱跑
+   玩家自己的子弹 / 刀 / 长矛 / 爆炸都跳过友军（见 js/21 与 陵_爆炸），不会误伤自己人。 */
+function 变友军(e){
+  if(!e)return e;
+  e.友军=1;e.noAI=1;e.棺兵=1;
+  e.hp=Math.max(e.hp||60,140);e.maxHp=e.hp;
+  e.友军目标T=0;
+  try{
+    if(e.g)e.g.traverse(function(o){
+      if(o.isMesh&&o.material&&o.material.color){
+        o.material=o.material.clone();
+        o.material.color.lerp(new THREE.Color(0xd9c37a),0.5);     /* 镀一层大将军的金 —— 一眼分得出是自己人 */
+      }
+    });
+    if(e.hbMat)e.hbMat.color.setHex(0x7fffd0);
+  }catch(_){}
+  return e;
+}
+function 友军Tick(dt){
+  if(!(dt>0))return;
+  for(var i=0;i<enemies.length;i++){
+    var e=enemies[i];
+    if(!e||!e.友军||e.hp<=0)continue;
+    var ep=heroEntWorld(e);
+    if(!ep)continue;
+    /* ① 找最近的敌方单位（排自己、排除友军、排除天上那架打不着的直升机） */
+    var 目标=null,最=28*28;
+    for(var k=0;k<enemies.length;k++){
+      var o=enemies[k];
+      if(!o||o===e||o.友军||o.helix)continue;
+      if(o.isNet?(o.alive===false):(o.hp<=0))continue;
+      var op=heroEntWorld(o);if(!op)continue;
+      var dx0=op.x-ep.x,dz0=op.z-ep.z,d20=dx0*dx0+dz0*dz0;
+      if(d20<最){最=d20;目标=o;}
+    }
+    if(目标){
+      var tp=heroEntWorld(目标);
+      var dx=tp.x-ep.x,dz=tp.z-ep.z,d=Math.sqrt(dx*dx+dz*dz)||0.001;
+      try{e.root.rotation.y=Math.atan2(dx,dz);}catch(_){}
+      /* ② 距离 > 3.2 米就压上去（带台阶容差，别被陵园的石阶卡住） */
+      if(d>3.2){
+        var 速=Math.min(4.2,(d-3.0)*2.2);
+        var nx=ep.x+dx/d*速*dt,nz=ep.z+dz/d*速*dt;
+        var 撞=false;
+        try{撞=isColliding(nx,nz,0.45,ep.y+1.0,true);}catch(_){撞=false;}
+        if(!撞){
+          ep.x=nx;ep.z=nz;
+          var 地=陵_脚下(ep.x,ep.z,ep.y+2.0);
+          if(Math.abs(地-ep.y)<1.2)ep.y+=(地-ep.y)*Math.min(1,dt*12);
+        }
+      }
+      /* ③ 开火：18 米内每 0.85 秒一枪，扣 6 点 */
+      e.友军目标T=(e.友军目标T||0)-dt;
+      if(d<18&&e.友军目标T<=0){
+        e.友军目标T=0.85;
+        try{spawnParticle(new THREE.Vector3(ep.x,ep.y+1.2,ep.z),0xffd76a,5,0.16,true);}catch(_){}
+        if(目标.isNet){try{netHitRemote(目标,false,6,new THREE.Vector3(tp.x,tp.y+1.0,tp.z));}catch(_){}}
+        else{
+          目标.hp-=6;目标.flash=0.2;
+          if(目标.hb)目标.hb.scale.x=Math.max(0,目标.hp/目标.maxHp);
+          if(目标.hbMat)目标.hbMat.color.setHex(目标.hp/目标.maxHp>.5?0x00ff00:(目标.hp/目标.maxHp>.25?0xffff00:0xff0000));
+          if(目标.hp<=0&&typeof killEnemy==='function')killEnemy(目标,enemies.indexOf(目标),false);
+        }
+      }
+    }else{
+      /* ④ 没有敌人：跟在你侧后方 2.6 米待命 */
+      var 右x=Math.cos(yaw),右z=-Math.sin(yaw);
+      var wx=camera.position.x-右x*2.6+(-Math.sin(yaw))*0.8;
+      var wz=camera.position.z-右z*2.6+(-Math.cos(yaw))*0.8;
+      var ddx=wx-ep.x,ddz=wz-ep.z,dd=Math.sqrt(ddx*ddx+ddz*ddz);
+      if(dd>1.6){
+        var 步=Math.min(dd,dt*4.6);
+        var nx2=ep.x+ddx/dd*步,nz2=ep.z+ddz/dd*步;
+        var 撞2=false;
+        try{撞2=isColliding(nx2,nz2,0.45,ep.y+1.0,true);}catch(_){撞2=false;}
+        if(!撞2){ep.x=nx2;ep.z=nz2;}
+      }
+      var 地2=陵_脚下(ep.x,ep.z,ep.y+2.0);
+      if(Math.abs(地2-ep.y)<1.2)ep.y+=(地2-ep.y)*Math.min(1,dt*12);
+      try{e.root.rotation.y=Math.atan2(camera.position.x-ep.x,camera.position.z-ep.z);}catch(_){}
+    }
+  }
+}
+/* ---------- 分身：剧情 BOSS 的弱化版（**己方单位**：不吃你的子弹/爆炸，矛只打敌人）---------- */
+var 分身={on:false,root:null,t:0,spearT:2,coffinT:7,x:0,z:0,y:0,名牌:null};
+/* canvas 文字 → 悬浮名牌（Sprite 永远面向相机，root 怎么转都不歪） */
+function 造名牌(text,col){
+  try{
+    var c=document.createElement('canvas');c.width=256;c.height=72;
+    var x=c.getContext('2d');
+    x.clearRect(0,0,256,72);
+    x.font='bold 44px "Microsoft YaHei",system-ui,sans-serif';
+    x.textAlign='center';x.textBaseline='middle';
+    x.lineWidth=9;x.strokeStyle='rgba(0,0,0,.8)';x.strokeText(text,128,38);
+    x.fillStyle=col||'#d9c37a';x.fillText(text,128,38);
+    var tex=new THREE.CanvasTexture(c);
+    var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,depthTest:false}));
+    sp.scale.set(2.4,0.68,1);
+    sp.traverse(function(o){o.raycast=function(){};});
+    return sp;
+  }catch(e){return null;}
+}
 function 召唤分身(){
-  if(分身.on)return;
-  var m=造将军模型(1.0);
-  分身.root=m.root;分身.on=true;分身.t=30;分身.spearT=2.2;分身.coffinT=7;
-  分身.x=camera.position.x+2.5;分身.z=camera.position.z+1.5;
-  分身.y=standSurfY();
-  m.root.position.set(分身.x,分身.y,分身.z);
+  if(分身.on)return false;
+  /* 【batch248】用户："大招的分身根本就没有召唤出来……分身不就是召唤剧情模式里的那个 BOSS 吗，
+     只是弱很多很多。" 以前是召唤在"玩家右后方 2.5 米"、还一点特效都没有 ——
+     第一人称根本看不见，自然像没放出来。现在：
+       · 落在**准星正前方 4 米**，直接出现在视野里
+       · 金色光柱 + 扬尘 + 横幅 + 头顶「将军分身」名牌
+       · 用剧情 BOSS 同款模型（尺寸 1.2，BOSS 是 1.35）
+       · 数值按"弱化 Boss"给：矛 45（BOSS 70）、爆炸 18（30）、石棺 260 血（BOSS 520）、持续 25 秒 */
+  var 前x=-Math.sin(yaw),前z=-Math.cos(yaw);
+  var cx=camera.position.x+前x*4.0, cz=camera.position.z+前z*4.0;
+  var cy=陵_脚下(cx,cz,camera.position.y+2.0);
+  var m=造将军模型(1.2);
+  分身.root=m.root;分身.on=true;分身.t=25;分身.spearT=1.6;分身.coffinT=8;
+  分身.x=cx;分身.z=cz;分身.y=cy;
+  m.root.position.set(cx,cy,cz);
+  m.root.rotation.y=Math.atan2(camera.position.x-cx,camera.position.z-cz);
+  var 牌=造名牌('将军分身');
+  if(牌){牌.position.set(0,2.9,0);m.root.add(牌);分身.名牌=牌;}
   scene.add(m.root);
-  showMsg('👥 将军分身出战：它会自己投矛、自己立棺（30 秒）','#d9c37a');
+  /* 召唤光柱（0.9 秒淡出） */
+  try{
+    var 柱=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.6,7.5,16,1,true),
+      new THREE.MeshBasicMaterial({color:0xd9c37a,transparent:true,opacity:0.5,side:THREE.DoubleSide,depthWrite:false}));
+    柱.position.set(cx,cy+3.6,cz);柱.traverse(function(o){o.raycast=function(){};});scene.add(柱);
+    var t0=performance.now();
+    (function 柱淡(){
+      if(!柱.parent)return;
+      var k=(performance.now()-t0)/900;
+      if(k>=1){if(柱.parent)柱.parent.remove(柱);try{柱.geometry.dispose();柱.material.dispose();}catch(e){}return;}
+      柱.material.opacity=0.5*(1-k);柱.scale.set(1+k*1.6,1,1+k*1.6);
+      requestAnimationFrame(柱淡);
+    })();
+  }catch(e){}
+  try{spawnParticle(new THREE.Vector3(cx,cy+0.6,cz),0xd9c37a,40,0.9,true);}catch(e){}
+  if(typeof 陵_横幅==='function')陵_横幅('将军分身 · 出战','#d9c37a',2200);
+  showMsg('👥 将军分身出战（己方单位）：它会自己投矛、自己立棺 —— 比你弱很多（25 秒）','#d9c37a');
+  return true;
 }
 function 收回分身(){
+  if(分身.名牌){try{分身.名牌.material.map.dispose();分身.名牌.material.dispose();}catch(e){}分身.名牌=null;}
   if(分身.root){if(分身.root.parent)分身.root.parent.remove(分身.root);分身.root=null;}
   分身.on=false;分身.t=0;
 }
@@ -904,26 +1098,32 @@ function 分身Tick(dt){
   if(!分身.on)return;
   分身.t-=dt;
   if(分身.t<=0||!S.playing||S.over||S.hp<=0){收回分身();return;}
-  /* 站到玩家侧后方 3 米 —— 别挡视线 */
+  /* 【batch248】跟随时站到"前方 3 米 + 右侧 1.6 米"——第一人称在前方视野边缘就能看见它。
+     以前是站在**身后** 2.2 米，玩家不回头永远看不到 → 像"根本没召唤出来"。 */
   var 前x=-Math.sin(yaw),前z=-Math.cos(yaw);
-  var tx=camera.position.x-前x*2.2+前z*2.0, tz=camera.position.z-前z*2.2-前x*2.0;
+  var tx=camera.position.x+前x*3.0-前z*1.6, tz=camera.position.z+前z*3.0+前x*1.6;
   var dx=tx-分身.x,dz=tz-分身.z,d=Math.sqrt(dx*dx+dz*dz);
   if(d>0.6){
     var 步=Math.min(d,dt*5.5);
-    分身.x+=dx/d*步;分身.z+=dz/d*步;
+    var nx=分身.x+dx/d*步,nz=分身.z+dz/d*步;
+    var 撞=false;
+    try{撞=isColliding(nx,nz,0.5,分身.y+1.0,true);}catch(_){撞=false;}
+    if(!撞){分身.x=nx;分身.z=nz;}
   }
-  分身.y=(typeof standSurfY==='function')?standSurfY():陵_脚下(分身.x,分身.z,GROUND_Y+5.0);   /* 跟着玩家站在同一张面上 */
+  /* 高度按自己脚下探（跟着上封土台/神道，别悬空也别埋进土里） */
+  var 地=陵_脚下(分身.x,分身.z,分身.y+2.5);
+  if(Math.abs(地-分身.y)<1.8)分身.y+=(地-分身.y)*Math.min(1,dt*10);
   分身.root.position.set(分身.x,分身.y,分身.z);
   分身.root.rotation.y=Math.atan2(camera.position.x-分身.x,camera.position.z-分身.z);
-  /* 自己找最近的敌人投矛 */
+  /* 自己找最近的**敌方**单位投矛（跳过友军 —— 分身是己方单位，不打自己人） */
   分身.spearT-=dt;
   if(分身.spearT<=0){
-    分身.spearT=3.6;
+    分身.spearT=4.5;
     var best=null,bd=30*30;
     for(var i=enemies.length;i--;){
-      var e=enemies[i];if(!e||e===HELI.e)continue;
+      var e=enemies[i];if(!e||e===HELI.e||e.友军)continue;
       if(e.isNet?(!e.alive):(e.hp<=0))continue;
-      var ep=heroEntWorld(e);
+      var ep=heroEntWorld(e);if(!ep)continue;
       var ddx=ep.x-分身.x,ddz=ep.z-分身.z,d2=ddx*ddx+ddz*ddz;
       if(d2<bd){bd=d2;best=e;}
     }
@@ -931,7 +1131,7 @@ function 分身Tick(dt){
       var bp=heroEntWorld(best);
       var vx=bp.x-分身.x,vy=(bp.y+1.1)-(分身.y+1.6),vz=bp.z-分身.z;
       var L=Math.sqrt(vx*vx+vy*vy+vz*vz)||1;
-      陵_投矛(分身.x,分身.y+1.6,分身.z,{x:vx/L,y:vy/L,z:vz/L},'分身');
+      陵_投矛(分身.x,分身.y+1.6,分身.z,{x:vx/L,y:vy/L,z:vz/L},'分身',45,18);
     }
   }
   /* 自己立棺挡枪 */
@@ -949,7 +1149,7 @@ CUSTOM_SKILLS['g_spear']=function(i,s,H){
   SK.cds[i]=0;                                   // 举起不扣冷却，投出去才扣
   SK.hold={kind:'g_spear',si:i};SK.矛预瞄=0;
   将军持物('g_spear');
-  showMsg('🗡 已握起爆炸长矛：点攻击键看「行动预览」，再点一次投出；右键 / 再按 V 收起','#d9c37a');
+  showMsg('🗡 已握起爆炸长矛：**长按攻击键**看行动路线，**松开就投出**；右键 / 再按 V 收起','#d9c37a');
   if(typeof heroHudUpdate==='function')heroHudUpdate(true);
   return true;
 };
@@ -971,27 +1171,36 @@ CUSTOM_SKILLS['g_clone']=function(i,s,H){
   if(typeof heroHudUpdate==='function')heroHudUpdate(true);
   return true;
 };
-/* ---------- 接管 heroAimStart / heroHoldCancel（长矛两步、石棺落点）---------- */
-var _陵_aim原=heroAimStart,_陵_收原=heroHoldCancel;
+/* ---------- 接管 heroAimStart / heroAimEnd / heroHoldCancel ----------
+   【batch248】用户改的操作：**长按攻击键看「行动路线」，松开就投出**。
+   原来是"点一下开预览、再点一下投"，太绕。现在 mousedown 只负责亮路线，
+   mouseup（heroAimEnd）才真正把矛扔出去 —— 和通用投掷物的手感一致。 */
+var _陵_aim原=heroAimStart,_陵_aimEnd原=(typeof heroAimEnd==='function')?heroAimEnd:null,_陵_收原=heroHoldCancel;
+function 陵_投出长矛(){
+  if(!(SK&&SK.hold&&SK.hold.kind==='g_spear'))return false;
+  var dir=陵_矛方向(),o=camera.position;
+  /* 从眼睛前方 0.8 米出手，稍微往下压一点（看起来像从手里递出去） */
+  陵_投矛(o.x+dir.x*0.8,o.y-0.12,o.z+dir.z*0.8,dir,'玩家',70,30);
+  SK.矛预瞄=0;陵_矛预览隐藏();
+  SK.cds[SK.hold.si]=heroNow().skills[SK.hold.si].cd;
+  /* 【batch248】不立刻收手：先播 0.18 秒的**前刺**动作（将军蓄力Tick 里做），动作完再收 —— 这就是"特殊手持动画" */
+  将军_投刺T=0.18;
+  SK.hold=null;
+  try{if(typeof netIsMulti==='function'&&netIsMulti()&&NET.connected)
+    netSend({t:'skill',k:'general',s:0,x:o.x,y:standSurfY(),z:o.z});}catch(e){}
+  showMsg('🗡 长矛投出','#d9c37a');
+  if(typeof heroHudUpdate==='function')heroHudUpdate(true);
+  return true;
+}
 heroAimStart=function(){
   if(SK&&SK.hold&&SK.hold.kind==='g_spear'){
     if(!S.playing||S.over||S.paused||S.hp<=0)return false;
+    /* 按下即"开始瞄准"：亮出行动路线，一直按住就一直看 */
     if(!SK.矛预瞄){
       SK.矛预瞄=1;陵_矛预览显示();
-      showMsg('👁 行动预览已开：长矛虚影指到哪就扎到哪 —— 再点攻击键投出','#ffd08a');
-      return true;
+      showMsg('👁 行动路线已亮：**松开攻击键**就把长矛投出去','#ffd08a');
     }
-    var r=陵_矛落点();
-    var o=camera.position;
-    陵_投矛(o.x+陵_矛方向().x*0.8,o.y-0.15,o.z+陵_矛方向().z*0.8,陵_矛方向(),'玩家');
-    SK.矛预瞄=0;陵_矛预览隐藏();
-    SK.cds[SK.hold.si]=heroNow().skills[SK.hold.si].cd;
-    将军收手持();SK.hold=null;
-    try{if(typeof netIsMulti==='function'&&netIsMulti()&&NET.connected)
-      netSend({t:'skill',k:'general',s:0,x:o.x,y:standSurfY(),z:o.z});}catch(e){}
-    showMsg('🗡 长矛已投出','#d9c37a');
-    if(typeof heroHudUpdate==='function')heroHudUpdate(true);
-    return true;
+    return true;                      /* 吃住这一下左键：不开枪、不投矛 */
   }
   if(SK&&SK.hold&&SK.hold.kind==='g_coffin'){
     if(!S.playing||S.over||S.paused||S.hp<=0)return false;
@@ -1007,6 +1216,11 @@ heroAimStart=function(){
     return true;
   }
   return _陵_aim原.apply(this,arguments);
+};
+/* 松开攻击键：长矛在这里飞出去 */
+heroAimEnd=function(){
+  if(SK&&SK.hold&&SK.hold.kind==='g_spear'&&SK.矛预瞄){陵_投出长矛();return;}
+  if(_陵_aimEnd原)return _陵_aimEnd原.apply(this,arguments);
 };
 heroHoldCancel=function(){
   if(SK&&SK.hold&&(SK.hold.kind==='g_spear'||SK.hold.kind==='g_coffin')){
@@ -1226,6 +1440,8 @@ function 陵园Tick(dt){
   陵_矛Tick(dt);
   陵_棺Tick(dt);
   分身Tick(dt);
+  友军Tick(dt);          /* 【batch248】石棺吐出来的己方兵：自己找敌人打 */
+  将军蓄力Tick(dt);       /* 【batch248】长矛蓄力动作（按住攻击键时往后拉） */
 }
 /* 换图钩子：setMap 是 14 分片的函数声明，这里接管一下（只做"进出陵园"的开关，不改它的行为） */
 var _陵_setMap原=setMap;
