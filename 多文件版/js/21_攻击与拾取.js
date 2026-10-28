@@ -69,7 +69,17 @@ function attack(){if(!canAct())return;var now=performance.now();
 var _wdGun=(currentWeapon===WEAPON_GUN)?activeGunDef():null;
 var _adsKeep=(_wdGun&&typeof _wdGun.adsSpreadKeep==='number')?_wdGun.adsSpreadKeep:(_wdGun&&_wdGun.type==='shotgun'?0.35:0);
 for(var _p=0;_p<_pellets;_p++){var _spr=_hip*(1-S.aimProgress)+(_spreadB>0?_spreadB*(1-(1-_adsKeep)*S.aimProgress):0);if(S.sprinting)_spr+=0.020;var _sd=raycaster.ray.direction.clone();_sd.x+=(Math.random()-0.5)*2*_spr;_sd.y+=(Math.random()-0.5)*2*_spr;_sd.z+=(Math.random()-0.5)*2*_spr;_sd.normalize();raycaster.set(camera.position,_sd);var obsDist=Infinity,obsPoint=null;var _obsPair=(obstacleBoxes.length===obstacles.length);for(var oi=0;oi<obstacleBoxes.length;oi++){if(_obsPair&&obstacles[oi]&&obstacles[oi].spWall)continue;var op=new THREE.Vector3();if(raycaster.ray.intersectBox(obstacleBoxes[oi],op)!==null){var od=op.distanceTo(camera.position);if(od<obsDist){obsDist=od;obsPoint=op;}}}
-/* 【batch187】掩体墙跳过上面的 AABB 粗筛（那个框对斜墙会盖住空气），改用定向射线拿真实交点 */if(typeof spWallRayHit==='function'){var _rd=raycaster.ray.direction;var _wh=spWallRayHit(camera.position.x,camera.position.y,camera.position.z,_rd.x,_rd.y,_rd.z,90);if(_wh&&_wh.dist<obsDist){obsDist=_wh.dist;obsPoint=_wh.point;}}for(var i=enemies.length-1;i>=0;i--){var e=enemies[i];if(e.hp<=0)continue;var hits=raycaster.intersectObjects(e.g.children,true);if(hits.length&&hits[0].distance<(e.helix?Math.max(_range,200):_range)&&(hits[0].distance<obsDist)){var hs=(hits[0].object===e.head);var dmg=(hs?50:25)*S.damageMul;
+/* 【batch187】掩体墙跳过上面的 AABB 粗筛（那个框对斜墙会盖住空气），改用定向射线拿真实交点 */if(typeof spWallRayHit==='function'){var _rd=raycaster.ray.direction;var _wh=spWallRayHit(camera.position.x,camera.position.y,camera.position.z,_rd.x,_rd.y,_rd.z,90);if(_wh&&_wh.dist<obsDist){obsDist=_wh.dist;obsPoint=_wh.point;}}for(var i=enemies.length-1;i>=0;i--){var e=enemies[i];if(e.hp<=0)continue;var hits=raycaster.intersectObjects(e.g.children,true);
+            /* 【batch246】天上目标再加一道**包围球**兜底：只要准星线从机身中心 5.6 米内穿过就算命中。
+               直升机 28 米高、一直在绕圈，光靠细网格射线在实战里太苛刻（用户："拿枪打不到"）。 */
+            if(e.helix&&e.g){var _hO=raycaster.ray.origin,_hD=raycaster.ray.direction,_hP=e.g.position;
+              var _hX=_hP.x-_hO.x,_hY=_hP.y-_hO.y,_hZ=_hP.z-_hO.z;
+              var _hT=_hX*_hD.x+_hY*_hD.y+_hZ*_hD.z;
+              if(_hT>0){var _hQx=_hO.x+_hD.x*_hT,_hQy=_hO.y+_hD.y*_hT,_hQz=_hO.z+_hD.z*_hT;
+                var _hA=_hQx-_hP.x,_hB=_hQy-_hP.y,_hC=_hQz-_hP.z;
+                if(Math.sqrt(_hA*_hA+_hB*_hB+_hC*_hC)<5.6&&(!hits.length||hits[0].distance>_hT))
+                  hits=[{distance:_hT,point:new THREE.Vector3(_hQx,_hQy,_hQz),object:e.g}];}}
+            if(hits.length&&hits[0].distance<(e.helix?Math.max(_range,200):_range)&&(hits[0].distance<obsDist)){var hs=(hits[0].object===e.head);var dmg=(hs?50:25)*S.damageMul;
             /* 【batch176】爆燃弹：**内联**写在这里。原来调 41 分片的 _spBurnProc，
                一旦玩家浏览器缓存了旧分片，typeof 检查就静默跳过 → 点了技能完全没反应。 */
             if(SK.sp&&SK.spBurnT>0&&hits[0].point){
@@ -96,7 +106,11 @@ for(var _p=0;_p<_pellets;_p++){var _spr=_hip*(1-S.aimProgress)+(_spreadB>0?_spre
             if(SK.sp&&SK.idx===HERO_RUSHER){e.burnT=Math.max(e.burnT||0,2.0);e.burnDps=Math.min(9,(e.burnDps||0)+3);}   /* 【batch173】流火 SP 被动：灼烧可叠 3 层 */
             if(SK.sp&&SK.spMarkT>0&&SK.spMarkIds&&SK.spMarkIds[e.__oid__])dmg=Math.round(dmg*1.30);   /* 【batch172】猎杀标记易伤+30% */
             if(SK.sp&&SK._breakAt&&now-SK._breakAt<1000){dmg=Math.round(dmg*1.30);SK._breakAt=0;}   /* 【batch173】暗哨被动：破隐后 1 秒内首弹 +30% */
-            if(e.isNet){if(_ffSkip(e)){break;}netHitRemote(e,hs,dmg,hits[0].point);break;}e.hp-=dmg;e.flash=0.2;spawnParticle(hits[0].point,hs?0xffff00:0xff4444,hs?8:4);var r=Math.max(0,e.hp/e.maxHp);e.hb.scale.x=r;e.hbMat.color.setHex(r>.5?0x00ff00:r>.25?0xffff00:0xff0000);if(hs)showMsg('💥 爆头!','#fc0');if(e.aiState==='aiming'){e.aiState='chase';if(e.aimLine)e.aimLine.visible=false;}if(e.hp<=0)killEnemy(e,i,hs);break;}}if(obsDist<_range)spawnParticle(obsPoint||camera.position.clone().add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(2)),0x888888,4,0.2);
+            if(e.isNet){if(_ffSkip(e)){break;}netHitRemote(e,hs,dmg,hits[0].point);break;}
+            /* 【batch246】直升机在天上、个头又小：单发伤害 ×2.4，1600 血≈27 发（原来 64 发，
+               一个弹匣 30 发都打不下来，玩家会以为"没打中"）。同时飘个伤害数字，命中一眼可见。 */
+            if(e.helix){dmg=Math.round(dmg*2.4);if(typeof 陵_飘字==='function')陵_飘字('-'+dmg,hits[0].point);}
+            e.hp-=dmg;e.flash=0.2;spawnParticle(hits[0].point,hs?0xffff00:0xff4444,hs?8:4);var r=Math.max(0,e.hp/e.maxHp);e.hb.scale.x=r;e.hbMat.color.setHex(r>.5?0x00ff00:r>.25?0xffff00:0xff0000);if(hs)showMsg('💥 爆头!','#fc0');if(e.aiState==='aiming'){e.aiState='chase';if(e.aimLine)e.aimLine.visible=false;}if(e.hp<=0)killEnemy(e,i,hs);break;}}if(obsDist<_range)spawnParticle(obsPoint||camera.position.clone().add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(2)),0x888888,4,0.2);
 if(obsPoint&&typeof spWallHitAt==='function')spWallHitAt(obsPoint,25*S.damageMul,false);   /* 【batch187】打掩体墙扣墙血。★原来传的是变量 dmg —— 它只在「打中敌人」的分支里才被赋值，打墙时是 undefined，spWallHitAt 里 !(dmg>0) 直接 return → 墙永远不掉血（这就是"墙打不碎"的根因）。现在显式给 25×伤害倍率（墙没有爆头），步枪满弹匣 750 正好一梭子 */var dir=(typeof _sd!=='undefined')?_sd.clone():camera.getWorldDirection(new THREE.Vector3());/* 【batch196】曳光弹不再每发 new 几何+材质，改用实例池（见下方 同步弹丸）：这里只登记一个位置 */var b={position:camera.position.clone().add(dir.clone().multiplyScalar(1.5))};/* 【batch184f】子弹弹道 tracer 飞得越远才消失：原来 life:15（2.5/帧）→ 最多 37.5m，
    火车站长轴 156m，火车停靠点常离玩家 >37.5m，导致"离太远打不到火车"（火车不吃 attack 的瞬时射线，
    只吃这条 tracer 的 trainBoxHit）。改成按武器射程算帧数并给 200m 下限，让最远的火车也打得到。 */

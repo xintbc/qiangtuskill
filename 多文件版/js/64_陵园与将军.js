@@ -197,6 +197,25 @@ var HELI={on:false,dead:false,hp:0,obj:null,rotor:[],tail:null,blink:null,
           pos:new THREE.Vector3(0,HELI_ALT,0),ring:null,hud:null,ban:null};
 var 陵_导弹=[];
 
+/* 【batch246】命中飘字：打天上的直升机时用来显示扣了多少血（不然只有一粒火花，看不出打没打中） */
+function 陵_飘字(txt,world){
+  try{
+    if(!world||typeof camera==='undefined'||!camera)return;
+    var v=world.clone().project(camera);
+    if(v.z>1)return;
+    var d=document.createElement('div');
+    d.textContent=txt;
+    d.style.cssText='position:fixed;left:'+((v.x*0.5+0.5)*innerWidth).toFixed(0)+'px;top:'+
+      ((-v.y*0.5+0.5)*innerHeight).toFixed(0)+'px;transform:translate(-50%,-50%);'+
+      'font:700 20px/1 "Microsoft YaHei",system-ui,sans-serif;color:#ffd24d;'+
+      'text-shadow:0 2px 6px rgba(0,0,0,.9);pointer-events:none;z-index:55;'+
+      'transition:transform .55s ease-out,opacity .55s ease-out';
+    document.body.appendChild(d);
+    requestAnimationFrame(function(){d.style.transform='translate(-50%,-190%)';d.style.opacity='0.15';});
+    setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},700);
+  }catch(e){}
+}
+
 function 陵_建直升机(){
   var g=new THREE.Group();
   var 壳=new THREE.MeshLambertMaterial({color:0x3d4a3a});
@@ -458,7 +477,16 @@ function 直升机Tick(dt){
     if(HELI.tail)HELI.tail.rotation.z=now*0.06;
     if(HELI.blink)HELI.blink.material.opacity=0.35+0.65*Math.abs(Math.sin(now*0.004));
   }
-  if(HELI.e){HELI.e.hp=HELI.hp;HELI.e.maxHp=HELI_HP;HELI.e.root=HELI.obj;}
+  if(HELI.e){
+    /* 【batch246】用户："拿枪打不到直升机"。真因不是射线 —— 子弹结算走的是 `HELI.e.hp-=dmg`（js/21），
+       这里原本每帧无条件 `HELI.e.hp=HELI.hp` 把血**补回满值**：
+       打上去只冒火花、HUD 血条一格不动、64 发打完也不掉血 → 看着就像"根本打不到"。
+       改成"谁小听谁的"：被子弹扣掉的血要记回权威值 HELI.hp。 */
+    if(typeof HELI.e.hp==='number'&&HELI.e.hp<HELI.hp)HELI.hp=HELI.e.hp;
+    else HELI.e.hp=HELI.hp;
+    HELI.e.maxHp=HELI_HP;HELI.e.root=HELI.obj;
+    if(HELI.hp<=0&&!HELI.dead)直升机坠毁();
+  }
   /* 导弹 */
   if(HELI.phase===''&&S.hp>0){
     HELI.missileT-=dt;
