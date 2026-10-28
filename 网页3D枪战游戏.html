@@ -3219,7 +3219,7 @@ function updateLeftHand(dt){
    服务器启动时会校验这个号：major 不同或版本低于服务器下限 → 连不上也进不去，
    并弹明确提示（在哪看到的：join 时带上 v，服务端比对，不符发 bye why:'ver'）。
    改版本号的规矩：小修 patch+1；上功能 minor+1 且 patch 归 0；动协议/存档 major+1 且其余归 0。 */
-var GAME_VER='1.8.6';
+var GAME_VER='1.8.7';
 /* 【batch234】模组接口版本：1=老的英文接口（ModLoader.addHero…），
    2=1.7.5 起的统一中文接口（window.枪战模组）。模组文件头写 `@api 2` 声明自己按哪版写的。
    加接口（新增一类"能加的东西"）动小版本，改已有接口的参数/语义才动这个数。 */
@@ -20568,8 +20568,8 @@ HEROES.push({
   skills:[
     {k:'g_spear', name:'爆炸长矛', icon:'🗡', cd:12, dur:0,
      desc:'按 V **手持长矛** → **长按攻击键**亮出「行动路线」（一条线 + 落点圈 + 长矛虚影）→ **松开攻击键**投出。'+
-          '长矛直线飞出，**戳中敌人扣 70 点**并**钉在他身上**，3 秒后原地炸开 **30 点**爆炸伤害；'+
-          '**扎在墙上 / 地上没有那 70 点直伤，但 30 点爆炸照样炸**。'},
+          '长矛直线飞出，**戳中敌人扣 60 点**并**钉在他身上**，3 秒后原地炸开 **25 点**爆炸伤害；'+
+          '**扎在墙上 / 地上没有那 60 点直伤，但 25 点爆炸照样炸**。'},
     {k:'g_coffin', name:'石棺', icon:'⚰', cd:16, dur:0,
      desc:'按 B **举起石棺**，准星指地实时预览落点，**左键放下**：一具立在身前的石棺，**挡子弹、挡人、挡视线**，'+
           '自带 520 点血。**被打爆时棺盖炸开，里面爬出 2 个只听命于大将军的小兵**（它们不攻击大将军，只打其他人）。'},
@@ -20657,6 +20657,18 @@ var 将军_手持基准={x:0.30,y:-0.34,z:-1.05};
 function 将军手持清掉(){
   if(将军_手持){if(将军_手持.parent)将军_手持.parent.remove(将军_手持);将军_手持=null;}
   将军_手持种类='';
+  /* 【batch250】兜底：把相机上所有"本分片挂过的手持物"扫一遍清掉。
+     ⚠️ 修的是"只要用了长矛，它就永远留在屏幕里"：
+       以前投出前刺结束 / 右键取消时只写了 `将军_手持=null`，
+       **没从 camera 上 remove** → wrap 成了没人引用的孤儿，永远挂在镜头前。
+       而且引用一丢，`将军蓄力Tick` 顶部那句 `if(!将军_手持)return;` 再也救不回来。
+       现在凡是 this 分片挂上去的都打 userData.将军手持=1，这里统一清。 */
+  try{
+    for(var i=camera.children.length-1;i>=0;i--){
+      var o=camera.children[i];
+      if(o&&o.userData&&o.userData.将军手持){camera.remove(o);}
+    }
+  }catch(e){}
 }
 function 将军持物(kind){
   if(typeof heroHoldShow!=='function')return;
@@ -20671,7 +20683,7 @@ function 将军持物(kind){
      做法：_holdObj 保持 null（通用那一段整段跳过），wrap 由本分片自己每帧驱动。 */
   try{ if(typeof _holdObj!=='undefined'&&_holdObj){camera.remove(_holdObj);_holdObj=null;} }catch(e){}
   var m=(kind==='g_spear')?造长矛(3.0):造石棺(1.25);
-  var wrap=new THREE.Group();wrap.add(m);camera.add(wrap);
+  var wrap=new THREE.Group();wrap.add(m);wrap.userData.将军手持=1;camera.add(wrap);
   if(kind==='g_spear'){
     /* 【batch248】用户："长矛应该有特殊手持动画"。
        矛模型的 +z 端是矛尖。先转 180° 让**矛尖朝相机前方**（-z），再压一点俯仰/侧倾 ——
@@ -20722,7 +20734,7 @@ function 将军蓄力Tick(dt){
     将军_手持.position.set(b.x-0.06*推, b.y+0.05*推, b.z-0.85*推);
     将军_手持.rotation.x=-0.22*推;
     将军_手持.rotation.z=0.10*推;
-    if(将军_投刺T<=0){将军_手持=null;将军_手持种类='';if(typeof heroHoldHide==='function')heroHoldHide();}
+    if(将军_投刺T<=0){将军手持清掉();if(typeof heroHoldHide==='function')heroHoldHide();}   /* 【batch250】必须真移除，不能只清引用 */
     return;
   }
   var 想=(SK&&SK.hold&&SK.hold.kind==='g_spear'&&SK.矛预瞄)?1:0;
@@ -20802,8 +20814,9 @@ function 陵_矛预览更新(){
 }
 function 陵_矛预览隐藏(){if(陵_矛预览组)陵_矛预览组.visible=false;}
 /* 投出：归属 '玩家' / '分身' / '将军'
-   【batch248】加了伤害参数：玩家 70、分身弱化到 45（用户要"比剧情 BOSS 弱很多很多"）。
-   粘身爆炸同理（30 / 18），可以在 陵_投矛 第 6 参传。 */
+   【batch248】加了伤害参数：玩家 60、分身弱化到 45（用户要"比剧情 BOSS 弱很多很多"）。
+   粘身爆炸同理（25 / 18），可以在 陵_投矛 第 6 参传。
+   【batch250】按用户要求削弱：直伤 70→60、粘身爆炸 30→25。 */
 function 陵_投矛(x,y,z,dir,归属,伤害,爆伤){
   var m=造长矛(3.0);
   m.position.set(x,y,z);
@@ -20811,8 +20824,8 @@ function 陵_投矛(x,y,z,dir,归属,伤害,爆伤){
   scene.add(m);
   陵_矛.push({m:m,x:x,y:y,z:z,dx:dir.x,dy:dir.y,dz:dir.z,spd:52,life:2.2,t:0,
               归属:归属||'玩家',
-              伤害:((typeof 伤害==='number')?伤害:(归属==='分身'?45:70)),
-              爆伤:((typeof 爆伤==='number')?爆伤:(归属==='分身'?18:30)),
+              伤害:((typeof 伤害==='number')?伤害:(归属==='分身'?45:60)),
+              爆伤:((typeof 爆伤==='number')?爆伤:(归属==='分身'?18:25)),
               stuck:null,stickT:0,ox:0,oy:0,oz:0,hited:null});
 }
 function 陵_矛Tick(dt){
@@ -20829,7 +20842,7 @@ function 陵_矛Tick(dt){
       }
       p.m.position.set(p.x,p.y,p.z);
       if(p.stickT<=0){
-        陵_爆炸(p.x,p.y,p.z,2.6,p.爆伤||30,0xff8a3d,p.hited);
+        陵_爆炸(p.x,p.y,p.z,2.6,p.爆伤||25,0xff8a3d,p.hited);
         if(p.m.parent)p.m.parent.remove(p.m);
         陵_矛.splice(i,1);
       }
@@ -20848,7 +20861,7 @@ function 陵_矛Tick(dt){
       var py=standSurfY()+1.0;
       var ddx=camera.position.x-p.x,ddy=py-p.y,ddz=camera.position.z-p.z;
       if(ddx*ddx+ddy*ddy+ddz*ddz<1.5){
-        takeDmg(70,null);
+        takeDmg(60,null);          /* 【batch250】将军用的是同款矛：直伤同步降到 60 */
         p.stuck={};p.stickT=3.0;
         if(typeof showMsg==='function')showMsg('🗡 长矛扎进了你身上 —— 3 秒后爆','#ff5a3d');
         continue;
@@ -20879,7 +20892,7 @@ function 陵_矛Tick(dt){
         continue;
       }
     }
-    /* 撞墙 / 落地 / 超时就钉住（30 点爆炸，但**没有**那 70 点直伤） */
+    /* 撞墙 / 落地 / 超时就钉住（25 点爆炸，但**没有**那 60 点直伤） */
     var 地=陵_脚下(p.x,p.z,p.y);                              /* 按长矛自身高度探，扎在封土台上也算落地 */
     if(p.y<=地+0.05||陵_点被挡(p.x,p.y,p.z)||p.life<=0){
       p.stuck={};p.stickT=3.0;
@@ -21281,7 +21294,7 @@ function 陵_投出长矛(){
   if(!(SK&&SK.hold&&SK.hold.kind==='g_spear'))return false;
   var dir=陵_矛方向(),o=camera.position;
   /* 从眼睛前方 0.8 米出手，稍微往下压一点（看起来像从手里递出去） */
-  陵_投矛(o.x+dir.x*0.8,o.y-0.12,o.z+dir.z*0.8,dir,'玩家',70,30);
+  陵_投矛(o.x+dir.x*0.8,o.y-0.12,o.z+dir.z*0.8,dir,'玩家',60,25);   /* 【batch250】削弱：70→60、30→25 */
   SK.矛预瞄=0;陵_矛预览隐藏();
   SK.cds[SK.hold.si]=heroNow().skills[SK.hold.si].cd;
   /* 【batch248】不立刻收手：先播 0.18 秒的**前刺**动作（将军蓄力Tick 里做），动作完再收 —— 这就是"特殊手持动画" */
@@ -21324,9 +21337,12 @@ heroAimEnd=function(){
   if(_陵_aimEnd原)return _陵_aimEnd原.apply(this,arguments);
 };
 heroHoldCancel=function(){
-  if(SK&&SK.hold&&(SK.hold.kind==='g_spear'||SK.hold.kind==='g_coffin')){
+  /* 【batch250】条件从"SK.hold 是我们的技能"放宽到"手里还挂着我们的东西"：
+     死亡 / 换技能 / 被别的系统清掉 SK.hold 时，只要模型还在相机上就得一起收。 */
+  if(将军_手持||(SK&&SK.hold&&(SK.hold.kind==='g_spear'||SK.hold.kind==='g_coffin'))){
     SK.矛预瞄=0;陵_矛预览隐藏();陵_棺预览隐藏();
-    将军_手持=null;将军_手持种类='';
+    将军手持清掉();                 /* 【batch250】这里原来也是只清引用 → 矛永久留在屏幕上 */
+    将军_投刺T=0;
     SK.hold=null;
     if(typeof heroHoldHide==='function')heroHoldHide();
     return;
@@ -21555,6 +21571,15 @@ var _陵_setMap原=setMap;
 setMap=function(id,不存){
   var ok=_陵_setMap原(id,不存);
   if(ok){
+    /* 【batch250】切图 / 重开一局时把手里举着的长矛、石棺收干净 ——
+       这也是"用了长矛它就永远留在屏幕里"的一个入口（模型跟着相机飘到新地图）。
+       顺带把 "举着技能" 状态清掉，不然新地图里会一直认为你在瞄准。 */
+    try{
+      将军手持清掉();
+      将军_投刺T=0;将军_蓄力=0;
+      if(typeof SK!=='undefined'&&SK&&SK.hold&&(SK.hold.kind==='g_spear'||SK.hold.kind==='g_coffin'))SK.hold=null;
+      陵_矛预览隐藏();陵_棺预览隐藏();
+    }catch(e){}
     if(id!=='cemetery'){直升机关闭();陵_矛预览隐藏();陵_棺预览隐藏();if(分身.on)收回分身();}
   }
   return ok;
