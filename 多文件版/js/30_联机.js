@@ -277,15 +277,20 @@ function netClosePanel(){var p=document.getElementById('netPanel');if(p)p.classL
 function netEnterGame(){
   if(S.playing&&!S.paused&&!S.over){if(!NET.connected){NET.reconnecting=false;netConnect();}return;}  // 已在局中：只补连接，不重开
   enterGame();
-  /* 【多人默认哨塔】进多人时本地先用「经典·哨塔竞技场」(classic) 当默认地图建一张图：
-     ① 让"自己建房"时服务器按 classic 建房间（默认哨塔，不继承上次单人选的十日环城）；
-     ② 连上之前玩家屏幕不至于空着。
-     但最终进哪张图一律以服务器 welcome 下发的 m.map 为准（见 welcome 分支的 setMap 重建）——
-
-     加入别人的火车站房间时，服务器下发火车站，客户端会切过去；单人选图仍按 localStorage
-     原样保留（这里 setMap 都传 不存=true，不写回存档）。 */
-  if(typeof curMapId!=='undefined')curMapId='classic';
-  try{ if(typeof setMap==='function')setMap('classic',true); }catch(e){}
+  /* 【1.7.12】多人建房**沿用玩家在主菜单选的地图**（"多人按地图分房间"，见选图页说明），
+     不再强制 classic —— 1.7.11 那句 curMapId='classic' 会把玩家选的图冲掉，
+     导致"不管我咋选，进多人都是哨塔"。现在：
+       · 玩家选过十日环城 → mapLoad() 读回 → 进十日环城房；
+       · 从没选过 → curMapId 默认 classic → 哨塔（"默认哨塔"仍成立）；
+       · 靶场是单人专用 → 多人里回落 classic；
+       · 加入别人的房，最终仍以服务器 welcome 下发的 m.map 为准（见 welcome 分支 setMap 重建）。
+     全程 setMap 传 不存=true，不写回存档，不污染单人选图记忆。 */
+  try{ if(typeof mapLoad==='function')mapLoad(); }catch(e){}          // 读回玩家上次选的图（存档）
+  var _pickMap=(typeof curMapId!=='undefined'&&curMapId)?curMapId:'classic';
+  if(_pickMap==='range')_pickMap='classic';                            // 靶场是单人专用，不进多人
+  if(typeof mapById==='function'&&!mapById(_pickMap))_pickMap='classic';
+  if(typeof curMapId!=='undefined')curMapId=_pickMap;
+  try{ if(typeof setMap==='function')setMap(_pickMap,true); }catch(e){}
   netStart();
   setTimeout(function(){
     if(!NET.connected){showMsg('暂时连不上服务器，正在重试…请检查地址和网络','#f66');}
