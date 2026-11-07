@@ -1,0 +1,17 @@
+# Render 一键部署模板（可选）
+# 不想手动点的话：Render → New + → Blueprint → 选这个仓库的 cloud 分支 → Apply
+services:
+  - type: web
+    name: qiangtu-server
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: echo 无需构建
+    startCommand: node 服务端.js
+    healthCheckPath: /api/admin/ping
+    autoDeploy: true
+    envVars:
+      - key: GUN_CLOUD
+        value: "1"
+      - key: NODE_VERSION
+        value: "20.11.1"

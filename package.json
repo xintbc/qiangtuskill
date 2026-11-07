@@ -1,0 +1,13 @@
+{
+  "name": "qiangtu-server",
+  "version": "1.9.48",
+  "private": true,
+  "description": "枪战突击 · 联机服务器（云端部署版，零依赖）",
+  "main": "服务端.js",
+  "scripts": {
+    "start": "node 服务端.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
