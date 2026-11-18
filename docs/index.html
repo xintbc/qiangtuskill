@@ -115,6 +115,23 @@
   <div id="loading">正在读取清单…</div>
 
   <section id="sec-client" class="hide"><h2>📱 客户端下载</h2>
+    <!-- 【2026-11-19】常驻网页版入口。以前这块只写在聊天记录里，官网找不到地址，
+         服务端一挂就彻底没人知道去哪儿玩 —— 现在钉在页面上，和安装包放一起。 -->
+    <div style="margin:0 0 16px;padding:14px 16px;border-radius:12px;
+                background:linear-gradient(135deg,#17324f,#123a2e);border:1px solid #2f7d5f;
+                display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px">
+      <div style="font-size:16px;font-weight:700;color:#8ef0c0;white-space:nowrap">🌐 在线试玩 · 常驻网页版</div>
+      <div style="color:#cfe8dd;font-size:13px;line-height:1.65;flex:1 1 320px;min-width:220px">
+        不下载、不安装，浏览器点开就玩（电脑 / 手机都行，手机自动出触屏按键）。<br>
+        免费实例没人玩时会休眠，<b>第一次打开要等 20~60 秒</b>唤醒，之后就一直很快。
+      </div>
+      <a href="https://qiangtu-server.onrender.com/pc" target="_blank" rel="noopener"
+         style="padding:9px 18px;border-radius:10px;background:#2f9e6e;color:#fff;
+                font-weight:700;text-decoration:none;white-space:nowrap">▶ 电脑开玩</a>
+      <a href="https://qiangtu-server.onrender.com/mobile" target="_blank" rel="noopener"
+         style="padding:9px 18px;border-radius:10px;background:#3d6fd8;color:#fff;
+                font-weight:700;text-decoration:none;white-space:nowrap">📱 手机开玩</a>
+    </div>
     <div class="grid" id="clientGrid"></div>
     <div id="clientOld"></div>
     <div class="hint" id="clientHint">
