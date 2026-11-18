@@ -169,100 +169,33 @@ var isTouch=(function(){
   return false;
 })();
 if(isTouch){touchUI.style.display='block';document.body.classList.add('is-touch');}
-// 摇杆
-var joyBase=document.getElementById('joyBase'),joyKnob=document.getElementById('joyKnob'),joyId=null,joyCx=0,joyCy=0;var JOY_R=42,JOY_OFF=40,JOY_SCALE=1;
-joyBase.addEventListener('touchstart',function(e){if(layoutEdit)return;e.preventDefault();var t=e.changedTouches[0];joyId=t.identifier;var r=joyBase.getBoundingClientRect();joyCx=r.left+r.width/2;joyCy=r.top+r.height/2;},{passive:false});
-joyBase.addEventListener('touchmove',function(e){if(layoutEdit)return;e.preventDefault();for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier!==joyId)continue;_joyAt(t.clientX,t.clientY);}e.stopPropagation();},{passive:false});
-/* 摇杆核心（batch163 抽出来共用：触摸 / 鼠标都走这里） */
-function _joyAt(cx,cy){var dx=cx-joyCx,dy=cy-joyCy;var dd=Math.sqrt(dx*dx+dy*dy);if(dd>JOY_R){dx*=JOY_R/dd;dy*=JOY_R/dd;}joyKnob.style.left=(JOY_OFF+dx)+'px';joyKnob.style.top=(JOY_OFF+dy)+'px';var nx=dx/JOY_R,ny=dy/JOY_R;keys.KeyW=ny<-0.3;keys.KeyS=ny>0.3;keys.KeyA=nx<-0.3;keys.KeyD=nx>0.3;S.joySprint=(ny<SPRINT_JOY_NY);}
-function joyEnd(e){for(var i=0;i<e.changedTouches.length;i++){if(e.changedTouches[i].identifier===joyId){joyId=null;joyKnob.style.left=JOY_OFF+'px';joyKnob.style.top=JOY_OFF+'px';keys.KeyW=keys.KeyS=keys.KeyA=keys.KeyD=false;S.joySprint=false;}}}
-joyBase.addEventListener('touchend',joyEnd);joyBase.addEventListener('touchcancel',joyEnd);
-// 视角拖动（右侧）
-var lookPad=document.getElementById('lookPad'),lookId=null,lookX=0,lookY=0;
-lookPad.addEventListener('touchstart',function(e){if(layoutEdit)return;e.preventDefault();var t=e.changedTouches[0];lookId=t.identifier;lookX=t.clientX;lookY=t.clientY;},{passive:false});
-lookPad.addEventListener('touchmove',function(e){if(layoutEdit)return;e.preventDefault();for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier!==lookId)continue;_lookAt(t.clientX,t.clientY);}e.stopPropagation();},{passive:false});
-/* 视角拖动核心（batch163 抽出来共用：触摸 / 鼠标都走这里） */
-function _lookAt(cx,cy){var dx=cx-lookX,dy=cy-lookY;lookX=cx;lookY=cy;var _ts=1-S.aimProgress*0.55;yaw-=dx*S.sens*1.4*_ts*S.sensMul;pitch-=dy*S.sens*1.4*_ts*S.sensMul;pitch=Math.max(-1.4,Math.min(1.4,pitch));camera.quaternion.setFromEuler(new THREE.Euler(pitch+(S.recoilPunch||0),yaw,S.roll||0,'YXZ'));}
-lookPad.addEventListener('touchend',function(e){for(var i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===lookId)lookId=null;});
-/* 【batch163】电脑上测试手机版（?touch=1 强制触屏，但没有触摸事件）→
-   摇杆 / 视角区 / 按键全部补一套鼠标绑定，不然只能看不能玩。真手机（有触摸）不会绑，绝不双触发。 */
-var _natTouch=('ontouchstart' in window)||(navigator.maxTouchPoints||0)>0;
-if(!_natTouch){
-  joyBase.addEventListener('mousedown',function(e){if(layoutEdit)return;e.preventDefault();joyId=-1;var r=joyBase.getBoundingClientRect();joyCx=r.left+r.width/2;joyCy=r.top+r.height/2;_joyAt(e.clientX,e.clientY);});
-  document.addEventListener('mousemove',function(e){if(joyId===-1)_joyAt(e.clientX,e.clientY);});
-  document.addEventListener('mouseup',function(){if(joyId===-1){joyId=null;joyKnob.style.left=JOY_OFF+'px';joyKnob.style.top=JOY_OFF+'px';keys.KeyW=keys.KeyS=keys.KeyA=keys.KeyD=false;S.joySprint=false;}});
-  lookPad.addEventListener('mousedown',function(e){if(layoutEdit)return;e.preventDefault();lookId=-1;lookX=e.clientX;lookY=e.clientY;});
-  document.addEventListener('mousemove',function(e){if(lookId===-1)_lookAt(e.clientX,e.clientY);});
-  document.addEventListener('mouseup',function(){if(lookId===-1)lookId=null;});
+/* ============================================================================
+   【1.10.18】触屏操作整段移交 js/72_手机操作.js
+   ----------------------------------------------------------------------------
+   这里原先有：固定圆摇杆(#joyBase)、铺满屏的视角区(#lookPad)、12 个 .tbtn 按键，
+   外加一套"电脑上 ?touch=1 调试"的鼠标兜底。
+   它们全部删掉了 —— 不是因为写得不好，是因为**结构本身撑不住**：
+   位置靠 JS 逐像素摆、按键之间 20px、视角区和按钮抢同一批触摸事件。
+   新的一套（js/72）改成纯 CSS 定位 + 分区触摸 + 弧形键簇 + 技能 HUD 直接可点。
+   这里只留一个 tapKey：**其它分片仍然靠它把触屏操作翻译成真实键盘事件**
+   （比如剧情里按 F 上梯、按空格跳，走同一条代码路径才不会两边行为不一致）。
+   ============================================================================ */
+function tapKey(code){
+  try{ document.dispatchEvent(new KeyboardEvent('keydown',{code:code,bubbles:true})); }catch(e){}
+  setTimeout(function(){
+    try{ document.dispatchEvent(new KeyboardEvent('keyup',{code:code,bubbles:true})); }catch(e){}
+  },60);
 }
-// 触屏按键
-function tapKey(code){document.dispatchEvent(new KeyboardEvent('keydown',{code:code,bubbles:true}));}
-function tbtn(id,down,up){var el=document.getElementById(id);if(!el)return;el.addEventListener('touchstart',function(e){if(layoutEdit)return;e.preventDefault();e.stopPropagation();down();},{passive:false});el.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();if(up)up();});el.addEventListener('touchcancel',function(e){e.preventDefault();if(up)up();});
-  /* 【batch163】电脑上测试手机版（无触摸事件）→ 按键补鼠标绑定 */
-  if(!(('ontouchstart' in window)||(navigator.maxTouchPoints||0)>0)){
-    el.addEventListener('mousedown',function(e){if(layoutEdit)return;e.preventDefault();e.stopPropagation();down();});
-    el.addEventListener('mouseup',function(e){e.preventDefault();if(up)up();});
-    el.addEventListener('mouseleave',function(){if(up)up();});
-  }}
-tbtn('btnFire',function(){if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();initAudio();if(SK.ghost>0){heroPortalPlace();return;}   /* 【batch145】虚化中：开火键＝放下门 */if(heroBallFire())return;if(heroAimStart())return;mouseDown=true;freshTrigger=true;if(S.playing&&!S.over&&!S.paused)attack();},function(){mouseDown=false;heroAimEnd();});
-tbtn('btnRescue',function(){keys.KeyF=true;},function(){keys.KeyF=false;});   /* 【batch159】手机营救：按住＝长按 F（松开＝松手） */
-tbtn('btnCrouch',function(){   // 蹲下＝点击切换（点一下蹲、再点一下站）
-  S.crouch=!S.crouch;
-  if(S.crouch&&typeof sprinting_off==='function')sprinting_off();
-});
-/* 【batch149】第二章营救时，攀爬键临时改当「长按 F」用（按住才算，松手就停）；
-   其它情况照旧是点一下＝上/下梯。手机上没有 F 键，不这么改第二章就没法救人。 */
-tbtn('btnClimb',function(){
-  if(typeof STORY_!=='undefined'&&STORY_.on&&STORY_.ch===2&&STORY_.phase==='rescue'){
-    keys.KeyF=true;var _cl=document.getElementById('btnClimb');if(_cl)_cl.textContent='救援';
-  } else tapKey('KeyF');
-},function(){
-  if(typeof STORY_!=='undefined'&&STORY_.on&&STORY_.ch===2&&STORY_.phase==='rescue'){
-    keys.KeyF=false;var _cl2=document.getElementById('btnClimb');if(_cl2)_cl2.textContent='上梯';
-  }
-});
-tbtn('btnJump',function(){tapKey('Space');});
-tbtn('btnWeapon',function(){showWeaponSelect();});
-/* 【手机版·换枪】补一个 click 兜底：部分手机浏览器 / 电脑上用 ?touch=1 调试时 touchstart 不一定触发。
-   重复触发无害 —— showWeaponSelect 内部有「面板已开就直接返回」的守卫。 */
-(function(){var _wb=document.getElementById('btnWeapon');if(_wb)_wb.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();if(typeof layoutEdit!=='undefined'&&layoutEdit)return;showWeaponSelect();});})();
-tbtn('btnSkill',function(){heroCast(0);});
-tbtn('btnSkill2',function(){heroCast(1);});
-tbtn('btnSkill3',function(){heroCast(2);});
-tbtn('btnReload',function(){reload();});
-/* 【batch164】手机版：手上有技能（持握投掷物 / 装填了球形闪电）时，点「开镜」＝**取消技能**。
-   手机上"再按一次技能键收起"要低头找键，开镜键就在拇指边，取消更快。
-   球形闪电只收起、**不退冷却**（130 秒大招不能靠"装填→取消"白嫖）。 */
-tbtn('btnAim',function(){
-  if(SK.hold){
-    var _sk=heroSkill(SK.hold.si);
-    if(SK.hold.kind==='ball'){
-      SK.hold=null;SK.aimThrow=false;SK.ballLeft=0;SK.ballGap=0;
-      heroHoldHide();heroPreviewHide();
-      showMsg('已收起「'+_sk.name+'」','#6ff0ff');heroHudUpdate(true);return;
-    }
-    heroHoldCancel();                                  // 投掷物：收起 + 退还冷却
-    showMsg('已收起「'+_sk.name+'」','#ffd166');return;
-  }
-  S.aiming=true;
-},function(){S.aiming=false;});
-tbtn('btnPeekL',function(){keys.KeyQ=true;},function(){keys.KeyQ=false;});
-tbtn('btnPeekR',function(){keys.KeyE=true;},function(){keys.KeyE=false;});
 
 // ==================== 触屏设置：灵敏度 / 小地图 / 摇杆 / 游戏内暂停菜单 ====================
 var TUNING_KEY='gunGame.touchTuning.v1';
 var MM_SIZE=120;
-function tuningLoad(){try{var t=JSON.parse(localStorage.getItem(TUNING_KEY)||'null');if(t){if(t.sens)S.sensMul=t.sens;if(t.mm)MM_SIZE=Math.round(t.mm);if(t.joy)JOY_SCALE=t.joy;}}catch(e){}}
-function tuningSave(){try{localStorage.setItem(TUNING_KEY,JSON.stringify({sens:S.sensMul,mm:MM_SIZE,joy:JOY_SCALE}));}catch(e){}}
+function tuningLoad(){try{var t=JSON.parse(localStorage.getItem(TUNING_KEY)||'null');if(t){if(t.sens)S.sensMul=t.sens;if(t.mm)MM_SIZE=Math.round(t.mm);}}catch(e){}}
+function tuningSave(){try{localStorage.setItem(TUNING_KEY,JSON.stringify({sens:S.sensMul,mm:MM_SIZE}));}catch(e){}}
 function tuningApplyUI(){
   var cv=document.getElementById('minimap');
   if(cv){cv.style.width=MM_SIZE+'px';cv.style.height=MM_SIZE+'px';}
-  if(typeof joyBase!=='undefined'&&joyBase&&typeof joyKnob!=='undefined'&&joyKnob){
-    joyBase.style.width=(130*JOY_SCALE)+'px';joyBase.style.height=(130*JOY_SCALE)+'px';
-    joyKnob.style.width=(50*JOY_SCALE)+'px';joyKnob.style.height=(50*JOY_SCALE)+'px';
-    JOY_R=42*JOY_SCALE;JOY_OFF=40*JOY_SCALE;
-    joyKnob.style.left=JOY_OFF+'px';joyKnob.style.top=JOY_OFF+'px';
-  }
+  /* 摇杆尺寸不再可调：新摇杆是按 --u 设计像素算的，调大小会让"落指点"和"视觉圈"错开 */
 }
 function tuningApplyToUI(){
   var s1=document.getElementById('spSens'),v1=document.getElementById('spSensVal');
@@ -272,14 +205,11 @@ function tuningApplyToUI(){
   /* 【1.9.43】界面大小倍率回填滑块 */
   var su=document.getElementById('spUi'),vu=document.getElementById('spUiVal');
   if(su){var _uk=1;try{if(typeof 读界面缩放==='function')_uk=读界面缩放();}catch(e){}su.value=_uk;if(vu)vu.textContent=Number(_uk).toFixed(2)+'x';}
-  var s3=document.getElementById('spJoy'),v3=document.getElementById('spJoyVal');
-  if(s3)s3.value=JOY_SCALE;if(v3)v3.textContent=Number(JOY_SCALE).toFixed(2)+'x';
 }
 function applyTuning(){
   tuningLoad();
   if(!(S.sensMul>0))S.sensMul=1;
   if(!(MM_SIZE>=80))MM_SIZE=120;
-  if(!(JOY_SCALE>0))JOY_SCALE=1;
   tuningApplyUI();tuningApplyToUI();
   if(typeof layoutClampAll==='function')layoutClampAll();
 }
@@ -409,142 +339,28 @@ function closeGameMenu(){
   lockPointer();
 }
 
-// ==================== 触屏设置：按键布局自定义 ====================
-var LAYOUT_KEY='gunGame.touchLayout.v2';   // v2：坐标从"屏幕左上角 px"改成"距右/下边 px"，换屏幕也成立
-var layoutEdit=false,spOpen=false,menuPrevPaused=null,menuHidBlocker=false;
-var layoutMovable=['joyBase','btnFire','btnReload','btnJump','btnClimb','btnCrouch','btnWeapon','btnPeekL','btnPeekR','btnAim','btnSkill','btnSkill2','btnSkill3'];
-var layoutDefaults={};
+// ==================== 触屏设置（1.10.18 精简） ====================
+/* 旧的「按键布局自定义」整段删除：LAYOUT_KEY / TS_DESIGN / layoutFit / layoutBindDrag /
+   编辑态顶栏 / 16 个按钮的设计坐标表。
+   为什么不能留：那套东西的坐标是"距右边多少 px"，按 760 设计；1.10.17 为了修 bug 改了
+   反推公式，结果 layoutClampAll 把夹回来的错误坐标**写进了 localStorage**，
+   于是"换枪"这种 dx=630 的键在 800px 宽的屏上直接跑到屏幕左边 —— 这就是用户说的
+   「17 版修复后更乱了」。新布局是 CSS 算的，没有可存的像素，这整套机制彻底不需要了。
+   ⚠️ 顺手把旧存档键删掉：不删的话，以后任何一次读到它都会把错位坐标再写回来。 */
+try{ localStorage.removeItem('gunGame.touchLayout.v1'); localStorage.removeItem('gunGame.touchLayout.v2'); }catch(e){}
 
-/* ==================== 触屏按键：多比例屏幕自适应 ====================
-   每个按键记的是「距右边 dx / 距下边 dy」（设计坐标，单位 px），再乘一个整体缩放系数 s。
-   s = min(屏宽/760, 屏高/560)，夹在 0.58~1 之间 —— 屏幕越小，整簇按键越小、越贴边，
-   不会再把最上面那几个按钮顶出屏幕（横屏手机以前就是这样点不到「蹲」和「技能③」）。
-   joyBase 锚在左下角，其余锚在右下角。 */
-var TS_DESIGN={
-  joyBase:{ax:'lb',dx:92,dy:68,w:130,h:130},
-  btnFire:{ax:'rb',dx:15,dy:24,w:104,h:104},
-  btnReload:{ax:'rb',dx:492,dy:118,w:86,h:54},
-  btnAim:{ax:'rb',dx:112,dy:396,w:86,h:54},
-  btnJump:{ax:'rb',dx:360,dy:118,w:86,h:54},
-  btnClimb:{ax:'rb',dx:194,dy:300,w:86,h:54},
-  btnWeapon:{ax:'rb',dx:630,dy:118,w:86,h:54},
-  btnCrouch:{ax:'rb',dx:102,dy:226,w:86,h:54},
-  btnPeekL:{ax:'lb',dx:85,dy:494,w:86,h:54},
-  btnPeekR:{ax:'lb',dx:206,dy:494,w:86,h:54},
-  btnSkill:{ax:'rb',dx:240,dy:488,w:86,h:54},
-  btnSkill2:{ax:'rb',dx:108,dy:488,w:86,h:54},
-  btnSkill3:{ax:'rb',dx:10,dy:488,w:86,h:54}
-};
-var TS_REF_W=760,TS_REF_H=560,TS_MIN=0.58,TS_MAX=1.0;
-var TS_OVR={},_tsS=1;
-function tsScale(){
-  var W=window.innerWidth||360,H=window.innerHeight||640;
-  return Math.max(TS_MIN,Math.min(TS_MAX,Math.min(W/TS_REF_W,H/TS_REF_H)));
+var spOpen=false,menuPrevPaused=null;
+var layoutEdit=false;      /* 兼容：js/60 会把它设 false；新布局不接受拖动编辑 */
+
+function menuPauseSync(){
+  if(spOpen){ if(menuPrevPaused===null){ menuPrevPaused=S.paused; S.paused=true; } }
+  else if(menuPrevPaused!==null){ S.paused=menuPrevPaused; menuPrevPaused=null; }
 }
-function layoutFit(){
-  if(typeof isTouch==='undefined'||!isTouch)return;
-  var s=layoutEdit?1:tsScale();
-  _tsS=s;
-  var W=window.innerWidth,H=window.innerHeight;
-  for(var id in TS_DESIGN){
-    if(!Object.prototype.hasOwnProperty.call(TS_DESIGN,id))continue;
-    var d=TS_DESIGN[id],el=document.getElementById(id);if(!el)continue;
-    var dx=d.dx,dy=d.dy;
-    if(TS_OVR[id]){dx=TS_OVR[id][0];dy=TS_OVR[id][1];}
-    el.style.right='auto';el.style.bottom='auto';
-    el.style.left=(d.ax==='lb'?dx:(W-dx-d.w*s))+'px';
-    el.style.top=(H-dy-d.h*s)+'px';
-    el.style.transformOrigin='top left';
-    el.style.transform=(s===1?'':'scale('+s+')');
-  }
-}
-/* 把当前实际位置换算回设计坐标（保存布局用） */
-function layoutDesign(){
-  var o={},W=window.innerWidth,H=window.innerHeight,s=_tsS;
-  for(var id in TS_DESIGN){
-    if(!Object.prototype.hasOwnProperty.call(TS_DESIGN,id))continue;
-    var d=TS_DESIGN[id],el=document.getElementById(id);if(!el)continue;
-    var x=parseFloat(el.style.left),y=parseFloat(el.style.top);
-    if(!isFinite(x)||!isFinite(y)){x=(d.ax==='lb'?d.dx:(W-d.dx-d.w*s));y=(H-d.dy-d.h*s);}
-    o[id]=[Math.round(d.ax==='lb'?x:(W-(x+d.w*s))),Math.round(H-(y+d.h*s))];
-  }
-  return o;
-}
-function menuPauseSync(){var open=(layoutEdit||spOpen);if(open){if(menuPrevPaused===null){menuPrevPaused=S.paused;S.paused=true;}}else if(menuPrevPaused!==null){S.paused=menuPrevPaused;menuPrevPaused=null;}}
-function layoutApply(map){
-  for(var id in map){
-    if(!Object.prototype.hasOwnProperty.call(map,id))continue;
-    if(!TS_DESIGN[id]||!map[id]||map[id].length!==2)continue;
-    TS_OVR[id]=[map[id][0],map[id][1]];
-  }
-  layoutFit();
-}
-function layoutCollect(){return layoutDesign();}
-function layoutInit(){
-  try{
-    var sv=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null');
-    if(sv)for(var id in sv){
-      if(!Object.prototype.hasOwnProperty.call(sv,id))continue;
-      if(TS_DESIGN[id]&&sv[id]&&sv[id].length===2)TS_OVR[id]=[sv[id][0],sv[id][1]];
-    }
-  }catch(e){}
-  layoutFit();
-}
-function layoutSave(){try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(layoutDesign()));}catch(e){}showMsg('✅ 布局已保存');}
-function layoutResetAll(){TS_OVR={};try{localStorage.removeItem(LAYOUT_KEY);}catch(e){}layoutFit();showMsg('↺ 已恢复默认布局');}
-/* 转屏 / 改窗口大小：把越界的按键拉回屏幕内（存成设计坐标），再按新尺寸重新摆放 */
-function layoutClampAll(){
-  if(typeof isTouch==='undefined'||!isTouch)return;
-  var s=layoutEdit?1:tsScale();
-  var W=window.innerWidth,H=window.innerHeight;
-  for(var id in TS_DESIGN){
-    if(!Object.prototype.hasOwnProperty.call(TS_DESIGN,id))continue;
-    var d=TS_DESIGN[id],o=TS_OVR[id]||[d.dx,d.dy];
-    var maxX=Math.max(2,W-d.w*s-2),maxY=Math.max(2,H-d.h*s-2);
-    var dx=Math.max(2,Math.min(maxX,o[0]));
-    var dy=Math.max(2,Math.min(maxY,o[1]));
-    TS_OVR[id]=[Math.round(dx),Math.round(dy)];
-  }
-  layoutFit();
-}
-function layoutBindDrag(el){
-  var dID=null,offX=0,offY=0;
-  el.addEventListener('touchstart',function(e){if(!layoutEdit)return;e.preventDefault();e.stopPropagation();var t=e.changedTouches[0];dID=t.identifier;var r=el.getBoundingClientRect();offX=t.clientX-r.left;offY=t.clientY-r.top;el.classList.add('dragging');},{passive:false});
-  el.addEventListener('touchmove',function(e){if(!layoutEdit||dID===null)return;e.preventDefault();e.stopPropagation();for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier!==dID)continue;var nx=t.clientX-offX,ny=t.clientY-offY,w=el.offsetWidth,h=el.offsetHeight;nx=Math.max(0,Math.min(Math.max(0,window.innerWidth-w),nx));ny=Math.max(0,Math.min(Math.max(0,window.innerHeight-h),ny));el.style.left=nx+'px';el.style.top=ny+'px';}},{passive:false});
-  var end=function(e){for(var i=0;i<e.changedTouches.length;i++){if(e.changedTouches[i].identifier===dID){dID=null;el.classList.remove('dragging');}}};
-  el.addEventListener('touchend',end);el.addEventListener('touchcancel',end);
-}
-function setLayoutEdit(on){
-  layoutEdit=on;
-  if(on){if(typeof layoutFit==='function')layoutFit();if(typeof layoutClampAll==='function')layoutClampAll();}
-  touchUI.classList.toggle('editing',on);
-  var bar=document.getElementById('layoutBar');if(bar)bar.classList.toggle('on',on);
-  var bl=document.getElementById('blocker');
-  if(on){
-    keys.KeyW=keys.KeyS=keys.KeyA=keys.KeyD=false;keys.KeyQ=false;keys.KeyE=false;keys.KeyF=false;keys.ShiftLeft=false;keys.ShiftRight=false;mouseDown=false;S.aiming=false;
-    // 在开始菜单里调整时：先把菜单挡板收起来，并把触屏层提到最上方，方便看到并拖动按键
-    if(bl&&bl.style.display!=='none'){menuHidBlocker=true;bl.style.display='none';}else{menuHidBlocker=false;}
-    touchUI.classList.add('layoutTop');
-    if(isTouch)touchUI.style.display='block';
-  }else{
-    touchUI.classList.remove('layoutTop');
-    if(menuHidBlocker&&bl){bl.style.display='';menuHidBlocker=false;}
-  }
+function openSettings(on){
+  spOpen=on;
+  var p=document.getElementById('settingsPanel');if(p)p.classList.toggle('on',on);
+  if(on){keys.KeyW=keys.KeyS=keys.KeyA=keys.KeyD=false;mouseDown=false;S.aiming=false;}
   menuPauseSync();
-}
-function beginLayoutFromMenu(){setLayoutEdit(true);}
-function openSettings(on){spOpen=on;var p=document.getElementById('settingsPanel');if(p)p.classList.toggle('on',on);if(on){keys.KeyW=keys.KeyS=keys.KeyA=keys.KeyD=false;mouseDown=false;S.aiming=false;}menuPauseSync();}
-if(isTouch){
-  layoutInit();
-  for(var _li=0;_li<layoutMovable.length;_li++){var _le=document.getElementById(layoutMovable[_li]);if(_le)layoutBindDrag(_le);}
-  window.addEventListener('resize',layoutClampAll);
-  var _g=document.getElementById('btnSettings');if(_g)_g.addEventListener('touchstart',function(e){e.preventDefault();e.stopPropagation();openSettings(true);},{passive:false});
-  var _e2=document.getElementById('spEdit');if(_e2)_e2.addEventListener('touchstart',function(e){e.preventDefault();openSettings(false);setLayoutEdit(true);},{passive:false});
-  var _r2=document.getElementById('spReset');if(_r2)_r2.addEventListener('touchstart',function(e){e.preventDefault();layoutResetAll();},{passive:false});
-  var _d=document.getElementById('lbDone');if(_d)_d.addEventListener('touchstart',function(e){e.preventDefault();layoutSave();setLayoutEdit(false);},{passive:false});
-  var _rb=document.getElementById('lbReset');if(_rb)_rb.addEventListener('touchstart',function(e){e.preventDefault();layoutResetAll();},{passive:false});
-  var _pb=document.getElementById('btnPause');if(_pb)_pb.addEventListener('touchstart',function(e){e.preventDefault();e.stopPropagation();openGameMenu();},{passive:false});
-  var _s3=document.getElementById('spJoy');if(_s3)_s3.addEventListener('input',function(){JOY_SCALE=parseFloat(_s3.value)||1;var v=document.getElementById('spJoyVal');if(v)v.textContent=JOY_SCALE.toFixed(2)+'x';tuningApplyUI();tuningSave();});
 }
 /* 【batch162b】设置面板的**通用**入口与控件 —— 此前整块包在 if(isTouch) 里，导致电脑端：
    点暂停菜单的「⚙设置」没反应（menuSetBtn 没注册 click）、面板关不掉（spClose 只有 touchstart）、
@@ -569,6 +385,109 @@ if(isTouch){
     try{ if(typeof showMsg==='function')showMsg(on?'🌑 后处理阴影：开':'🌑 后处理阴影：关','#9fd7ff'); }catch(_e){}
   });
   aoApply(aoLoad(),false);
+  /* 【1.9.50】瓦罗兰特模式开关 */
+  (function(){
+    /* 【1.9.55】客户端内升级
+       —— 只有内嵌客户端（电脑 exe / 手机 app）才有 /api/update/* 这个接口；
+          网页版 fetch 会 404，catch 掉就行，面板一直隐藏。
+       流程：检查 → 点升级 → 后台下载官方安装程序 → /S <当前目录> /等待 <pid> /启动
+             → 本进程退出 → 安装器覆盖同目录 → 自动启动新版本。
+       ⚠️ 升级只装回"当前这个目录"，绝不会改到 C 盘默认目录。 */
+    (function(){
+      var 盒=document.getElementById('spUpdateBox');
+      if(!盒) return;
+      var 版本标签=document.getElementById('spUpNow');
+      var 按钮=document.getElementById('spUpCheck');
+      var 提示行=document.getElementById('spUpHint');
+      var 检查中=false, 可升级=null;
+
+      /* 【1.9.61】版本号立刻用「正在运行的代码版本」GAME_VER 填上，不再等联网。
+         以前要等 3 秒定时 + 一次联网检查（慢时 11~23 秒）才填，期间一直是「—」；
+         网络失败就永远「—」，C 端解析不到 index.html 的 ?v= 时还会给「未知」；
+         网页版/手机版没有 /api 接口，整块被隐藏，连版本都看不到。 */
+      var 运行版本=(typeof GAME_VER!=='undefined'&&GAME_VER)?String(GAME_VER):'—';
+      版本标签.textContent=运行版本;
+      盒.style.display='block';
+
+      function 说(html){ if(提示行) 提示行.innerHTML=html; }
+      function 版本段(v){ var t=String(v||'').split('.'), r=[]; for(var i=0;i<3;i++){ var n=parseInt(t[i],10); r.push(isNaN(n)?0:n); } return r; }
+      function 版本比(a,b){ var x=版本段(a), y=版本段(b); for(var i=0;i<3;i++){ if(x[i]!==y[i]) return x[i]-y[i]; } return 0; }
+      function 没接口(因){
+        可升级=null;
+        if(按钮) 按钮.style.display='none';
+        说('当前版本 <b>'+运行版本+'</b>'+(因?'（'+因+'）':'')+'<br>网页版 / 手机版没有一键更新，装新版请手动安装安装包。');
+      }
+
+      function 查(){
+        if(检查中) return;
+        检查中=true; if(按钮) 按钮.disabled=true;
+        说('正在检查…');
+        fetch('/api/update/check',{cache:'no-store'}).then(function(r){
+          return r.text().then(function(t){
+            var j=null; try{ j=JSON.parse(t); }catch(e){}
+            return { 状态:r.status, 体:j };
+          });
+        }).then(function(o){
+          检查中=false;
+          if(按钮) 按钮.disabled=false;
+          var j=o.体;
+          if(!j){ 没接口('本地没有更新接口'); return; }      /* 接口不存在 → 网页版 / 手机版 */
+          if(按钮) 按钮.style.display='';
+          if(!j.ok){
+            if(o.状态===503) 说('上一次检查还没结果，稍等一下再点一次。');
+            else 说('检查失败：'+((j.err)||'未知原因')+'<br>当前版本 <b>'+运行版本+'</b>');
+            return;
+          }
+          /* 主显示永远是「运行版本」；安装文件版本不一致只加一句说明，不换掉版本号 */
+          var 备注='';
+          if(j.now&&j.now!==运行版本)
+            备注='<br><span style="color:#ffb347">安装文件版本 '+j.now+' 与运行版本 '+运行版本+' 不一致（文件被单独替换过？），已按运行版本判断。</span>';
+          if(j.new&&版本比(j.new,运行版本)>0){
+            可升级=j.new;
+            if(按钮) 按钮.textContent='⬆ 升级到 '+j.new+' 并重启';
+            说('发现新版本 <b>'+j.new+'</b>：点上面的按钮就会自动下载安装，<b>装完自己重启</b>（同目录覆盖，存档不动）。'+备注);
+          }else{
+            可升级=null;
+            if(按钮) 按钮.textContent='已是最新';
+            说('已经是最新版本（'+运行版本+'）。'+备注);
+          }
+        }).catch(function(){       /* fetch 直接失败：本机服务没响应，可重试 */
+          检查中=false;
+          if(按钮){ 按钮.disabled=false; 按钮.style.display=''; }
+          说('没连上本地更新服务，点「检查更新」再试一次。<br>当前版本 <b>'+运行版本+'</b>');
+        });
+      }
+
+      按钮.addEventListener('click', function(){
+        if(!可升级){ 查(); return; }
+        按钮.disabled=true;
+        说('正在下载安装包，<b>装完会自动重启</b>，请等一会儿（别关窗口）…');
+        fetch('/api/update/apply',{cache:'no-store'}).then(function(){ 
+          说('安装程序已启动：本窗口马上退出，装好会自动开新版本。');
+        }).catch(function(){ 按钮.disabled=false; 说('启动安装失败，请稍后再试。'); });
+      });
+
+      /* 先藏按钮：确认有接口再显示，网页版就不会闪一个按了没反应的按钮 */
+      if(按钮) 按钮.style.display='none';
+      setTimeout(查, 2500);
+    })();
+
+    var 按钮=document.getElementById('spValToggle');
+    var 标签=document.getElementById('spValVal');
+    function 刷() {
+      if(标签)标签.textContent=瓦罗兰特?'瓦罗兰特':'默认';
+      if(按钮)按钮.textContent=瓦罗兰特?'切回「默认模式」（正常散射）':'切换为「瓦罗兰特模式」';
+    }
+    if(按钮)按钮.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      瓦罗兰特=!瓦罗兰特;
+      try{localStorage.setItem('gunGame.valorant.v1',瓦罗兰特?'1':'0');}catch(_e){}
+      S.valSpread=0;S.valFiring=0;S.valPitch0=0;
+      try{ if(typeof showMsg==='function')showMsg(瓦罗兰特?'🔫 瓦罗兰特模式：首发零散射':'已切回默认射击模式','#8ee6ff'); }catch(_e){}
+      刷();
+    });
+    刷();
+  })();
 })();
 
 // ==================== 电脑端键位设置面板 ====================

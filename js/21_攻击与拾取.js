@@ -1,5 +1,116 @@
 // ==================== ATTACK ====================
+/* 【1.9.51】瓦罗兰特模式
+   开启后原版枪/内置枪：
+     · 连射前 4 发完全零散射（第一枪到第四枪都打在同一点）
+     · 第 5 发起才开始扩，每发一点点，上限只有 0.46°（比一根手指头小得多）
+     · 枪线一点点上抬到一个固定高度就停
+   模组枪不参与（照旧用模组自己的数值）。 */
+var 瓦罗兰特 = false;
+try { 瓦罗兰特 = localStorage.getItem('gunGame.valorant.v1') === '1'; } catch (e) { }
+var VAL_免散发数 = 4;       /* 连射的前 4 发绝对准，第 5 发起才有散射 */
+var VAL_连射窗 = 300;       /* 两发间隔超过 300ms → 重新算"第一发"（前 4 发又免散） */
+var VAL_每发 = 0.0014;      /* 第 5 发起每发增加（rad）≈ 0.08° */
+var VAL_上限 = 0.008;       /* 散射上限 ≈ 0.46°（1366×768 下准星只张 4 像素） */
+var VAL_回弹 = 0.045;       /* 停火后每秒收多少 */
+/* 【1.9.51】走位散射：瓦罗兰特模式下站定才是准的，一走动/一跳就散得厉害。
+   S.velX/velZ 的单位是「米/帧@60fps」，×60 才是 m/s（BASE_SPEED=0.10 → 6 m/s，冲刺 9 m/s）。 */
+var VAL_走位散射 = 0.030;   /* 走满速（6 m/s）额外 ≈ 1.7° */
+var VAL_冲刺散射 = 0.045;   /* 冲刺（9 m/s）额外 ≈ 2.6° */
+var VAL_空中散射 = 0.055;   /* 离地再叠 ≈ 3.1°（跳起来基本打不准） */
+function 瓦机动散射() {
+  if (typeof S === 'undefined' || !S) return 0;
+  var vx = (typeof S.velX === 'number') ? S.velX : 0;
+  var vz = (typeof S.velZ === 'number') ? S.velZ : 0;
+  var 速 = Math.sqrt(vx * vx + vz * vz) * 60;
+  var sp;
+  if (速 <= 6) sp = VAL_走位散射 * (速 / 6);
+  else sp = VAL_走位散射 + (VAL_冲刺散射 - VAL_走位散射) * Math.min(1, (速 - 6) / 3);
+  /* 开镜时有一点点依托，走位惩罚减半（但不归零） */
+  sp *= (1 - (S.aimProgress || 0) * 0.5);
+  if (!S.onGround) sp += VAL_空中散射;
+  return sp;
+}
+/* 【1.9.52】瓦罗兰特后坐力：真正的「弹道图案」，不是连续上抬。
+   瓦罗兰特的枪线是这样走的（以 Vandal 为代表）：
+     · 每发子弹把视角按**固定图案**推一下 —— 前 3-4 发几乎纯垂直，之后开始左右画 S
+     · 垂直抬到一定高度就**停住**，不会无限往上飘
+     · 松手后整条枪线**自动回落到你开火前瞄的那个点**（这就是"压枪"能成立的前提）
+   所以偏移量单独存在 S.valRecoilY/X 里，相机显示 = pitch + 偏移；
+   停火 0.09 秒后偏移量指数衰减回 0 —— pitch（你鼠标控制的瞄准点）一点没变。
+   ⚠️ 以前是 `pitch=min(valPitch0+0.045, pitch+每帧上抬)`：直接改 pitch，
+      抬上去就永远回不来，也没有水平摆动，那不叫后坐力，那是"把镜头掰上去"。 */
+/* 【1.9.53】关键：**弹道和准星要分开**。
+   瓦罗兰特里你看到的是——准星几乎不动，子弹却一路往上飘，要自己把鼠标往下压。
+   （上一版把"上抬"全加在相机上，所以准星和弹道永远黏在一起，那不叫后坐力。）
+   现在：图案先累加成"弹道偏移"，然后
+     · 相机只拿 VAL_视觉比（15%）→ 准星轻微上抬，视觉有反馈
+     · 射线方向拿剩下的 85% → 子弹真的往上飘
+   两边合起来正好是图案的 100%：你压枪把准星拉到弹着点时，弹道也跟着回到准星上。 */
+var VAL_视觉比 = 0.15;
+/* 【1.9.54】第一发完全不带后坐力（表第 0 项 = 0），第 2 发才起来；
+   总量也从 10.4° 收到 5.5°，压枪压力小一半。 */
+var VAL_垂直表 = [0, 0.0080, 0.0100, 0.0110, 0.0110, 0.0100, 0.0090, 0.0090, 0.0080, 0.0070, 0.0070, 0.0060];  /* 弹道合计约 5.5° */
+var VAL_水平表 = [0, 0, 0, 0.0018, 0.0038, 0.0052, 0.0030, -0.0015, -0.0045, -0.0062, -0.0042, 0.0008, 0.0048, 0.0060, 0.0032, -0.0022];
+function 瓦后坐力一发() {
+  var n = (S.valBurst || 1) - 1;                 /* 本发在这一串里的序号（第 1 发 = 0） */
+  var 垂 = (n < VAL_垂直表.length) ? VAL_垂直表[n] : 0;
+  var 横 = (n < VAL_水平表.length) ? VAL_水平表[n] : 0;
+  var k = 1 - (S.aimProgress || 0) * 0.25;       /* 开镜后坐力小一点 */
+  S.valRecoilY = (S.valRecoilY || 0) + 垂 * k;
+  S.valRecoilX = (S.valRecoilX || 0) + 横 * k;
+}
+function 瓦后坐力回落(dt) {
+  if (typeof 瓦罗兰特生效 !== 'function' || !瓦罗兰特生效()) {
+    S.valRecoilY = 0; S.valRecoilX = 0; return;
+  }
+  if (performance.now() - (S.valShotAt || 0) < 200) return;  /* 还在连射，不回（200ms 覆盖慢射速，别在连射中间往下掉） */
+  var k = Math.min(1, dt * 15);                  /* 约 0.18 秒回到原点：要落就干脆落，别慢慢往下飘 */
+  S.valRecoilY -= (S.valRecoilY || 0) * k;
+  S.valRecoilX -= (S.valRecoilX || 0) * k;
+  if (Math.abs(S.valRecoilY) < 0.0004) S.valRecoilY = 0;
+  if (Math.abs(S.valRecoilX) < 0.0004) S.valRecoilX = 0;
+}
+function 瓦罗兰特生效() {
+  if (!瓦罗兰特) return false;
+  if (typeof currentWeapon === 'undefined' || currentWeapon !== WEAPON_GUN) return false;
+  /* 原版枪（curGun=0）或内置枪；模组枪一律不生效 */
+  try {
+    if (curGun === 0) return true;
+    if (typeof BUILTIN_GUNS !== 'undefined' && BUILTIN_GUNS[curGun]) {
+      /* 【1.10.10】栓动狙击枪**不参与**瓦罗兰特模式。
+         瓦里的 Operator 也是"腰射飘、开镜准"，本身没有 Vandal 那套连射弹道图案；
+         套用过来会让狙击枪被强行加上走位散射 + 单调上抬，反而怪。
+         判据用 def.boltAction —— 目前只有「引力」是。 */
+      if (BUILTIN_GUNS[curGun].boltAction) return false;
+      return true;
+    }
+  } catch (e) { }
+  return false;
+}
 var raycaster=new THREE.Raycaster(),screenCenter=new THREE.Vector2(0,0);
+/* 【1.9.53】把后坐力里"准星看不到的那部分"加到子弹方向上。
+   绕相机右轴转 pitch、绕世界上轴转 yaw —— 和 Euler 'YXZ' 同一套约定。 */
+var _瓦上=new THREE.Vector3(0,1,0), _瓦右=new THREE.Vector3();
+function 瓦弹道偏移抬枪(方向){
+  var k = 1 - ((typeof VAL_视觉比==='number')?VAL_视觉比:0.15);
+  var dy = (S.valRecoilY||0) * k;
+  var dx = (S.valRecoilX||0) * k;
+  if(!dy && !dx) return;
+  /* ⚠️ 【1.9.59】以前是 Euler(dy,dx,0,'YXZ')，等价于**绕世界 X 轴**抬仰角。
+     世界 X 轴只有在朝 -Z 看时才是"上"，实测：
+       朝 -Z → +68mrad（对）／朝 +Z → -68mrad（整条弹道下坠）／朝 ±X → 0（完全不抬）
+     所以症状是"偶尔开一枪整条弹道全部下坠"，其实只取决于你面朝哪边。
+     现在：方位绕世界上轴（正常），仰角绕**相机右轴**（= 方向 × 世界上方向），
+     这根轴永远水平、永远垂直于视线，跟相机自身的 pitch 是同一根轴。 */
+  if(dx) 方向.applyAxisAngle(_瓦上, dx);
+  if(dy){
+    _瓦右.copy(方向).cross(_瓦上);
+    if(_瓦右.lengthSq() < 1e-8) _瓦右.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    else _瓦右.normalize();
+    方向.applyAxisAngle(_瓦右, dy);
+  }
+  方向.normalize();
+}
 var obstacleBoxes=[];// 围栏的包围盒从 y0 开始（不是从地面）：刀/枪的射线只在栏杆那一层挡，
 // 站在地面上朝塔的方向开枪不会被「看不见的栏杆」吃掉。
 function buildObstacleBoxes(){obstacleBoxes=[];for(var oi=0;oi<obstacles.length;oi++){var o=obstacles[oi];var yb=(o.rail||o.slab)?o.y0:((typeof o.y0==='number')?o.y0:0);var yt=(typeof o.y1==='number')?o.y1:(o.h||0);obstacleBoxes.push(new THREE.Box3(new THREE.Vector3(o.minX,yb,o.minZ),new THREE.Vector3(o.maxX,yt,o.maxZ)));}}  // 【batch178】墙的碰撞盒尊重 y0/y1
@@ -80,13 +191,30 @@ function attack(){if(!canAct())return;var now=performance.now();
   try{ var _gdK=activeGunDef(); if(_gdK&&_gdK.memorial&&typeof 抛壳==='function')抛壳(); }catch(_eK){}
   /* 【batch206】枪机往复：抛壳窗里那根栓后退一下再复进，一枪一次（只有带 animPart='bolt' 的枪有）*/
   try{ if(typeof _枪机击发==='function')_枪机击发(now); }catch(_eB){}
-  netShotSeq++;updateAmmo();playShot();S.recoilKick=0.08*S.recoilMul;S.recoilRot=0.15*S.recoilMul;/* 【batch184f】半自动(狙击/手枪)每发视角后坐冲量：原只有枪身抖且开镜归零→没后坐力；现每发给视角一跳(开镜减弱到60%不归零)。全自动走原"持续上抬"，不再叠这层。基值0.032(用户嫌跳太高/回正太快→由原0.05下调)+按recoilMul缩放 */if(S.auto===false)S.recoilPunch=(S.recoilPunch||0)+0.032*S.recoilMul*(1-S.aimProgress*0.4);muzzleLight.intensity=3;setTimeout(function(){muzzleLight.intensity=0;},40);raycaster.setFromCamera(screenCenter,camera);var _range=(typeof S.range==='number')?S.range:80;var _pellets=(typeof S.pellets==='number')?S.pellets:1;var _spreadB=(typeof S.spread==='number')?S.spread:0;var _hip=0.020*S.hipSpreadMul;
+  netShotSeq++;updateAmmo();playShot();if(typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效()){var _vn=performance.now();if(_vn-(S.valShotAt||0)>VAL_连射窗)S.valBurst=0;S.valBurst=(S.valBurst||0)+1;S.valShotAt=_vn;if(S.valBurst>VAL_免散发数)S.valSpread=Math.min(VAL_上限,(S.valSpread||0)+VAL_每发);else S.valSpread=0;瓦后坐力一发();}S.recoilKick=0.08*S.recoilMul;S.recoilRot=0.15*S.recoilMul;/* 【batch184f】半自动(狙击/手枪)每发视角后坐冲量：原只有枪身抖且开镜归零→没后坐力；现每发给视角一跳(开镜减弱到60%不归零)。全自动走原"持续上抬"，不再叠这层。基值0.032(用户嫌跳太高/回正太快→由原0.05下调)+按recoilMul缩放 */if(S.auto===false)S.recoilPunch=(S.recoilPunch||0)+0.032*S.recoilMul*(1-S.aimProgress*0.4)*((typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效())?0.35:1);muzzleLight.intensity=3;setTimeout(function(){muzzleLight.intensity=0;},40);raycaster.setFromCamera(screenCenter,camera);if(typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效())瓦弹道偏移抬枪(raycaster.ray.direction);var _range=(typeof S.range==='number')?S.range:80;var _pellets=(typeof S.pellets==='number')?S.pellets:1;var _spreadB=(typeof S.spread==='number')?S.spread:0;var _hip=0.020*S.hipSpreadMul;var _val=(typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效());
 /* 【开镜散布·完全由模组 def 控制，无需改主文件】读取当前枪 def 的 adsSpreadKeep（开镜保留的散射比例：0=开镜无散射）。
    若未显式设置而 def.type==='shotgun' 则默认保留 35%（散弹枪开镜仍有散射）；其它枪默认 0（开镜完全无散射）。
    模组作者只要给武器 def 写 type:'shotgun' 或 adsSpreadKeep 即可，无需改动本文件。 */
 var _wdGun=(currentWeapon===WEAPON_GUN)?activeGunDef():null;
 var _adsKeep=(_wdGun&&typeof _wdGun.adsSpreadKeep==='number')?_wdGun.adsSpreadKeep:(_wdGun&&_wdGun.type==='shotgun'?0.35:0);
-for(var _p=0;_p<_pellets;_p++){var _spr=_hip*(1-S.aimProgress)+(_spreadB>0?_spreadB*(1-(1-_adsKeep)*S.aimProgress):0);if(S.sprinting)_spr+=0.020;var _sd=raycaster.ray.direction.clone();_sd.x+=(Math.random()-0.5)*2*_spr;_sd.y+=(Math.random()-0.5)*2*_spr;_sd.z+=(Math.random()-0.5)*2*_spr;_sd.normalize();raycaster.set(camera.position,_sd);var obsDist=Infinity,obsPoint=null;var _obsPair=(obstacleBoxes.length===obstacles.length);for(var oi=0;oi<obstacleBoxes.length;oi++){if(_obsPair&&obstacles[oi]&&obstacles[oi].spWall)continue;var op=new THREE.Vector3();if(raycaster.ray.intersectBox(obstacleBoxes[oi],op)!==null){var od=op.distanceTo(camera.position);if(od<obsDist){obsDist=od;obsPoint=op;}}}
+for(var _p=0;_p<_pellets;_p++){var _spr=_hip*(1-S.aimProgress)+(_spreadB>0?_spreadB*(1-(1-_adsKeep)*S.aimProgress):0);if(S.sprinting)_spr+=0.020;if(_val)_spr=(S.valSpread||0)+((typeof 瓦机动散射==='function')?瓦机动散射():0);var _sd=raycaster.ray.direction.clone();
+/* 【1.9.59】瓦罗兰特：随机散射只绕竖直轴左右摊开，仰角 100% 由后坐力图案决定。
+     ⚠️ 以前 x/y/z 三个方向都对称抖 —— 垂直方向被「单调上抬的图案」和
+     「正负随机的抖动」同时决定，必然有概率出现"这一发比上一发低"
+     （站定 6.8mrad、走动 30mrad、跳跃 87mrad）。
+     绕 Y 轴旋转只改方位、不动仰角，所以弹道严格只往上，绝不回头。 */
+if(_val){
+  var _角=(Math.random()-0.5)*2*_spr;
+  var _ca=Math.cos(_角), _sa=Math.sin(_角);
+  var _nx=_sd.x*_ca+_sd.z*_sa, _nz=-_sd.x*_sa+_sd.z*_ca;
+  _sd.set(_nx,_sd.y,_nz);
+}else{
+  _sd.x+=(Math.random()-0.5)*2*_spr;
+  _sd.y+=(Math.random()-0.5)*2*_spr;
+  _sd.z+=(Math.random()-0.5)*2*_spr;
+  _sd.normalize();
+}
+raycaster.set(camera.position,_sd);var obsDist=Infinity,obsPoint=null;var _obsPair=(obstacleBoxes.length===obstacles.length);for(var oi=0;oi<obstacleBoxes.length;oi++){if(_obsPair&&obstacles[oi]&&obstacles[oi].spWall)continue;var op=new THREE.Vector3();if(raycaster.ray.intersectBox(obstacleBoxes[oi],op)!==null){var od=op.distanceTo(camera.position);if(od<obsDist){obsDist=od;obsPoint=op;}}}
 /* 【batch187】掩体墙跳过上面的 AABB 粗筛（那个框对斜墙会盖住空气），改用定向射线拿真实交点 */if(typeof spWallRayHit==='function'){var _rd=raycaster.ray.direction;var _wh=spWallRayHit(camera.position.x,camera.position.y,camera.position.z,_rd.x,_rd.y,_rd.z,90);if(_wh&&_wh.dist<obsDist){obsDist=_wh.dist;obsPoint=_wh.point;}}if(typeof 地形射线命中==='function'){var _tgd=raycaster.ray.direction;var _th=地形射线命中(camera.position.x,camera.position.y,camera.position.z,_tgd.x,_tgd.y,_tgd.z,Math.min(120,_range));if(_th&&_th.dist<obsDist){obsDist=_th.dist;obsPoint=_th.point;}}for(var i=enemies.length-1;i>=0;i--){var e=enemies[i];if(e.hp<=0||e.友军)continue;var hits=raycaster.intersectObjects(e.g.children,true);   /* 【batch248】友军兵（自己石棺里爬出来的）不吃子弹/刀 */
             /* 【batch246】天上目标再加一道**包围球**兜底：只要准星线从机身中心 5.6 米内穿过就算命中。
                直升机 28 米高、一直在绕圈，光靠细网格射线在实战里太苛刻（用户："拿枪打不到"）。 */

@@ -191,14 +191,14 @@ var HERO_SP=[
     设定（第三章剧情交代）：每个人在极限战斗中沉淀出的「熟练度」就是与焘芯的共振频率，
     满级那一刻第二形态觉醒 —— 蚀日者觉醒后不再是"借太阳的光"，而是自身化为焚曜。 */
  {k:'eclipse_sp', base:'eclipse', name:'焚曜', full:'蚀日者 · 焚曜', tag:'日蚀化身', icon:'🌞', css:'#ffb347',
-   passive:'日冕永昼：站在**自己创造**的蚀日区域（黑日圈）里时，技能冷却恢复速度 **×2**、每秒回 **3 点**血 —— 原版只在圈里加速，SP 是把圈变成充电桩。',
+   passive:'**日蚀熔核**：踩在自己造的蚀日区域 / 身边烧着敌人时，体内积累「熔核」（0~100）。\n· 命中敌人 +8、灼烧每跳 +3、击杀 +25、站在自己的圈里每秒 +5\n· **熔核 ≥50：一/二技能无视冷却直接放**（扣 50 熔核，冷却不动）\n· **熔核满 100：大招冷却立刻清零**\n熔核就是 SP 的全部玩法 —— 打得越凶，放得越勤。',
   skills:[
-   {k:'sp_solarflare', name:'日冕喷发', icon:'🌅', cd:18, dur:0,
-    desc:'以自身为中心爆发一轮**日冕光柱**：**12 米内**的敌人被**致盲 2.5 秒**并受到 **45 点**灼烧伤害；自己同时获得 **4 秒日冕护盾（减伤 60%）**与 **2.5 秒加速**。原版黑日要抛出去，SP 是**从自己身上烧出去**。'},
-   {k:'sp_sunfall', name:'堕日', icon:'☄️', cd:22, dur:0,
-    desc:'按 V **拿在手里** → **长按开火键**瞄准 → 松手抛出一颗**坠落的小太阳**：落地形成 **6 秒燃烧区**（半径 4.5 米、每秒 **18 点**火焰伤害并**点燃**）。原版是挂在天上的黑日，SP 是**把太阳砸进地里**。'},
-   {k:'sp_eclipseveil', name:'蚀日 · 白夜', icon:'🌘', cd:80, dur:8,
-    desc:'终极：天空被黑日遮蔽，**全图敌人致盲 4 秒**；自己 **8 秒**内减伤 **70%**、移速 **+30%**，一颗**黑日跟着自己走**，每 1.2 秒对 **9 米内**的敌人脉冲 **15 点**灼烧。原版是放装置，SP 是**自己成为天象**。'}
+   {k:'sp_solarflare', name:'日冕爆流', icon:'🌅', cd:15, dur:0,
+    desc:'自身为圆心炸开一圈**日冕冲击**：**14 米**内敌人受 **70 伤 + 致盲 3.2 秒 + 点燃 4 秒**；自己获得 **6 秒日冕护盾（减伤 70%）**与 **3.5 秒加速**。\n**联动**：若脚下有自己丢的「焚天」燃烧区，会把它**整个引爆** —— 区内敌人再吃 **90 伤**，爆完向外**扩散一圈余烬**。'},
+   {k:'sp_sunfall', name:'焚天坠日', icon:'☄️', cd:22, dur:0,
+    desc:'按 V 拿在手里 → 长按开火键瞄准 → 松手砸出**坠落的小太阳**：落地瞬间把 **8 米**内的敌人**拽向爆心**并**点燃**，随后留下 **6 秒燃烧区**（半径 4.5 米、每秒 18 伤）。\n**联动**：燃烧区里死掉的敌人会留下**余烬**（半径 3 米 / 4 秒 / 每秒 12 伤，能连锁点燃）。'},
+   {k:'sp_eclipseveil', name:'日蚀降临', icon:'🌘', cd:68, dur:10,
+    desc:'**三段式终极**，和原版「放个装置」完全不是一回事：\n**① 降临**：全图敌人致盲 5.5 秒，一颗黑日从天砸下，18 米**领域跟着你走** 10 秒。\n**② 白夜**：领域内敌人移速 −50%、被**日蚀标记**（受到的伤害 +25%），每 0.9 秒脉冲 **22 伤 + 点燃**；你自己减伤 80%、移速 +45%。\n**③ 滚雪球**：领域内每击杀 1 人 → 持续时间 **+2 秒**（最多 +10）、熔核 +25。\n**二段引爆**：领域还在时**再按一次大招键** → 「日蚀 · 终焉」，领域塌缩，18 米内 **120 伤 + 击退 + 致盲 2 秒**。'}
   ]}
 ];
 // 天狼技能参数（与服务端 FLASH_R / FLASH_MS 同口径）
@@ -268,7 +268,7 @@ var HERO_YINGYUE=6;                                               // 【batch158
    【重要】锁定只挡「选人 / 换英雄」两个入口，**不动 heroLoad / SK.idx 这些底层** ——
    否则探针里拿 HERO_ECLIPSE 做功能断言会全崩。 */
 var STORY_CLEAR_KEY='gunGame.storyClear.v1';
-var UNLOCK={lightning:false,eclipse:false,station:false,general:false,code:'',name:'',t:0};   // 【batch147】eclipse＝蚀日者（控制台指令解锁）；【batch181】station＝第三章「日陨之地」通关记录（无解锁奖励，只作记录）；【batch245】general＝大将军（打完剧情第四章才解锁）
+var UNLOCK={lightning:false,eclipse:false,station:false,general:false,yueyin:false,code:'',name:'',t:0};   // 【batch147】eclipse＝蚀日者（控制台指令解锁）；【batch181】station＝第三章「日陨之地」通关记录（无解锁奖励，只作记录）；【batch245】general＝大将军（打完剧情第四章才解锁）
 var HERO_LOCKED={};
 /* 【batch245】下标 → UNLOCK 里的字段名：新英雄要"通关才解锁"时，在注册英雄的地方挂一行即可，
    不用再回来改 heroLocked()（这个函数被选人界面 / 读档 / 联机前后好几处调用，改一次容易漏）。 */
@@ -281,12 +281,12 @@ function unlockLoad(){
   try{
     var v=localStorage.getItem(STORY_CLEAR_KEY);if(!v)return;
     var d=JSON.parse(v)||{};
-    UNLOCK.lightning=!!d.lightning;UNLOCK.eclipse=!!d.eclipse;UNLOCK.station=!!d.station;UNLOCK.general=!!d.general;UNLOCK.code=d.code||'';UNLOCK.name=d.name||'';UNLOCK.t=d.t||0;
+    UNLOCK.lightning=!!d.lightning;UNLOCK.eclipse=!!d.eclipse;UNLOCK.station=!!d.station;UNLOCK.general=!!d.general;UNLOCK.yueyin=!!d.yueyin;UNLOCK.code=d.code||'';UNLOCK.name=d.name||'';UNLOCK.t=d.t||0;
   }catch(e){}
 }
 function unlockSave(){
   try{localStorage.setItem(STORY_CLEAR_KEY,JSON.stringify(
-    {lightning:!!UNLOCK.lightning,eclipse:!!UNLOCK.eclipse,station:!!UNLOCK.station,general:!!UNLOCK.general,code:UNLOCK.code||'',name:UNLOCK.name||'',t:UNLOCK.t||Date.now()}));}catch(e){}
+    {lightning:!!UNLOCK.lightning,eclipse:!!UNLOCK.eclipse,station:!!UNLOCK.station,general:!!UNLOCK.general,yueyin:!!UNLOCK.yueyin,code:UNLOCK.code||'',name:UNLOCK.name||'',t:UNLOCK.t||Date.now()}));}catch(e){}
 }
 /* 【batch181】第三章通关：只记一笔「打过了」（**不解锁任何东西** —— SP 靠熟练度满级解锁） */
 function storyClearStation(){

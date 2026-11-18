@@ -50,10 +50,14 @@ var CUR_MODE=null;
 var _modeLastT=0;
 function curMode(){try{return CUR_MODE?GAME_MODES[CUR_MODE]:null;}catch(e){return null;}}
 function updateWave(){var _wv=document.getElementById('wave');if(!_wv)return;
+  /* 【1.9.61】剧情模式这一栏整条藏掉：它显示的 storyGoalText() 和顶部 #storyHud 完全重复。
+     放在这里每帧自检（而不是 CSS 类），异常退出剧情也不会残留隐藏状态。 */
+  var _在剧情=(typeof STORY_!=='undefined'&&STORY_.on);
+  if(_在剧情){ if(_wv.style.display!=='none')_wv.style.display='none'; return; }
+  if(_wv.style.display==='none')_wv.style.display='';
   /* 玩法模式可以自己决定 HUD 这一栏显示什么（比如"剩余 42 人 / 决赛圈"） */
   var _gmh=curMode();if(_gmh&&typeof _gmh.hud==='function'){try{var _hv=_gmh.hud();if(_hv){_wv.textContent=_hv;return;}}catch(e){}}
   if(netIsMulti()){_wv.textContent='线上对战 · '+((NET.list&&NET.list.length)?NET.list.length:1)+' 人';return;}
-  if(typeof STORY_!=='undefined'&&STORY_.on){_wv.textContent=storyGoalText();return;}      // 【batch126】剧情模式不显示波次
   _wv.textContent='第'+S.wave+'波 | 剩余:'+S.left;}
 function updateAmmo(){
   /* 【batch218】手里拿着投掷物时枪已经收起来了，右下角的弹匣数没有意义 —— 直接藏掉。
@@ -229,9 +233,10 @@ function 波次枪皮币(波){
    storyClearEclipse、第四章走 storyClearGeneral）。按"通关次数"记最稳，且天然封顶 200。 */
 function 领剧情枪皮币(){
   var n=0; try{ n=parseInt(localStorage.getItem('gunGame.skinCoin.story')||'0',10)||0; }catch(e){}
-  if(n>=4)return 0;
+  /* 【1.10.1】第五章「月面守卫战」上线 → 剧情枪皮币上限 4 → 5 章（共 250） */
+  if(n>=5)return 0;
   try{ localStorage.setItem('gunGame.skinCoin.story',String(n+1)); }catch(e){}
-  给枪皮币(50,'剧情通关 '+(n+1)+'/4');
+  给枪皮币(50,'剧情通关 '+(n+1)+'/5');
   return 50;
 }
 /* 是否已购买某把枪皮（长明用 localStorage 里的 owned 做权威，这里只是 UI 判据） */
@@ -241,6 +246,10 @@ function 已买枪皮(w){
     /* 【batch273】南瓜鬼宴：以 localStorage 的购买标记为准 */
     if(w&&typeof HALLOWEEN_SLOT==='number'&&w.idx===HALLOWEEN_SLOT){
       return (typeof 万圣已解锁==='function')&&万圣已解锁();
+    }
+    /* 【1.10.9】引力：同上 */
+    if(w&&typeof GRAVITY_SLOT!=='undefined'&&typeof GRAVITY_SLOT==='number'&&w.idx===GRAVITY_SLOT){
+      return (typeof 引力已解锁==='function')&&引力已解锁();
     }
   }catch(e){}
   return !(w&&w.锁);
@@ -309,6 +318,11 @@ function renderBuyGrid(){
         try{ if(typeof 纪念解锁==='function')纪念解锁(true); }catch(e){}
         try{ if(typeof 纪念刷新锁==='function')纪念刷新锁(); }catch(e){}
         try{ showMsg('🕯️ 已购买「长明」· 按 B 换枪','#ffd88a'); }catch(e){}
+      }else if(typeof GRAVITY_SLOT!=='undefined'&&typeof GRAVITY_SLOT==='number'&&idx===GRAVITY_SLOT){
+        /* 【1.10.9】引力枪皮 */
+        try{ if(typeof 引力解锁==='function')引力解锁(true); }catch(e){}
+        try{ if(typeof 引力刷新锁==='function')引力刷新锁(); }catch(e){}
+        try{ showMsg('🌑 已购买「引力」· 按 B 换枪','#9fd8ff'); }catch(e){}
       }else{
         try{ if(typeof 万圣解锁==='function')万圣解锁(true); }catch(e){}
         try{ if(typeof 万圣刷新锁==='function')万圣刷新锁(); }catch(e){}

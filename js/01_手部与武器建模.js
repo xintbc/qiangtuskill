@@ -1013,13 +1013,30 @@ function rebuildWeaponModel(){
     currentMagMesh.position.set(curMagPos.x,curMagPos.y,curMagPos.z);
     weaponGroup.add(currentMagMesh);
   }
-  var _ne=document.getElementById('weapon-name'); if(_ne)_ne.textContent=(_wd&&_wd.name)?_wd.name:(_wdK&&_wdK.name)?(_wdK.icon||'🔪')+' '+_wdK.name:(_isGun?'🔫 步枪':'🔪 战术刀');
+  /* 【1.10.3】拿着大招装置（如月引的潮汐之筒）时，左下角要显示装置名。
+     【1.10.5】原来这里写成 `{...; return;}` —— 那个 return 会把下面一连串
+     applyWeaponDef / updateWeaponHUD / 视角武器合批全部跳过（大招期间切武器就不合批、HUD 也不刷）。
+     改成条件分支，不再提前返回。 */
+  var _ne=document.getElementById('weapon-name');
+  if(_ne){
+    if(typeof SK!=='undefined'&&SK&&SK.yUlt)_ne.textContent='🌀 潮汐之筒';
+    /* 【1.10.6】手里有道具 → 名字归道具，别被"刚重建出来的枪名"盖掉 */
+    else if(typeof SK!=='undefined'&&SK&&SK.hold)_ne.textContent=(SK.holdName||SK.hold.名称||'投掷物');
+    else{
+      _ne.textContent=(_wd&&_wd.name)?_wd.name:(_wdK&&_wdK.name)?(_wdK.icon||'🔪')+' '+_wdK.name:(_isGun?'🔫 步枪':'🔪 战术刀');
+      /* 【1.10.7】记一份"主武器该显示什么"。道具放下之后要靠它把名字换回来 ——
+         以前依赖 data-主 属性，但那条链一旦被别的路径提前删掉，名字就永久停在道具名上。 */
+      try{ window.__主武器显示名=_ne.textContent; }catch(_e){}
+    }
+  }
   /* 【batch218b】如果这一刻手里正拿着投掷物（极端情况：模组强行重建了武器模型），
      右下角要还原成那件东西的名字，而不是刚重建出来的枪名。 */
   try{
     if(typeof SK!=='undefined'&&SK&&SK.hold&&_ne){
       _ne.setAttribute('data-主',_ne.textContent);
-      _ne.textContent=SK.hold.名称||'投掷物';
+      /* 【1.10.3】名称丢了就按「第几个技能」回查英雄技能表 —— 新英雄/模组道具
+         以前查不到就落到「投掷物」，左下角看着像拿了颗手雷。 */
+      _ne.textContent=SK.holdName||SK.hold.名称||(function(){try{var _h=HEROES[SK.idx];var _s=_h&&_h.skills&&_h.skills[SK.hold.si];return (_s&&_s.name)||'投掷物';}catch(e){return '投掷物';}})();
     }
   }catch(_e5){}
   applyWeaponDef();
@@ -1169,7 +1186,24 @@ function closeWeaponSelect(){ if(!weaponSelectOpen())return; var el=document.get
     var _c=document.getElementById('wselClose'); if(_c)_c.addEventListener('click',function(e){e.stopPropagation();closeWeaponSelect();});
   }
 })();
-function updateWeaponHUD(){var _wd=curWDef();var _isGun=(currentWeapon===WEAPON_GUN)||(_wd&&!_wd.melee&&_wd.ammo!==false);var el=document.getElementById('ammo');if(!el)return;if(_isGun){el.innerHTML=S.ammo+' <span>/'+S.maxAmmo+'</span>';el.style.display='block';var rt=document.getElementById('reload-text');if(rt)rt.style.display='block';}else{el.style.display='none';var rt=document.getElementById('reload-text');if(rt)rt.style.display='none';}}
+function updateWeaponHUD(){
+  /* 【1.10.3】大招装置名每帧兜底：拿着月引的潮汐之筒时左下角显示装置名，
+     放下时把主武器名原样还原（data-主 里存着）。 */
+  try{
+    var _n=document.getElementById('weapon-name');
+    if(_n){
+      if(typeof SK!=='undefined'&&SK&&SK.yUlt){
+        if(!_n.getAttribute('data-主'))_n.setAttribute('data-主',_n.textContent);
+        if(_n.textContent!=='🌀 潮汐之筒')_n.textContent='🌀 潮汐之筒';
+      }else if((typeof SK==='undefined'||!SK||!SK.hold)&&_n.getAttribute('data-主')){
+        /* 【1.10.6】手里拿着道具时**不许**还原成主武器名 ——
+           rebuildWeaponModel → updateWeaponHUD 是切枪/升级都会走的路径，
+           以前它会把 heroHoldShow 刚写上去的道具名又改回「步枪」。 */
+        _n.textContent=_n.getAttribute('data-主');_n.removeAttribute('data-主');
+      }
+    }
+  }catch(e){}
+var _wd=curWDef();var _isGun=(currentWeapon===WEAPON_GUN)||(_wd&&!_wd.melee&&_wd.ammo!==false);var el=document.getElementById('ammo');if(!el)return;if(_isGun){el.innerHTML=S.ammo+' <span>/'+S.maxAmmo+'</span>';el.style.display='block';var rt=document.getElementById('reload-text');if(rt)rt.style.display='block';}else{el.style.display='none';var rt=document.getElementById('reload-text');if(rt)rt.style.display='none';}}
 
 function lerpVal(a,b,t){return a+(b-a)*t;}
 function updateLeftHand(dt){

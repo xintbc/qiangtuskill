@@ -73,6 +73,8 @@ function lockHintSync(){
   _lockHintOn=need;
   var el=document.getElementById('lockHint');
   if(el)el.classList.toggle('on',need);
+  /* 【1.9.61】提示条占了屏幕最上沿，波次文字要往下让一格（见 CSS body.lock-on #wave） */
+  try{document.body.classList.toggle('lock-on',need);}catch(e){}
 }
 var _lockHintEl=document.getElementById('lockHint');
 if(_lockHintEl){
@@ -156,7 +158,7 @@ document.addEventListener('mousedown',function(e){if(window.__聊天输入中)re
   // 电脑端在游戏中点了画面但指针还没锁上 → 这一下只用来"重新锁定"，不当作开枪
   if(e.button===0&&!isTouch&&S.playing&&!S.over&&!S.paused&&!pointerLocked){_lockErr=0;_lockUnavailable=false;lockPointer();return;}
   if(e.button===0){if(SK.ghost>0){e.preventDefault();heroPortalPlace();return;}   /* 【batch145】虚化中：左键＝放下门 */
-                   if(heroBallFire()){e.preventDefault();return;}if(heroAimStart()){e.preventDefault();return;}mouseDown=true;freshTrigger=true;if(S.playing&&!S.over&&!S.paused)attack();}if(e.button===1)e.preventDefault();if(e.button===2){if(SK.hold&&SK.hold.kind==='ball'){e.preventDefault();return;}if(SK.hold){heroHoldCancel();e.preventDefault();return;}rightMouseDown=true;if(S.adsToggle){S.aiming=!S.aiming;}else{S.aiming=true;}e.preventDefault();}});
+                   if(heroBallFire()){e.preventDefault();return;}if(heroAimStart()){e.preventDefault();return;}mouseDown=true;freshTrigger=true;if(S.playing&&!S.over&&!S.paused)attack();}if(e.button===1)e.preventDefault();if(e.button===2){if(SK.hold&&SK.hold.kind==='ball'){try{if(typeof heroBallCancel==='function')heroBallCancel();}catch(_e){}e.preventDefault();return;}if(SK.hold){heroHoldCancel();e.preventDefault();return;}rightMouseDown=true;if(S.adsToggle){S.aiming=!S.aiming;}else{S.aiming=true;}e.preventDefault();}});
 document.addEventListener('mouseup',function(e){if(e.button===0){mouseDown=false;freshTrigger=false;heroAimEnd();}if(e.button===2){rightMouseDown=false;if(!S.adsToggle)S.aiming=false;}});
 // ==================== 开镜方式：按住右键 / 点一下切换 ====================
 // 【为什么要做】Edge 114+ 自带「鼠标手势」：按住右键移动鼠标＝浏览器手势（左滑后退、下划刷新…），

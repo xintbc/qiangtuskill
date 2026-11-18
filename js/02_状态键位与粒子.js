@@ -6,7 +6,7 @@
    服务器启动时会校验这个号：major 不同或版本低于服务器下限 → 连不上也进不去，
    并弹明确提示（在哪看到的：join 时带上 v，服务端比对，不符发 bye why:'ver'）。
    改版本号的规矩：小修 patch+1；上功能 minor+1 且 patch 归 0；动协议/存档 major+1 且其余归 0。 */
-var GAME_VER='1.9.48';
+var GAME_VER='1.10.18';
 /* 【batch234】模组接口版本：1=老的英文接口（ModLoader.addHero…），
    2=1.7.5 起的统一中文接口（window.枪战模组）。模组文件头写 `@api 2` 声明自己按哪版写的。
    加接口（新增一类"能加的东西"）动小版本，改已有接口的参数/语义才动这个数。 */
@@ -894,6 +894,7 @@ var PT={点:null, mat:null, 开:false, 脏:false, 基准:0, 尺寸:0.11, 上限:
     G.setAttribute('aCol',new THREE.BufferAttribute(col,3));
     G.setAttribute('aTime',new THREE.BufferAttribute(tim,3));
     var VS=[
+      'precision highp float;',   /* 【1.10.17】安卓显式 highp：pow(0.94,ageF) 等连续量需要精度 */
       'attribute vec3 aVel;',
       'attribute vec3 aCol;',
       'attribute vec3 aTime;',
@@ -925,7 +926,8 @@ var PT={点:null, mat:null, 开:false, 脏:false, 基准:0, 尺寸:0.11, 上限:
       '}'
     ].join('\n');
     var FS=[
-      'precision mediump float;',
+      'precision highp float;',   /* 【1.10.17】安卓 GPU 的 mediump 只有 10bit 尾数，
+         粒子透明度/时间的渐变会断层、闪烁（低端机尤其明显）。能用 highp 就用。 */
       'varying vec3 vCol;',
       'varying float vA;',
       'void main(){',
@@ -949,12 +951,16 @@ var PT={点:null, mat:null, 开:false, 脏:false, 基准:0, 尺寸:0.11, 上限:
   }catch(e){ PT._err=String(e); PT.开=false; }
 })();
 function initParticlePool(){ /* 【batch196】粒子几何在脚本加载时就建好了（这里只保留调用点，避免改所有入口） */ }
+var _tmpParticleColor=null;
 function spawnParticle(pos,color,count,spread,grav){
   if(!PT.开||!PT.点)return;
   spread=spread||0.3;
-  var now=performance.now()/1000, s=0, a=(PT.点.geometry.attributes);
+  /* 【1.10.17】用相对时间：performance.now()/1000 在手机开机几小时后可达数万秒，
+     mediump/highp float 尾数都会丢掉小数 → 粒子出现/消失时间错乱。减一个固定基准。 */
+  var now=(performance.now()-(PT._t0||(PT._t0=performance.now())))/1000, s=0, a=(PT.点.geometry.attributes);
   var P=a.position.array, V=a.aVel.array, C=a.aCol.array, T=a.aTime.array;
-  var c=new THREE.Color(color);
+  /* 【1.10.13】spawnParticle 是交战期最热的路径之一（一枪好几次），颜色对象复用 */
+  var c=_tmpParticleColor||( _tmpParticleColor=new THREE.Color(0xffffff)); c.set(color);
   for(var i=0;i<MAX_PARTICLES&&s<count;i++){
     var p=particlePool[i];
     var ageF=(now-p.start)*60;
@@ -974,10 +980,15 @@ function spawnParticle(pos,color,count,spread,grav){
 }
 function updateParticles(){
   if(!PT.开||!PT.点)return;
-  PT.基准=performance.now()/1000;
+  PT.基准=(performance.now()-(PT._t0||(PT._t0=performance.now())))/1000;
   PT.mat.uniforms.uNow.value=PT.基准;
   /* 画布高度每帧读一次（只是读一个整数属性，不触发 layout），窗口缩放 / 分辨率自适应都跟得上 */
-  try{ PT.mat.uniforms.uScale.value=(renderer.domElement.height||720)*0.5; }catch(e){}
+  /* 【1.10.17】用 CSS 像素高（clientHeight），不要用 canvas.height（物理像素=CSS*setPixelRatio）。
+     shader 里 gl_PointSize 是物理像素，而 Three 自己的 PointsMaterial 用 CSS高/2 再乘 pixelRatio；
+     低端机 PR=1.25 用物理高会让粒子大 25% 并顶到 24px 上限 → 火花糊成块。 */
+  try{ var _ch=renderer.domElement.clientHeight||renderer.domElement.height||720;
+       var _pr=(renderer.getPixelRatio&&renderer.getPixelRatio())||1;
+       PT.mat.uniforms.uScale.value=_ch*0.5*_pr; }catch(e){}
   if(PT.脏){
     var a=PT.点.geometry.attributes;
     a.position.needsUpdate=true; a.aVel.needsUpdate=true; a.aCol.needsUpdate=true; a.aTime.needsUpdate=true;

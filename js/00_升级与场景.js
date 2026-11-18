@@ -67,6 +67,12 @@
       k *= 用户倍率;                                           /* 【1.9.43】设置面板的手动倍率 */
       k = Math.max(0.5, Math.min(k, 最大));                    /* 只有手动倍率能把它调到 1 以下 */
       层.style.zoom = (k === 1 ? '' : String(Math.round(k * 1000) / 1000));
+      /* 【1.9.57】把缩放系数暴露给 CSS。
+         原因：zoom 会把元素的**布局尺寸**整体放大，而 vh 是按真实视口算的 ——
+         `max-height:92vh` 在 1920×1080（k≈1.78）下视觉高度变成 0.92×1080×1.78 ≈ 1766px，
+         比屏幕还高，设置面板上下各被裁掉 80 多像素（用户："横屏有一部分看不见"）。
+         CSS 里统一写成 calc(92vh / var(--uiz, 1)) 就抵消掉了。 */
+      try { 层.style.setProperty('--uiz', String(k)); } catch (e) { }
       /* 缩放模式下给 html 挂 .ui-zoomed：超宽屏三栏（1600px 断点）是按真实视口判定的，
          缩放后布局宽度其实只有 ~1080，三栏会被挤爆 —— 让位给母版的两列布局 */
       try { document.documentElement.classList.toggle('ui-zoomed', k > 1); } catch (e) { }
@@ -90,7 +96,7 @@
 function ensureEngineDom(){
   var ids=['startBtn','btnResume','btnQuit','storyBtn','storyTag','nameOk','wsContinue',
            'upgrade-grid','ws-upgrade-grid','wave-shop','ws-gold','ws-wave','shop-gold',
-           'score','gold-hud','relockBtn','menuTitle','menuSetBtn','btnRescue','storyChapGrid',
+           'score','gold-hud','relockBtn','menuTitle','menuSetBtn','mobRescue','storyChapGrid',
            'storyPickGrid','downedTip','ghostTip','shadowTip','netBoard','netDeath','go','fs',
            'fg','fk','fw','myIdLine'];
   for(var i=0;i<ids.length;i++){

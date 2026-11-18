@@ -533,10 +533,20 @@ function heroBallArm(){
   /* 【batch123b】手持动画：和四件投掷物复用同一套「掏出来 / 托在手里」的动作
      （HOLD_POSE.ball + heroHoldShow），枪/刀自动收起，手里那颗球会缓缓自转。 */
   SK.hold={kind:'ball',si:2};
-  heroHoldShow('ball');
+  _holdShowAlias('ball','球形闪电');   /* 【1.10.5】别名 */
   heroFxRing(0x00e5ff,0.4,8,0.6,0.07,52,0);
   showMsg('球形闪电 已装填 '+BALL_N+' 发：左键一发一发打出去','#6ff0ff');
   heroHudUpdate(true);
+}
+/* 【1.10.3】右键收起球形闪电：以前右键在这里被直接 return 吞掉，什么都不做，
+   玩家以为"右键解除不了"。收起＝清掉剩余发数、手上收回去；按约定不退冷却。 */
+function heroBallCancel(){
+  if(!(SK.ballLeft>0))return false;
+  SK.ballLeft=0;
+  try{ if(SK.hold&&SK.hold.kind==='ball')heroHoldCancel(); }catch(e){}
+  try{ if(typeof heroHudUpdate==='function')heroHudUpdate(true); }catch(e){}
+  try{ showMsg('球形闪电 已收起（不退冷却）','#6ff0ff'); }catch(e){}
+  return true;
 }
 /* 打出一发。返回 true ＝ 这一下左键被球形闪电接管了（不要再去开枪） */
 function heroBallFire(){
@@ -545,7 +555,7 @@ function heroBallFire(){
   SK.ballGap=BALL_FIRE_GAP;
   SK.ballLeft--;
   /* 手持动画：万一中途换过枪/刀把球收起来了，打下一发时重新托回手里 */
-  if(!SK.hold||SK.hold.kind!=='ball'){SK.hold={kind:'ball',si:2};heroHoldShow('ball');}
+  if(!SK.hold||SK.hold.kind!=='ball'){SK.hold={kind:'ball',si:2};_holdShowAlias('ball','球形闪电');}
   /* 【batch123b】用户："不是往前发射吗？为什么会追踪啊？"
      —— 对，就是**朝前直着飞出去**的投射物：不索敌、不追踪、不穿墙。
         打到谁算谁（命中就让人倒地），撞墙就消散，飞满 BALL_LIFE 秒也自己消失。 */

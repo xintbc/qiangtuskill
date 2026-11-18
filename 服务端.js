@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.9.48';
+const SRV_VER = '1.10.18';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -1147,8 +1147,8 @@ const worldEnts = new Map();    // 【batch184f-补4】房间钥匙 -> 现存世
 /* 【batch149】第三张图：地下实验室（剧情第二章的场地）。
    它是一张全封闭的地下设施 —— 出生点**全部落在走廊格点上**，房间内部不摆点（家具多）。
    剧情模式的固定出生点不走这张表（客户端 LAB_STORY_SPAWN 单独写死）。 */
-const MAP_IDS = ['classic', 'eclipse', 'lab', 'station'];   // 【batch263】racing（赛车场）暂时下线，代码留在 js/66，恢复时加回来即可
-const MAP_NAMES = { classic: '经典·哨塔竞技场', eclipse: '日蚀环城', lab: '地下实验室', station: '旧火车站' };
+const MAP_IDS = ['classic', 'eclipse', 'lab', 'station', 'moonbase'];   // 【batch263】racing（赛车场）暂时下线，代码留在 js/66，恢复时加回来即可   // 【1.10.1】+moonbase：月球基地
+const MAP_NAMES = { classic: '经典·哨塔竞技场', eclipse: '日蚀环城', lab: '地下实验室', station: '旧火车站', moonbase: '月球基地' };
 /* 经典图的出生点由 gen_spawns.py 从地图方块坐标**自动反推**（源码见 出生点表.js，服务端/客户端共用）。
    来历：原来是「半径 16~40 的圆环上随机取点」，完全不看障碍物；
    可那个圈里正好压着 (±15,±15)、(0,±30)、(±30,0) 这些方块 → 于是经常出生在方块内部卡住。
@@ -1167,6 +1167,7 @@ const MAP_SPAWNS = {
   eclipse: [[-12,4], [-2,48], [30,24], [-44,26], [26,-22], [-2,-38], [-38,66], [60,14], [-42,-26], [18,80], [-66,-2], [58,-24], [52,70], [70,44], [-80,30], [86,4], [22,-70], [-40,-68], [56,-60], [-80,-30]],
   lab: [[0,22],[0,-22],[-26,0],[26,0],[-26,-60],[-26,-44],[26,60],[26,44],[-60,22],[60,22],[-60,-22],[60,-22],[-26,-12],[26,12],[-44,22],[44,-22],[26,-44],[-26,44],[36,22],[-36,-22]],
   station: [[0,36],[-16,42],[16,42],[-30,38],[30,38],[8,21],[24,20],[-24,20],[0,-20],[18,-24],[-20,-22],[40,-28],[-40,-30],[0,-40],[-15,-42],[24,-44],[28,-16],[48,-18],[-48,-18],[52,20],[-52,20],[0,12.5],[44,12.5],[-44,12.5]],
+  moonbase: [[0,18],[0,32],[0,46],[0,-18],[0,-32],[0,-46],[22,0],[-22,0],[22,20],[-22,20],[22,-20],[-22,-20],[30,32],[-30,32],[30,-32],[-30,-32],[64,0],[-64,0],[0,-52]],
   range: [[0,50],[30,45],[-30,45],[0,20],[40,20],[-40,20],[20,40],[-20,40],[50,0],[-50,0],[40,-20],[-40,-20],[22,-30],[-22,-30],[20,-40],[-20,-40],[30,-45],[-30,-45],[0,-50]]
 };
 const SAFE_SPAWNS = MAP_SPAWNS.classic;          // 兼容旧名（＝经典图出生点）
@@ -3483,15 +3484,22 @@ function modListFilePath() { return path.join(modRootDir(), '载入清单.js'); 
 function readEnabledModules() {
   try {
     const txt = fs.readFileSync(modListFilePath(), 'utf8');
-    const mm = txt.match(/MOD_FILES\s*=\s*\[([^\]]*)\]/);
+    const mm = txt.match(/MOD_FILES\s*=\s*(\[[\s\S]*?\])\s*;/);
     if (!mm) return [];
+    /* 【1.9.50】优先按 JSON 解析（新格式，模组名带引号也不会错）；
+       老格式是单引号数组，退回去用正则。 */
+    try {
+      const arr = JSON.parse(mm[1]);
+      if (Array.isArray(arr)) return arr.map(String);
+    } catch (e) { }
     const quoted = mm[1].match(/['"]([^'"]+)['"]/g) || [];
     return quoted.map(function (s) { return s.replace(/^['"]|['"]$/g, ''); });
   } catch (e) { return []; }
 }
 function writeEnabledModules(arr) {
   const header = '// 本文件由服务端「模组管理」命令自动维护，请勿手动编辑；如需手动改下面的数组即可。\n';
-  const body = 'window.MOD_FILES = [\n' + arr.map(function (f) { return "  '" + f + "',"; }).join('\n') + '\n];\n';
+  /* 【1.9.50】用 JSON 写：模组名里就算有单引号也不会把数组写坏 */
+  const body = 'window.MOD_FILES = ' + JSON.stringify(arr.map(String), null, 1) + ';';
   fs.writeFileSync(modListFilePath(), header + body, 'utf8');
 }
 function modAvailablePool() {
@@ -4208,13 +4216,20 @@ const server = http.createServer(function (req, res) {
        若继续发它，玩家连 /pc 会拿到旧代码、新功能全部失效（正是"B 弹不出界面"的根因）。
        项目只发展多文件版+服务器端，原电脑版文件仍可单独双击打开离线玩。
        【batch182】这份服务端跑在 服务器/ 里，DIR 下没有 index.html（旧写法发 404）——
-       指向 ROOT/多文件版/index.html；生成器复制到 多文件版/ 后 ROOT 仍解出同一份文件。 */
-    return sendFile(res, path.join(ROOT, '多文件版', 'index.html'));
+       指向 ROOT/多文件版/index.html；生成器复制到 多文件版/ 后 ROOT 仍解出同一份文件。
+       【1.10.18】改走 gameDir()：云端（Render）是扁平目录，ROOT 下压根没有 多文件版/，
+       写死就把整个网页版打成 404 —— 玩家看到的就是「网址打不开了」。 */
+    return sendFile(res, path.join(gameDir(), 'index.html'));
   }
 
   if (url === '/mobile' || url === '/手机版') {
     try {
-      const c = clientHtml(CLIENT_MB);
+      /* 【1.10.18】云端是扁平目录，没有 手机版/枪战游戏_手机版.html；
+         退回 gameDir()/index.html —— 多文件版自带触屏操作层，手机打开照样能玩。 */
+      let 手机页 = CLIENT_MB;
+      try { if (!fs.existsSync(手机页)) 手机页 = path.join(gameDir(), 'index.html'); }
+      catch (e2) { 手机页 = path.join(gameDir(), 'index.html'); }
+      const c = clientHtml(手机页);
       if (!c.patched) log('警告：手机版里没找到 three.js 的 CDN 链接，将走外网加载');
       res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
       return res.end(c.html);
@@ -4235,7 +4250,7 @@ const server = http.createServer(function (req, res) {
       res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end('400 路径编码有问题');
     }
-    const mfBase = path.join(ROOT, '多文件版');
+    const mfBase = gameDir();            // 【1.10.18】别写死 ROOT/多文件版：云端是扁平目录
     const abs = path.resolve(mfBase, rel);
     if (abs !== mfBase && abs.indexOf(mfBase + path.sep) !== 0) {
       res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -4295,10 +4310,14 @@ const server = http.createServer(function (req, res) {
        · 单文件 512KB 上限，超了直接断开，不做半截写入
        · 只允许 .js（不收 .html/.bat，免得变成任意文件上传） */
   const MOD_DIR = path.join(gameDir(), 'mode', '模组');
-  const MOD_NAME_OK = /^[\u4e00-\u9fa5A-Za-z0-9_\- .()（）]{1,48}\.js$/;
+  /* 【1.9.50】文件名规则改成“黑名单”：只挡路径分隔符和 Windows 不允许的字符，
+     其余（中文、+ & # % 【】《》、空格、括号、表情…）全部放行。
+     以前是白名单 [中文 字母 数字 _ - 空格 . ()（）]，上限 48 字，后缀还分大小写，
+     于是名字里带 + & # 的、名字长的、后缀写成 .JS 的模组在开服器里直接“消失”。 */
+  const MOD_NAME_OK = /^[^\\/:*?"<>|\x00-\x1f]{1,120}\.js$/i;
   /* 【batch228】资产文件名白名单：同样的字符规则，扩展名限定为玩家自定义资产用的这些 */
-  const ASSET_NAME_OK = /^[\u4e00-\u9fa5A-Za-z0-9_\- .()（）]{1,48}\.(mp4|mp3|ogg|wav|png|jpg|jpeg|webm|m4a|aac|flac)$/i;
-  const MOD_MAX = 512 * 1024;
+  const ASSET_NAME_OK = /^[^\\/:*?"<>|\x00-\x1f]{1,120}\.(mp4|mp3|ogg|wav|png|jpg|jpeg|webm|m4a|aac|flac)$/i;
+  const MOD_MAX = 4 * 1024 * 1024;   /* 【1.9.53】512KB → 4MB：带模型/贴图的模组经常 1~2MB */
   function modPath(n) {
     n = String(n || '');
     if (!MOD_NAME_OK.test(n)) return null;
@@ -4316,7 +4335,7 @@ const server = http.createServer(function (req, res) {
     let out = [];
     /* 【batch226】on＝是否在载入清单里（服务端黑窗口 mod on/off 维护的就是它）。
        客户端只加载 on=1 的：不然清单里没有的模组也会被加载，mod off 形同虚设。 */
-    const enabled = readEnabledModules().map(function (n) { return String(n) + '.js'; });
+    const enabled = readEnabledModules().map(function (n) { return String(n).replace(/\.js$/i, '') + '.js'; });
     try {
       fs.readdirSync(MOD_DIR).forEach(function (n) {
         if (!/\.js$/i.test(n)) return;
@@ -4375,7 +4394,10 @@ const server = http.createServer(function (req, res) {
       if (!令牌对(req, null)) return 管理回(res, { ok: 0, err: '令牌不对（重启开服器后要重新读取）' }, 401);
       return 管理回(res, 管理状态());
     }
-    return 读请求体(req, 8192, function (体) {
+    /* 【1.9.53】原来这里是 8192（8KB）—— 比一个真实模组小得多（角色_暗影.js 就 28KB），
+       超了直接当"非法 JSON"退回 → 开服器导入模组几乎全失败。
+       模组内容走的就是这个接口（modSave 的 c 字段），上限必须 ≥ MOD_MAX 再加 JSON 转义余量。 */
+    return 读请求体(req, 9 * 1024 * 1024, function (体) {
       if (!体) return 管理回(res, { ok: 0, err: '请求内容不是合法 JSON' }, 400);
       if (!令牌对(req, 体)) return 管理回(res, { ok: 0, err: '令牌不对' }, 401);
       if (url === '/api/admin/kick') {
@@ -4419,10 +4441,10 @@ const server = http.createServer(function (req, res) {
         const n = String(体.n || '').trim();
         const c = String(体.c || '');
         if (!/\.js$/i.test(n)) return 管理回(res, { ok: 0, err: '模组文件名必须以 .js 结尾' });
-        if (!MOD_NAME_OK.test(n)) return 管理回(res, { ok: 0, err: '文件名不合法（中文/字母/数字/下划线）' });
+        if (!MOD_NAME_OK.test(n)) return 管理回(res, { ok: 0, err: '文件名不合法（不能含 \\ / : * ? " < > |）' });
         if (n === '载入清单.js') return 管理回(res, { ok: 0, err: '这个名字是保留的' });
         if (!c.trim()) return 管理回(res, { ok: 0, err: '模组内容是空的' });
-        if (c.length > MOD_MAX) return 管理回(res, { ok: 0, err: '模组太大（上限 512KB）' });
+        if (c.length > MOD_MAX) return 管理回(res, { ok: 0, err: '模组太大（上限 4MB）' });
         try {
           if (!fs.existsSync(MOD_DIR)) fs.mkdirSync(MOD_DIR, { recursive: true });
           fs.writeFileSync(path.join(MOD_DIR, n), c, 'utf8');

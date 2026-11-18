@@ -30,7 +30,10 @@ function storyShowPick(on){var p=storyEl('storyPick');if(p){if(on)p.classList.ad
 function storyShowDone(on){var p=storyEl('storyDone');if(p){if(on)p.classList.add('on');else p.classList.remove('on');}}
 function storyCutShow(on){var c=storyEl('storyCut');if(c)c.style.display=on?'flex':'none';}
 function storyCutOn(){var c=storyEl('storyCut');return !!(c&&c.style.display!=='none');}
-function storyHudShow(on){var h=storyEl('storyHud');if(h)h.style.display=on?'block':'none';}
+function storyHudShow(on){var h=storyEl('storyHud');if(h)h.style.display=on?'block':'none';
+  /* 【1.9.61】body 上挂 story-on：CSS 靠它隐藏重复的 #wave（也是同一句目标）
+     和联机「感谢陪伴」横幅（会压住顶部信息）。 */
+  try{document.body.classList.toggle('story-on',!!on);}catch(e){} }
 function bossShow(on){var w=storyEl('bossWrap');if(w)w.style.display=on?'block':'none';}
 function storyGoalText(){
   /* 【模组钩子 · batch166】自定义章节可以自己决定 HUD 上显示什么目标。 */
@@ -91,6 +94,12 @@ var STORY_CUSTOM={};
 function storyCur(){try{return STORY_CUSTOM[STORY_.ch]||null;}catch(e){return null;}}
 function storyShowChap(on){var p=storyEl('storyChapter');if(p){if(on)p.classList.add('on');else p.classList.remove('on');}}
 function storyBuildChap(){
+  /* 【1.10.2】第四章/第五章由模组系统的 addStory 登记，而模组加载器是**异步**就绪的 ——
+     网页版实测要 10 秒以上，这期间打开剧情面板只看到 1/2/3/5 章，第四章会"消失"一会儿。
+     渲染前补一次登记（两个函数都有「已登记」守卫，重复调用无副作用），并保证按章节号排序。 */
+  try{ if(typeof 陵园_登记剧情==='function')陵园_登记剧情(); }catch(e){}
+  try{ if(typeof 月战_登记剧情==='function')月战_登记剧情(); }catch(e){}
+  try{ STORY_CHAPS.sort(function(a,b){return (a.n|0)-(b.n|0);}); }catch(e){}
   var g=storyEl('storyChapGrid');if(!g)return;
   if(!STORY_.ch)STORY_.ch=1;
   var h='';
@@ -170,7 +179,7 @@ function storyStart(){
   if(STORY_.on)storyAbort();
   storyShowPick(false);storyShowDone(false);storyCutShow(false);storyShowChap(false);
   rescueShow(false);storyAmbushClear();
-  var _rb0=document.getElementById('btnRescue');if(_rb0)_rb0.style.display='none';   /* 【batch159】开局收掉手机救援按钮 */
+  var _rb0=document.getElementById('mobRescue');if(_rb0)_rb0.style.display='none';   /* 【batch159】开局收掉手机救援按钮 */
   STORY_.started=0;
   ['go','wave-shop','netDeath'].forEach(function(id){var el=storyEl(id);if(el)el.style.display='none';});
   S.over=false;S.paused=false;
@@ -185,6 +194,7 @@ function storyStart(){
   SK.eclipses=[];SK.orbs=[];SK.traps=[];SK.balls=[];SK.portals=[];SK.ballLeft=0;
   /* 【batch181】白夜状态连黑日网格一起收（别让上一局的天象漏到下一局） */
   if(SK.spVeilObj&&SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeil=0;SK.spVeilPulse=0;SK.spVeilObj=null;
+  SK.ember=0;SK.spVeilKills=0;SK.spVeilSeen=null;   /* 【1.10.4】熔核/领域击杀快照也要重置，别漏到下一局 */
   SK.suneyeT=0;SK.suneyeObj=null;SK.inEclipse=false;SK.hold=null;
   SK.shadowT=0;SK.shadowObj=null;SK.shadows.length=0;   // 【batch158】上一局残留的暗影状态/毒圈一并清掉
   STORY_.on=true;STORY_.phase='intro';STORY_.cut=true;
@@ -671,7 +681,7 @@ function storyRescueTick(dt){
   STORY_.rescueNear=near;
   /* 【batch159】手机没有 F 键：靠近营救点时弹出「救援」按钮（按住＝长按 F，松开＝松手）。
      电脑端靠 .only-touch 自动隐藏（body 没有 .is-touch 时 display:none!important 压过内联样式）。 */
-  var _rb=document.getElementById('btnRescue');
+  var _rb=document.getElementById('mobRescue');
   if(_rb)_rb.style.display=(isTouch&&near&&SK.downed<=0&&SK.ghost<=0)?'flex':'none';
   var hold=near&&!!keys.KeyF&&SK.downed<=0&&SK.ghost<=0;
   if(hold)STORY_.rescueP=Math.min(RESCUE_NEED,STORY_.rescueP+dt);
@@ -747,7 +757,7 @@ function storyTick(){
 /* ---------- 结局 ---------- */
 function storyEnd(res){
   if(STORY_.phase==='end'||STORY_.phase==='done')return;
-  var _rb=document.getElementById('btnRescue');if(_rb)_rb.style.display='none';   /* 【batch159】离开营救阶段收掉手机救援按钮 */
+  var _rb=document.getElementById('mobRescue');if(_rb)_rb.style.display='none';   /* 【batch159】离开营救阶段收掉手机救援按钮 */
   var byMob=(STORY_.phase==='hunt'||STORY_.phase==='rescue');   // 【batch128/149】清剿 / 营救阶段被打死
   STORY_.diedByMob=byMob;                     // 【batch129】阵亡提示要按死因分文案
   STORY_.phase='end';STORY_.res=(res==='win')?'win':'lose';STORY_.cut=true;
@@ -1009,6 +1019,7 @@ function clearFieldData(){
       SK.eclipses=[];SK.orbs=[];SK.traps=[];SK.balls=[];SK.portals=[];SK.ballLeft=0;
   /* 【batch181】白夜状态连黑日网格一起收（别让上一局的天象漏到下一局） */
   if(SK.spVeilObj&&SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeil=0;SK.spVeilPulse=0;SK.spVeilObj=null;
+  SK.ember=0;SK.spVeilKills=0;SK.spVeilSeen=null;   /* 【1.10.4】熔核/领域击杀快照也要重置，别漏到下一局 */
       SK.suneyeT=0;SK.suneyeObj=null;SK.inEclipse=false;SK.hold=null;SK.aimThrow=false;
       if(SK.mineObj&&SK.mineObj.parent)SK.mineObj.parent.remove(SK.mineObj);
       SK.mineObj=null;

@@ -87,7 +87,7 @@ var _holdObj=null,_holdHand=null, HOLD_POSE={
   /* 【batch236】天陨：烧红的陨石核托在掌心（和墙一样，举着只是"瞄准"，左键才召唤） */
   sp_meteor:{x:0.30,y:-0.24,z:-0.56, ry:0.20, rise:0.56, spin:0.9, sway:0.03}
 };
-function heroHoldShow(kind){
+function heroHoldShow(kind, 显示名){
   heroHoldHide();
   /* 【batch219】模组投掷物：先在 ModLoader.throwables 里找，找到就用模组自己的 mesh()。
      以前这里只认内置那 14 种，模组英雄掏出自己的道具会走到最后一个分支 = 建成一个烟罐。 */
@@ -141,8 +141,16 @@ function heroHoldShow(kind){
                 trap:'电荷陷阱',ball:'球形闪电',ssmoke:'影烟',sbomb:'影雷',
                 sp_drone:'蜂鸟无人机',sp_net:'电磁网',sp_wall:'掩体墙',sp_sunfall:'小太阳',sp_meteor:'陨石',
                 g_spear:'🗡 爆炸长矛',g_coffin:'⚰ 石棺'};
-      SK.hold.名称=(名表[kind]||'投掷物');      /* 存一份：万一别处重建了武器模型，右下角还能还原成这个名字 */
-      ne.textContent=SK.hold.名称;
+      /* 【1.10.3】优先用调用方给的真实技能名：以前只认上面这张名表，
+         新英雄（月引的三个技能）和模组投掷物一律落到兜底值「投掷物」，
+         所以左下角会显示成"投掷物"而不是技能名。 */
+      /* 【1.10.5】原来直接写 SK.hold.名称 —— 但 heroCast 是先调 heroHoldShow、**之后**才建 SK.hold，
+         首次掏道具时 SK.hold 还是 null，这一行抛 TypeError 被外层 catch 吞掉，
+         连带着 ne.textContent 也不执行 → 左下角一直停在「🔫 步枪」。
+         这正是"除少数自己处理过名称的英雄外，其他英雄手持物都不显示技能名"的根因。 */
+      var _显名=(显示名||名表[kind]||'投掷物');
+      if(typeof SK.hold==='object'&&SK.hold)SK.hold.名称=_显名;   /* 存一份：别处重建武器模型时还能还原 */
+      ne.textContent=_显名;
     }
   }catch(e){}
   try{
@@ -150,6 +158,15 @@ function heroHoldShow(kind){
     var _rt=document.getElementById('reload-text'); if(_rt)_rt.style.display='none';
   }catch(e){}
 }
+/* 【1.10.5】⚠️ 全局 heroHoldShow 会被模组**覆写**：内置的「角色_暗影」以及它的几个副本都会执行
+   `window.heroHoldShow = function(kind){ ... _origHeroHoldShow(kind) ... }` ——
+   那个包装只接收 1 个参数，引擎传进来的**技能名被丢掉**，于是左下角只能回落到旧名表：
+   天狼「战术探测器」显示成「感应雷」、白泽「医疗脉冲」显示成「战术探测器」、
+   月引/暗影的自定义道具直接显示「投掷物」。这就是"除少数自己写过名称的英雄外，其他英雄手持物全错"的根因。
+   对策：在模组加载之前把原函数存进内部别名，引擎所有调用点一律走别名；
+   全局 heroHoldShow 继续留给模组包装（它内部拿 `_orig` 调的还是原函数，互不影响）。 */
+var _holdShowAlias = heroHoldShow;
+
 function heroHoldHide(){
   if(_holdObj){if(_holdObj.parent)_holdObj.parent.remove(_holdObj);_holdObj=null;}
   /* 【batch216】手里的东西收起来 → 那只手也一起收（不然它会一直举在半空） */
@@ -157,6 +174,7 @@ function heroHoldHide(){
   heroWallGhostHide();
   heroMeteorGhostHide();          /* 【batch236】天陨的落点预览也跟着收 */
   SK.holdHideGun=false;
+  try{ SK.holdName=''; }catch(e){}
   if(typeof weaponGroup!=='undefined'&&weaponGroup)weaponGroup.visible=true;   // 放下投掷物 → 枪/刀回来
   if(typeof leftHandCamGroup!=='undefined'&&leftHandCamGroup)leftHandCamGroup.visible=(currentWeapon===WEAPON_KNIFE);
   /* 【batch217】右下角还原成主武器名（把"· 手持 ××"去掉） */
@@ -183,6 +201,9 @@ var SK={idx:0,cds:[0,0,0],revealAll:0,hold:null,aimThrow:false,holdT:0,holdHideG
            spMarkT=猎杀标记剩余秒；spMarkIds=被标记敌人集合；spDrone=蜂鸟无人机飞行体；
            【batch181】spVeil=蚀日者 SP「白夜」剩余秒；spVeilObj=跟着自己走的黑日 */
         sp:0,cloak:0,spMarkT:0,spMarkIds:null,spDrone:null,spVeil:0,spVeilPulse:0,spVeilObj:null,
+        /* 【1.10.4】焚曜重做：ember=熔核(0~100) / spVeilKills=领域内击杀数 / spVeilSeen=击杀侦测快照
+           spVeilMark 不再用（日蚀标记挂在敌人身上 e.eclipseMark） */
+        ember:0,spVeilKills:0,spVeilSeen:null,emberHudT:0,
         mine:0,mineLife:12,mineX:0,mineZ:0,mineObj:null,mineFly:null,minePing:0,
         blind:0,flashX:0,flashZ:0,
         dashBuff:0,inFortify:false,zoneX:0,zoneY:0,zoneZ:0,   // 【batch143】zoneY：阵地铺在哪张面上
@@ -411,6 +432,9 @@ function heroHudUpdate(force){
     var kf=(i===0?'skill':('skill'+(i+1)));
     var keyTxt=touch?'按钮':((typeof codeLabel==='function')?codeLabel(KEYMAP[kf]):'?');
     var txt=s.icon+'|'+s.name+'|'+(armed?('装填 '+SK.ballLeft+' 发'):(ready?'就绪':('冷却 '+cd.toFixed(1)+' 秒')));
+    /* 【1.10.4】焚曜：熔核进度直接写进技能条，一旦够 50 就让槽位发光（玩家一眼知道能免费放） */
+    var _emberSP=(SK.sp&&SK.idx===HERO_ECLIPSE);
+    if(_emberSP)txt+='|熔核'+Math.round(SK.ember||0);
     if(force||txt!==SK._hud[i]||Math.abs(pct-SK._hudPct[i])>0.005||SK._hudSt[i]!==(ready?'ready':'no')){
       SK._hud[i]=txt;SK._hudPct[i]=pct;SK._hudSt[i]=ready?'ready':'no';
       slot.className='skSlot '+(ready?'ready':'no');
@@ -420,6 +444,14 @@ function heroHudUpdate(force){
       var kk=slot.querySelector('.skKey');if(kk)kk.textContent=armed?('×'+SK.ballLeft):(ready?'就绪':(cd.toFixed(1)+'s'));
       var bar=slot.querySelector('.skBar');
       if(bar){bar.style.width=(pct*100).toFixed(1)+'%';bar.style.background=H.css;}
+      if(_emberSP){
+        var _em=Math.round(SK.ember||0);
+        if(kk)kk.textContent=(SK.ember>=EMBER_COST?'🔥 ':'· ')+_em;
+        if(i===2&&SK.spVeil>0){                                  /* 大招进行中：显示剩几秒 + 可引爆 */
+          if(kk)kk.textContent='💥 引爆 '+SK.spVeil.toFixed(0)+'s';
+          slot.className='skSlot ready';
+        }
+      }
     }
   }
 }
@@ -428,7 +460,7 @@ function heroHudUpdate(force){
    堡垒工事不再是"自己减伤"，而是**脚下的阵地**：站在圈里才减伤（SK.inFortify 每帧判定）。 */
 function heroMitigate(dmg){
   if(SK.vuln>0)dmg=Math.max(1,Math.round(dmg*ORB_VULN));   // 【batch120】闪电「易伤」：受到伤害 +25%
-  if(SK.spVeil>0){SK.hitFlash=0.20;return Math.max(1,Math.round(dmg*0.3));}   // 【batch181】蚀日者 SP「白夜」：减伤 70%
+  if(SK.spVeil>0){SK.hitFlash=0.20;return Math.max(1,Math.round(dmg*0.2));}   // 【1.10.3】白夜减伤 70%→80%
   if(SK.reflect>0){SK.hitFlash=0.22;return Math.max(1,Math.round(dmg*0.5));}   // 反射力场：减半（另一半反弹）
   if(SK.shield>0){SK.hitFlash=0.22;return Math.max(1,Math.round(dmg*0.3));}    // 护盾：减伤 70%
   if(SK.inFortify){SK.hitFlash=0.12;return Math.max(1,Math.round(dmg*0.7));}   // 堡垒阵地内：减伤 30%
@@ -457,7 +489,7 @@ function heroSpeedMul(){
   /* 【batch120 被动】蚀日者「日冕庇护」：站在自己的日蚀圈里 +15% */
   if(SK.idx===HERO_ECLIPSE&&SK.inEclipse)m*=PASSIVE_ECLIPSE_SPD;
   /* 【batch181】焚曜「白夜」期间：移速 +30% */
-  if(SK.sp&&SK.idx===HERO_ECLIPSE&&SK.spVeil>0)m*=1.30;
+  if(SK.sp&&SK.idx===HERO_ECLIPSE&&SK.spVeil>0)m*=1.45;   /* 【1.10.3】+30%→+45% 移速 */
   /* 【batch120 被动】闪电「电光疾行」：冲刺中再 +12% */
   if(SK.idx===HERO_LIGHTNING&&S.sprinting)m*=PASSIVE_LIGHT_SPRINT;
   /* 【batch123b】倒地：**一步都动不了**（用户要求：被击倒的人不能干任何事，比如行走 / 开火）。
@@ -601,9 +633,16 @@ function heroCast(i){
   /* 【batch159】遁入暗影的"再按退出"必须放在冷却门**之前** ——
      否则冷却 90 秒里按第二次只会提示"冷却中"，人根本退不出暗影（探针抓到的真 bug）。 */
   if(k==='sshadow'&&SK.shadowT>0){heroShadowExit();return true;}
-  if(SK.cds[i]>0){showMsg(s.name+' 冷却中（还剩 '+SK.cds[i].toFixed(1)+' 秒）','#ffd166');return false;}
+  /* 【1.10.4】日蚀降临进行中，再按大招键 = 二段引爆「日蚀 · 终焉」（必须放在冷却门之前） */
+  if(k==='sp_eclipseveil'&&SK.spVeil>0){heroVeilDetonate();heroHudUpdate(true);return true;}
+  /* 【1.10.4】熔核免冷却：熔核 ≥50 时一/二技能无视冷却直接放（扣熔核，冷却条不动） */
+  var _emberFree=(SK.sp&&SK.idx===HERO_ECLIPSE&&(i===0||i===1)&&(SK.ember||0)>=EMBER_COST&&SK.cds[i]>0);
+  if(SK.cds[i]>0&&!_emberFree){showMsg(s.name+' 冷却中（还剩 '+SK.cds[i].toFixed(1)+' 秒）','#ffd166');return false;}
   var _prevCd=SK.cds[i];   // 【batch158】遁入暗影"再按退出"要还原冷却，不能重新计满 90 秒
-  if(k!=='sp_wall'&&k!=='sp_nova')SK.cds[i]=s.cd;   /* 【batch236】墙和陨石都是"举起不扣、落地才扣" */
+  if(k!=='sp_wall'&&k!=='sp_nova'){
+    if(_emberFree){SK.ember=Math.max(0,(SK.ember||0)-EMBER_COST);}   /* 【1.10.4】走熔核，不计冷却 */
+    else SK.cds[i]=s.cd;
+  }
   if(typeof rangeMode==='function'&&rangeMode()){SK.cds[i]=0;SK.cds[0]=0;SK.cds[1]=0;SK.cds[2]=0;}   /* 【batch180】靶场：技能无冷却，随便放 */   // 【batch178】墙：举起不扣冷却，放下才扣
   /* 【模组·自定义技能钩子】模组注册的 k 会先在这里被拦截：fn(i, s, H) 返回 false 才交给下面的原版分支。
      这样模组就能做出"原版没有的"技能效果，而不必复用 dash/shield/eye 等原版技能。 */
@@ -638,8 +677,11 @@ function heroCast(i){
     // 真正的抛投是「长按开火键瞄准（看半透明抛物线）→ 松手抛出」，见 heroAimStart / heroAimEnd。
     if(SK.hold&&SK.hold.si===i){heroHoldCancel();showMsg('已收起「'+s.name+'」','#ffd166');return true;}
     if(SK.hold)heroHoldCancel();
-    SK.hold={kind:k,si:i};
-    heroHoldShow(k);
+    _holdShowAlias(k,s.name);   /* 【1.10.5】走内部别名，绕开模组对全局的包装 */
+    /* ⚠️ 必须在 heroHoldShow 之后写：它开头调的 heroHoldHide() 会把 SK.hold 清空，
+       以前名字就丢在这里，HUD 只能落到「投掷物」兜底。 */
+    SK.hold={kind:k,si:i,名称:s.name};
+    SK.holdName=s.name;
     showMsg('已拿起「'+s.name+'」：长按开火键瞄准（半透明抛物线＝落点），松手抛出；再按一次技能键收起',H.css);
     heroHudUpdate(true);
     return true;
@@ -1002,6 +1044,8 @@ function spZoneClearAll(remoteToo){
 /* 统一伤害入口：本地小兵直接扣；远端玩家上报服务端（顺带报减速） */
 function spHitEnemy(e,dmg,point,slowT){
   if(!e)return;
+  /* 【1.10.4】日蚀标记：被白夜领域压住的敌人受到的伤害 +25%（eclipseMark 由 spVeilTick 每帧刷） */
+  if(e.eclipseMark>0)dmg=Math.max(1,Math.round(dmg*1.25));
   if(e.isNet){
     if(typeof _ffSkip==='function'&&_ffSkip(e))return;            // 不打队友（爆能器同队）
     try{netHitRemote(e,false,dmg,point||null);}catch(_){}
@@ -1022,15 +1066,19 @@ function updateSpZones(dt){
   _spBurnAcc-=dt;
   if(_spBurnAcc<=0){
     _spBurnAcc=0.5;
+    var 有烧=0;
     for(j=enemies.length-1;j>=0;j--){
       var be=enemies[j];
       if(be.isNet?(!be.alive):(be.hp<=0))continue;
       if(!(be.burnT>0))continue;
-      be.burnT=Math.max(0,be.burnT-0.5);
+      be.burnT=Math.max(0,be.burnT-0.5);有烧++;
       var bp=(be.isNet&&typeof heroEntWorld==='function')?heroEntWorld(be):be.root.position;
       spHitEnemy(be,Math.max(1,Math.round((be.burnDps||8)*0.5)),bp.clone(),0);   // 按层结算（默认每秒 8 点）
       try{spawnParticle(bp.clone().setY(bp.y+1.1),0xff8a3d,2,0.25,true);}catch(_){}
     }
+    /* 【1.10.4】灼烧喂熔核：按「有几个人在烧」给，但**一个结算周期封顶 +6**
+       —— 不然十几个人一起烧，半秒就攒满 100，熔核失去意义。 */
+    if(有烧)try{emberAdd(Math.min(6,2+有烧));}catch(_){}
   }
   /* ② 区域 */
   for(i=SP_ZONES.length-1;i>=0;i--){
@@ -1049,6 +1097,9 @@ function updateSpZones(dt){
     z.tick=0.5;                                                    // 每 0.5 秒结算一次
     if(z.dps>0){
       var dmg=Math.max(1,Math.round(z.dps*0.5));
+      /* 【1.10.4】记录上一跳还活着的目标：这一跳死了 → 焚天余烬（只有 fire 区做） */
+      var 旧见=(z.kind==='fire')?(z.见||[]):null;
+      var 新见=(z.kind==='fire')?[]:null;
       for(j=enemies.length-1;j>=0;j--){
         var e=enemies[j];
         if(e.isNet?(!e.alive):(e.hp<=0))continue;
@@ -1056,8 +1107,25 @@ function updateSpZones(dt){
         var dx=ep.x-z.x,dz=ep.z-z.z;
         if(dx*dx+dz*dz>z.r*z.r)continue;
         if(Math.abs(spEntFootY(e,ep)-z.y)>3.2)continue;            // 隔一层楼不算（按真人/小兵各自的脚底算）
+        if(新见)新见.push({e:e,hp:(e.isNet?(e.alive?1:0):e.hp)});
         spHitEnemy(e,dmg,ep.clone(),z.slow);
         try{spawnParticle(ep.clone().setY(ep.y+1.0),z.color,3,0.3,true);}catch(_){}
+      }
+      if(旧见){
+        /* 上一跳被这团火点着的目标，这一跳没了 → 在原地留一小团余烬（半径 3 / 4 秒 / 每秒 12） */
+        for(var m=0;m<旧见.length;m++){
+          var O=旧见[m];
+          if(!O||!O.e||!(O.hp>0))continue;
+          var 现=(O.e.isNet?(O.e.alive?1:0):O.e.hp);
+          if(现>0)continue;
+          var op=(O.e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(O.e):(O.e.root?O.e.root.position:null);
+          if(!op)continue;
+          try{
+            spZoneAdd({kind:'fire',x:op.x,z:op.z,y:z.y,r:3,dur:4,dps:12,slow:0.25,color:0xff6a2a});
+            heroFxRingAt(op.x,op.z,0xff6a2a,0.4,3,0.5,z.y);
+          }catch(_){}
+        }
+        z.见=新见;
       }
     }
     if(z.heal>0){
@@ -1423,8 +1491,8 @@ function heroMeteorWarn(t){
 SP_SKILLS['sp_nova']=function(i,s,H){
   if(SK.hold&&SK.hold.kind==='sp_meteor'){heroHoldCancel();showMsg('已收起「'+s.name+'」','#ffd166');return true;}
   if(SK.hold)heroHoldCancel();
-  SK.hold={kind:'sp_meteor',si:i};
-  heroHoldShow('sp_meteor');
+  SK.hold={kind:'sp_meteor',si:i,名称:'陨石'};SK.holdName='陨石';
+  _holdShowAlias('sp_meteor','陨石');
   showMsg('已举起「'+s.name+'」：准星指哪＝圆形落点预览，左键召唤陨石；右键 / 再按技能键收起','#ff8a3d');
   heroHudUpdate(true);
   return true;
@@ -1533,8 +1601,8 @@ SP_SKILLS['sp_wall']=function(i,s,H){
      左键放下（任意角度 / 看多远放多远 / 看脚下放脚下），墙从地下钻出并把站上面的玩家顶起来。 */
   if(SK.hold&&SK.hold.kind==='sp_wall'){heroHoldCancel();showMsg('已收起「'+s.name+'」','#ffd166');return true;}
   if(SK.hold)heroHoldCancel();
-  SK.hold={kind:'sp_wall',si:i};
-  heroHoldShow('sp_wall');
+  SK.hold={kind:'sp_wall',si:i,名称:'掩体墙'};SK.holdName='掩体墙';
+  _holdShowAlias('sp_wall','掩体墙');
   showMsg('已举起「'+s.name+'」：准星指向地面＝预览落点，左键放下；再按技能键收起','#9bd4ff');
   heroHudUpdate(true);
   return true;
@@ -1592,11 +1660,33 @@ SP_SKILLS['sp_revive']=function(i,s,H){
   showMsg('复苏协议：范围内回 60 血、倒地的被扶起 + 8 秒减伤 50%',H.css);
   return true;
 };
-/* ---- 蚀日者 · 焚曜（batch181，下标 4）----
-   ① 日冕喷发：自身为中心 12 米 —— 45 伤 + 致盲 2.5 秒；自己套 4 秒护盾（减伤 60%）+ 2.5 秒加速
-   【batch183】真人玩家的致盲走服务端：heroCast 已发 {t:'skill',k:'eclipse_sp',s:0,x,y,z}，
-   服务端按同一口径（12 米 + 同楼层）给房间里的其他人下发 {t:'flash',dur:2500}。
-   本循环里的 e.blindT 只驱动**小兵 AI** 的视线（真人实体上是死数据），别以为置了它对面就会白。 */
+/* ==================== 蚀日者 · 焚曜（1.10.4 机制完全重做）====================
+   原版三个技能各干各的、放完就没，本质上只是「多三个按钮」。
+   重做后是一条**资源循环**：
+     灼烧/命中/击杀 → 攒「熔核」→ 熔核当燃料免费连放技能 → 打得越凶放得越勤 → 大招更早成型
+   三个技能之间也互相咬合（①引爆②的燃烧区、②的余烬继续喂熔核、③把整片战场变成自己的充电场）。
+   联机口径不变：真人致盲仍由服务端按 {t:'skill',k:'eclipse_sp',s:N} 下发 flash，本地的 e.blindT 只管小兵 AI。 */
+
+var EMBER_MAX=100;      // 熔核上限
+var EMBER_COST=50;      // 一/二技能「免冷却」的价格
+var SP_VEIL_R=18;       // 日蚀领域半径（原 9 米脉冲 → 整个领域都算）
+var SP_VEIL_CAP=20;     // 领域最长持续（基础 10 + 滚雪球最多 10）
+
+/* ---- 熔核 ---- */
+function emberIsSP(){ return !!(SK.sp&&SK.idx===HERO_ECLIPSE); }
+function emberAdd(n){
+  if(!emberIsSP()||!(n>0))return;
+  var 前=SK.ember||0;
+  SK.ember=Math.min(EMBER_MAX,前+n);
+  /* 满溢：大招冷却立刻清零（一局里可以反复触发，这就是滚雪球的核心） */
+  if(SK.ember>=EMBER_MAX&&前<EMBER_MAX){
+    if(SK.cds[2]>0){SK.cds[2]=0;showMsg('🔥 熔核满溢 —— 大招冷却清零','#ffb347');}
+    else showMsg('🔥 熔核满溢（大招已就绪）','#ffb347');
+    try{heroFxRingAt(camera.position.x,camera.position.z,0xffb347,1.2,5.5,0.7);}catch(_){}
+  }
+}
+
+/* ① 日冕爆流：自身 14 米爆发（70 伤 + 致盲 3.2s + 点燃 4s），并**引爆脚下的焚天燃烧区** */
 SP_SKILLS['sp_solarflare']=function(i,s,H){
   var px=camera.position.x,pz=camera.position.z,py=(typeof standSurfY==='function')?standSurfY():0;
   var n=0;
@@ -1605,39 +1695,96 @@ SP_SKILLS['sp_solarflare']=function(i,s,H){
     if(e.isNet?(!e.alive):(e.hp<=0))continue;
     var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
     var dx=ep.x-px,dz=ep.z-pz;
-    if(dx*dx+dz*dz>144)continue;                                       // 12 米
-    if(Math.abs((e.isNet?ep.y-1.6:ep.y)-py)>3.2)continue;               // 隔一层楼不算
-    e.blindT=Math.max(e.blindT||0,2.5);e.flash=0.3;
-    spHitEnemy(e,45,ep.clone(),0);n++;
+    if(dx*dx+dz*dz>196)continue;                                   // 14 米
+    if(Math.abs((e.isNet?ep.y-1.6:ep.y)-py)>3.2)continue;
+    e.blindT=Math.max(e.blindT||0,3.2);e.flash=0.3;
+    e.burnT=Math.max(e.burnT||0,4);                                // 【新】点燃 4 秒
+    e.burnDps=Math.max(e.burnDps||0,14);
+    spHitEnemy(e,70,ep.clone(),0);n++;
     try{spawnParticle(ep.clone().setY(ep.y+1.1),0xffd27a,12,0.45,true);}catch(_){}
   }
-  SK.shield=Math.max(SK.shield,4);                                      // 日冕护盾：4 秒（heroMitigate 减伤 70%）
-  SK.dashBuff=Math.max(SK.dashBuff,2.5);                                // 2.5 秒加速
-  spZoneAdd({kind:'nova',x:px,z:pz,y:py,r:12,dur:0.8,dps:0});
-  spZoneNet('nova',px,pz,12,800,0,py);
-  heroFxRingAt(px,pz,0xffd27a,12,0.8,0.5);
-  showMsg('日冕喷发：'+n+' 个敌人被灼盲（45 伤 + 致盲 2.5 秒）',H.css);
+  if(n>0)emberAdd(8*n);                                            // 命中喂熔核
+
+  /* 【新】引爆自己丢在地上的焚天燃烧区：区内 90 伤 + 往外扩散余烬 */
+  var 引爆=0;
+  for(var z2=SP_ZONES.length-1;z2>=0;z2--){
+    var Z=SP_ZONES[z2];
+    if(!Z||Z.remote||Z.kind!=='fire')continue;
+    var zx=Z.x-px,zz=Z.z-pz;
+    if(zx*zx+zz*zz>196)continue;                                   // 只引爆 14 米内的
+    for(var k2=enemies.length-1;k2>=0;k2--){
+      var e2=enemies[k2];
+      if(e2.isNet?(!e2.alive):(e2.hp<=0))continue;
+      var ep2=(e2.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e2):e2.root.position;
+      var ax=ep2.x-Z.x,az=ep2.z-Z.z;
+      if(ax*ax+az*az>(Z.r+1.5)*(Z.r+1.5))continue;
+      spHitEnemy(e2,90,ep2.clone(),0.6);
+      try{spawnParticle(ep2.clone().setY(ep2.y+1.0),0xff6a2a,16,0.55,true);}catch(_){}
+    }
+    try{
+      heroFxRingAt(Z.x,Z.z,0xff5a1e,Z.r,Z.r+4,0.75,Z.y);
+      /* 余烬扩散：爆心留一团更烫的余烬，把刚刚那一圈续上 */
+      spZoneAdd({kind:'fire',x:Z.x,z:Z.z,y:Z.y,r:Math.max(3,Z.r*0.85),dur:5,dps:16,slow:0.35,color:0xff5a1e});
+      spZoneNet('fire',Z.x,Z.z,Math.max(3,Z.r*0.85),5000,0,Z.y);
+    }catch(_){}
+    spZoneClear(Z);SP_ZONES.splice(z2,1);
+    引爆++;
+  }
+
+  SK.shield=Math.max(SK.shield,6);                                // 日冕护盾（heroMitigate 减伤 70%）
+  SK.dashBuff=Math.max(SK.dashBuff,3.5);
+  spZoneAdd({kind:'nova',x:px,z:pz,y:py,r:14,dur:0.8,dps:0});
+  spZoneNet('nova',px,pz,14,800,0,py);
+  heroFxRingAt(px,pz,0xffd27a,14,0.8,0.5);
+  showMsg('日冕爆流：'+n+' 个目标被灼盲'+(引爆?(' ｜ 引爆 '+引爆+' 片焚天'):'')+'（70 伤 + 点燃 + 致盲 3.2 秒）',H.css);
   return true;
 };
-/* ② 堕日：投掷一颗坠落的小太阳，落地 6 秒燃烧区（spZoneAdd 的 fire：18 伤/秒 + 点燃）。
-   出手逻辑在 heroDoThrow 的 sp_sunfall 分支（THROW_KINDS 已登记）。 */
+
+/* ② 焚天坠日：出手在 heroDoThrow 的 sp_sunfall 分支（THROW_KINDS 已登记）。
+   落地那一下会「拽人」+「点燃」，见下方 焚天_落地()。 */
 SP_SKILLS['sp_sunfall']=function(i,s,H){ return false; };
-/* ③ 蚀日 · 白夜：全图致盲 4 秒 + 自身 8 秒（减伤 70% / 加速 30% / 跟随黑日脉冲）。
-   【batch183】真人玩家的致盲走服务端：heroCast 已发 {t:'skill',k:'eclipse_sp',s:2,x,y,z}，
-   服务端给同房间其他所有人（不分距离 / 不分楼层）下发 {t:'flash',dur:4000}。
-   本循环里的 e.blindT 同样只驱动小兵 AI 视线。
-   ⚠ 状态字段统一挂 SK.spVeil（updateHero 递减、heroMitigate / heroSpeedMul 读取），
-     重置清单（storyStart / resetRoundState）里也要清，别让上一局的白夜漏到下一局。 */
+
+/* ② 的落点结算：把 8 米内敌人拽向爆心 + 点燃，再铺燃烧区。
+   （从 heroDoThrow 里调用，逻辑独立出来免得那一段越来越长） */
+function 焚天_落地(pp,H,i){
+  var _sd=(H&&H.skills&&H.skills[i])?H.skills[i]:{dur:6};
+  var _sy2=Math.max(0,pp.y),r=4.5,n=0;
+  for(var j=enemies.length-1;j>=0;j--){
+    var e=enemies[j];
+    if(e.isNet?(!e.alive):(e.hp<=0))continue;
+    var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
+    var dx=ep.x-pp.x,dz=ep.z-pp.z,d2=dx*dx+dz*dz;
+    if(d2>64)continue;                                             // 8 米
+    if(Math.abs((e.isNet?ep.y-1.6:ep.y)-_sy2)>3.2)continue;
+    e.burnT=Math.max(e.burnT||0,5);e.burnDps=Math.max(e.burnDps||0,16);
+    if(!e.isNet&&d2>2.25){                                          // 小兵才拽（真人位置由服务端权威，不能本地搬）
+      var d=Math.sqrt(d2)||1,pull=Math.min(d-1.5,2.6);
+      try{
+        e.root.position.x-=dx/d*pull;e.root.position.z-=dz/d*pull;
+      }catch(_){}
+    }
+    n++;
+    try{spawnParticle(ep.clone().setY(ep.y+1.0),0xff7a3d,8,0.4,true);}catch(_){}
+  }
+  if(typeof spZoneAdd==='function')
+    spZoneAdd({kind:'fire',x:pp.x,z:pp.z,y:_sy2,r:r,dur:_sd.dur||6,dps:18,slow:0.30,color:0xff8a3d});
+  if(typeof spZoneNet==='function')spZoneNet('fire',pp.x,pp.z,r,(_sd.dur||6)*1000,0,_sy2);
+  heroFxRingAt(pp.x,pp.z,0xff8a3d,r,0.6,0.4);
+  spawnParticle(new THREE.Vector3(pp.x,Math.max(0.5,pp.y),pp.z),0xffb347,20,0.6,true);
+  if(n>0){emberAdd(6*n);showMsg('☄️ 焚天坠日：'+n+' 个目标被拽入火心','#ff8a3d');}
+}
+
+/* ③ 日蚀降临（三段式）：降临致盲 → 18 米跟随领域 → 滚雪球 / 可二段引爆 */
 SP_SKILLS['sp_eclipseveil']=function(i,s,H){
   var px=camera.position.x,pz=camera.position.z,py=(typeof standSurfY==='function')?standSurfY():0;
-  SK.spVeil=Math.max(SK.spVeil||0,s.dur);
-  SK.spVeilPulse=0;
-  /* 全图致盲（不分距离 / 不看朝向 —— 天都黑了） */
+  SK.spVeil=Math.max(SK.spVeil||0,s.dur||10);
+  SK.spVeilPulse=0;SK.spVeilKills=0;SK.spVeilSeen=null;
+  /* ① 降临：全图致盲（天都黑了，不分距离 / 不看朝向） */
   var n=0;
   for(var j=0;j<enemies.length;j++){
     var e=enemies[j];
     if(e.isNet?(!e.alive):(e.hp<=0))continue;
-    e.blindT=Math.max(e.blindT||0,4.0);e.flash=0.3;n++;
+    e.blindT=Math.max(e.blindT||0,5.5);e.flash=0.3;n++;
     try{spawnParticle((e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position.clone().setY(1.2),0x1a1030,10,0.5,true);}catch(_){}
   }
   /* 跟着自己走的黑日 */
@@ -1648,35 +1795,114 @@ SP_SKILLS['sp_eclipseveil']=function(i,s,H){
     new THREE.MeshBasicMaterial({color:0xffb347}));
   sun.add(rim);scene.add(sun);SK.spVeilObj=sun;
   heroFxRingAt(px,pz,0x1a1030,26,1.2,0.7);
-  heroFxRingAt(px,pz,0xffb347,14,1.0,0.5);
-  showMsg('🌘 蚀日 · 白夜：全图致盲 '+n+' 个目标，8 秒内减伤 70% + 移速 +30%',H.css);
+  heroFxRingAt(px,pz,0xffb347,SP_VEIL_R,1.0,0.5);
+  showMsg('🌘 日蚀降临：全图致盲 '+n+' 人 ｜ 18 米领域 10 秒 ｜ 再按大招键可引爆',H.css);
   return true;
 };
-/* 白夜的每帧推进（updateHero 调）：跟随 + 脉冲灼烧 9 米内敌人 */
+
+/* ③ 的二段引爆「日蚀 · 终焉」：领域塌缩，18 米内 120 伤 + 击退 + 致盲 2 秒 */
+function heroVeilDetonate(){
+  if(!(SK.spVeil>0))return false;
+  var px=camera.position.x,pz=camera.position.z,py=(typeof standSurfY==='function')?standSurfY():0;
+  var r=SP_VEIL_R,n=0;
+  for(var j=enemies.length-1;j>=0;j--){
+    var e=enemies[j];
+    if(e.isNet?(!e.alive):(e.hp<=0))continue;
+    var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
+    var dx=ep.x-px,dz=ep.z-pz,d2=dx*dx+dz*dz;
+    if(d2>r*r)continue;
+    if(Math.abs((e.isNet?ep.y-1.6:ep.y)-py)>3.2)continue;
+    e.blindT=Math.max(e.blindT||0,2);e.flash=0.4;
+    spHitEnemy(e,120,ep.clone(),1.0);n++;
+    if(!e.isNet){                                                   // 小兵才推，真人位置归服务端
+      var d=Math.sqrt(d2)||1,push=Math.min(6,3+ (r-d)*0.25 );
+      if(e.hp>0){try{e.root.position.x+=dx/d*push;e.root.position.z+=dz/d*push;}catch(_){}}
+    }
+    try{spawnParticle(ep.clone().setY(ep.y+1.2),0xff4a1e,22,0.7,true);}catch(_){}
+  }
+  /* 收尾：领域清掉，熔核回一口 */
+  SK.spVeil=0;SK.spVeilSeen=null;
+  if(SK.spVeilObj){if(SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeilObj=null;}
+  emberAdd(30);
+  heroFxRingAt(px,pz,0xff4a1e,r,0.6,0.9);
+  heroFxRingAt(px,pz,0x1a1030,r*1.25,0.8,1.1);
+  try{for(var q=0;q<3;q++)heroFxRingAt(px,pz,0xffb347,2+q*5,r,0.55+q*0.15);}catch(_){}
+  showMsg('☄️ 日蚀 · 终焉：'+n+' 个目标被吞噬（120 伤 + 击退）','#ff4a1e');
+  return true;
+}
+
+/* 白夜的每帧推进（updateHero 调）：跟随 + 领域压制（标记/减速）+ 脉冲灼烧 + 击杀滚雪球 */
 function spVeilTick(dt){
   try{
-    if(!(SK.spVeil>0)){ if(SK.spVeilObj){if(SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeilObj=null;} return; }
+    if(!(SK.spVeil>0)){
+      if(SK.spVeilObj){if(SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeilObj=null;}
+      SK.spVeilSeen=null;
+      return;
+    }
     SK.spVeil=Math.max(0,SK.spVeil-dt);
     if(SK.spVeilObj)SK.spVeilObj.position.set(camera.position.x,camera.position.y+15,camera.position.z);
-    SK.spVeilPulse=(SK.spVeilPulse||0)+dt;
-    if(SK.spVeilPulse>=1.2){
-      SK.spVeilPulse=0;
-      var px=camera.position.x,pz=camera.position.z,py=(typeof standSurfY==='function')?standSurfY():0;
-      heroFxRingAt(px,pz,0xffb347,9,0.7,0.35,Math.max(0.2,py+0.2));
-      for(var j=enemies.length-1;j>=0;j--){
-        var e=enemies[j];
-        if(e.isNet?(!e.alive):(e.hp<=0))continue;
-        var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
-        var dx=ep.x-px,dz=ep.z-pz;
-        if(dx*dx+dz*dz>81)continue;
-        if(Math.abs((e.isNet?ep.y-1.6:ep.y)-py)>3.2)continue;
-        spHitEnemy(e,15,ep.clone(),0);
-        try{spawnParticle(ep.clone().setY(ep.y+1.1),0xffb347,6,0.35,true);}catch(_){}
-      }
+
+    var px=camera.position.x,pz=camera.position.z,py=(typeof standSurfY==='function')?standSurfY():0;
+    var r2=SP_VEIL_R*SP_VEIL_R;
+
+    /* ② 白夜：领域内敌人 移速−50% + 日蚀标记（受伤 +25%，spHitEnemy 里读 e.eclipseMark） */
+    var 新=[],旧=SK.spVeilSeen||[];
+    for(var j=0;j<enemies.length;j++){
+      var e=enemies[j];
+      if(e.isNet?(!e.alive):(e.hp<=0))continue;
+      var ep=(e.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e):e.root.position;
+      var dx=ep.x-px,dz=ep.z-pz;
+      if(dx*dx+dz*dz>r2)continue;
+      if(Math.abs((e.isNet?ep.y-1.6:ep.y)-py)>3.2)continue;
+      e.eclipseMark=Math.max(e.eclipseMark||0,0.6);                 // 每帧刷，出圈 0.6 秒后自然失效
+      e.slowT=Math.max(e.slowT||0,0.35);
+      新.push({e:e,hp:(e.isNet?(e.alive?1:0):e.hp)});
     }
-    if(SK.spVeil<=0&&SK.spVeilObj){if(SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeilObj=null;showMsg('白夜结束了','#9ab');}
+    /* ③ 滚雪球：上一帧还在领域里、这一帧死了 → 算一次领域内击杀 */
+    var 击杀=0;
+    for(var o=0;o<旧.length;o++){
+      var O=旧[o];
+      if(!O||!O.e)continue;
+      var 现在=(O.e.isNet?(O.e.alive?1:0):O.e.hp);
+      if(O.hp>0&&!(现在>0))击杀++;
+    }
+    if(击杀>0){
+      SK.spVeilKills=(SK.spVeilKills||0)+击杀;
+      var 延=Math.min(10,击杀*2);
+      SK.spVeil=Math.min(SP_VEIL_CAP,SK.spVeil+延);
+      emberAdd(25*击杀);
+      showMsg('🌘 日蚀吞噬：+'+延+' 秒（剩 '+SK.spVeil.toFixed(1)+' 秒 · 熔核 +'+25*击杀+'）','#ffb347');
+      heroFxRingAt(px,pz,0xffb347,4,SP_VEIL_R,0.8);
+    }
+    SK.spVeilSeen=新;
+
+    /* 脉冲：每 0.9 秒对整片领域灼烧一次 */
+    SK.spVeilPulse=(SK.spVeilPulse||0)+dt;
+    if(SK.spVeilPulse>=0.9){
+      SK.spVeilPulse=0;
+      heroFxRingAt(px,pz,0xffb347,SP_VEIL_R,0.7,0.35,Math.max(0.2,py+0.2));
+      var 命中=0;
+      for(var j2=enemies.length-1;j2>=0;j2--){
+        var e2=enemies[j2];
+        if(e2.isNet?(!e2.alive):(e2.hp<=0))continue;
+        var ep2=(e2.isNet&&typeof heroEntWorld==='function')?heroEntWorld(e2):e2.root.position;
+        var bx=ep2.x-px,bz=ep2.z-pz;
+        if(bx*bx+bz*bz>r2)continue;
+        if(Math.abs((e2.isNet?ep2.y-1.6:ep2.y)-py)>3.2)continue;
+        e2.burnT=Math.max(e2.burnT||0,2);e2.burnDps=Math.max(e2.burnDps||0,14);
+        spHitEnemy(e2,22,ep2.clone(),0);命中++;
+        try{spawnParticle(ep2.clone().setY(ep2.y+1.1),0xffb347,6,0.35,true);}catch(_){}
+      }
+      if(命中>0)emberAdd(3*命中);
+    }
+    if(SK.spVeil<=0){
+      if(SK.spVeilObj){if(SK.spVeilObj.parent)SK.spVeilObj.parent.remove(SK.spVeilObj);SK.spVeilObj=null;}
+      SK.spVeilSeen=null;
+      showMsg('白夜结束了','#9ab');
+    }
   }catch(e){}
 }
+
 /* 站在自己创造的蚀日区域里吗？（焚曜被动：冷却 ×2 + 每秒回 3 血） */
 function spInOwnEclipse(){
   try{
@@ -1740,14 +1966,7 @@ function heroDoThrow(){
     throwInfo={x:uf0.x,y:uf0.y,z:uf0.z,vx:uv.vx,vy:uv.vy,vz:uv.vz,fuse:-1,stick:1};
     projSpawn('sp_sunfall',uf0.x,uf0.y,uf0.z,uv.vx,uv.vy,uv.vz,{fuse:-1,mesh:heroMeshSun(),rest:0.42,
       onLand:function(pp){
-        try{
-          var _sd=(H&&H.skills&&H.skills[i])?H.skills[i]:{dur:6};
-          var _sy2=Math.max(0,pp.y);
-          if(typeof spZoneAdd==='function')spZoneAdd({kind:'fire',x:pp.x,z:pp.z,y:_sy2,r:4.5,dur:_sd.dur||6,dps:18,slow:0.30,color:0xff8a3d});
-          if(typeof spZoneNet==='function')spZoneNet('fire',pp.x,pp.z,4.5,(_sd.dur||6)*1000,0,_sy2);
-          heroFxRingAt(pp.x,pp.z,0xff8a3d,4.5,0.6,0.4);
-          spawnParticle(new THREE.Vector3(pp.x,Math.max(0.5,pp.y),pp.z),0xffb347,20,0.6,true);
-        }catch(_){}
+        try{ 焚天_落地(pp,H,i); }catch(_){}
         projRemove(pp);
       } });
   }
@@ -2124,7 +2343,7 @@ function updateHero(){
     /* 【batch181】焚曜被动「日冕永昼」：站在自己的黑日圈里每秒回 3 血 */
     if(SK.sp&&SK.idx===HERO_ECLIPSE&&spInOwnEclipse()&&S.hp>0&&S.hp<S.maxHp){
       S._eclAcc=(S._eclAcc||0)+dt;
-      if(S._eclAcc>=1.0){S._eclAcc=0;S.hp=Math.min(S.maxHp,S.hp+3);updateHp();}
+      if(S._eclAcc>=1.0){S._eclAcc=0;S.hp=Math.min(S.maxHp,S.hp+3);updateHp();emberAdd(5);}   /* 【1.10.4】圈里每秒 +5 熔核 */
     }
     var _adx=camera.position.x-SK.auraX,_adz=camera.position.z-SK.auraZ;
     var _inAura=(SK.aura>0&&_adx*_adx+_adz*_adz<=PULSE_R*PULSE_R);        // 站在落点力场里才回血

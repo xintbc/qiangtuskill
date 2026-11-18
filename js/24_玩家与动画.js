@@ -73,6 +73,14 @@ function _检视推进(now, basePos){
     try{ _拉机柄动(0); _右手拉栓(0,0); }catch(e){}
     return false;
   }
+  /* 【1.10.9】引力枪皮：检视时抛向空中、悬浮在正前方旋转（不套用常规检视关键帧） */
+  try{
+    var _gdF=activeGunDef();
+    if(_gdF&&_gdF.inspectAnim==='float'&&typeof 引力_检视姿态==='function'){
+      引力_检视姿态(p,basePos);
+      return true;
+    }
+  }catch(_eIF){}
   var k=_检视采样(p);
   /* 呼吸微动：停在某个角度时枪不是死的（TACZ 的"活气"主要就来自这一点） */
   var br=Math.sin(now*0.0018)*0.0016, br2=Math.cos(now*0.0022)*0.0012;
@@ -375,9 +383,20 @@ function _换弹高级(a, now){
   }
   if(!S.reloadNewAttached&&a>=0.42){
     reloadNewMag=buildMagazineGroup(activeGunDef(),upgradeLevels.magSize||0);
-    leftHandAnchor.add(reloadNewMag);
-    reloadNewMag.position.set(0.010,-0.026,-0.020);reloadNewMag.rotation.set(0.5,0,0.3);
-    S.reloadNewAttached=true;
+    /* 【1.10.9】引力枪皮：新弹匣是"从屏幕左边飘过来、被左手接住"的 ——
+       先挂在相机上（不是左手），由 引力_飞匣Tick 逐帧从左侧飞到手心，
+       a>=0.50 时才真正交给左手（交接那一下才不会瞬移）。 */
+    try{
+      var _gdR=activeGunDef();
+      if(_gdR&&_gdR.reloadAnim==='gravity'&&typeof 引力_飞匣开始==='function'&&引力_飞匣开始(reloadNewMag)){
+        S.reloadNewAttached=true;
+      }
+    }catch(_eR){}
+    if(!S.reloadNewAttached){
+      leftHandAnchor.add(reloadNewMag);
+      reloadNewMag.position.set(0.010,-0.026,-0.020);reloadNewMag.rotation.set(0.5,0,0.3);
+      S.reloadNewAttached=true;
+    }
   }
   if(!_换弹.插入&&a>=0.64&&reloadNewMag&&reloadNewMag.parent===leftHandAnchor){
     weaponGroup.attach(reloadNewMag);reloadNewMag.position.set(curMagPos.x,curMagPos.y,curMagPos.z);reloadNewMag.rotation.set(0,0,0);
@@ -403,7 +422,17 @@ function _换弹高级(a, now){
   }
   _换弹.拉=k.拉;
   _换弹.右抓=k.抓;
+  /* 【1.10.9】引力枪：飞来的弹匣逐帧靠近左手；到点交接给左手（之后照常走"插进枪里"那段） */
+  try{
+    if(typeof 引力_飞匣Tick==='function'&&typeof 引力_飞匣交接==='function'){
+      引力_飞匣Tick(a);
+      if(a>=0.56&&typeof 引力_飞匣挂载中==='function'&&引力_飞匣挂载中()&&reloadNewMag&&reloadNewMag.parent!==leftHandAnchor){
+        引力_飞匣交接(leftHandAnchor,reloadNewMag);
+      }
+    }
+  }catch(_eFR){}
   if(a>=0.995){
+    try{ if(typeof 引力_飞匣清理==='function')引力_飞匣清理(); }catch(_eC){}   /* 兜底：别把飞匣留在画面上 */
     S.reloadInit=false;S.reloadOldDetached=false;S.reloadNewAttached=false;S.reloadDiscard=null;
     _换弹.拍=0;_换弹.拉=0;_换弹.右抓=0;_换弹.插入=false;_换弹.响=0;_换弹.拉峰=0;
     _拉机柄动(0);_右手拉栓(0,0);
@@ -411,6 +440,8 @@ function _换弹高级(a, now){
   leftHandAnchor.position.set(hp.x,hp.y,hp.z);
   leftHandAnchor.rotation.set(0,0,0);
   leftHandAnchor.visible=true;
+  /* 【1.10.9】引力枪皮：换弹时左手要**伸向屏幕左侧**去接飘来的弹匣（覆盖上面的常规手位） */
+  try{ if(typeof 引力_手偏移==='function')引力_手偏移(a); }catch(_eHO){}
   /* 新弹匣还挂在左手上时，跟着手一起翻转/对准；一插进枪里就不再管它 */
   if(reloadNewMag&&reloadNewMag.parent===leftHandAnchor){
     reloadNewMag.position.set(k.匣x,k.匣y,-0.020);
@@ -518,6 +549,8 @@ function _开镜功能件同步(){
      弹丸散布 spread 按 adsSpreadKeep 保留；冲刺 +0.020。
    以前散布圆（HUD）和准星（HUD）各写了一份，两边迟早漂移 —— 现在只在这里算一次。 */
 function _当前散布(){
+  if(typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效())
+    return (S.valSpread||0)+((typeof 瓦机动散射==='function')?瓦机动散射():0);
   var wd=(currentWeapon===WEAPON_GUN)?activeGunDef():null;
   var keep=(wd&&typeof wd.adsSpreadKeep==='number')?wd.adsSpreadKeep:((wd&&wd.type==='shotgun')?0.35:0);
   var spr=0.020*(S.hipSpreadMul||1)*(1-S.aimProgress);
@@ -606,10 +639,34 @@ function _准星刷新(dt){
     if(南瓜层.style.opacity!==op3)南瓜层.style.opacity=op3;
   }
   if(!通用显&&!纪念显&&!南瓜显)return;            /* 都不可见时不做无谓的布局计算 */
+  /* 【1.9.51】瓦罗兰特模式：停火 120ms 后散射开始收；开火时把上方那条准星线藏掉 */
+  var _valOn=(typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效());
+  if(_valOn){
+    var _停火=performance.now()-(S.valShotAt||0);
+    if(_停火>120)S.valSpread=Math.max(0,(S.valSpread||0)-VAL_回弹*dt);
+    /* 收干净了、而且确实停火超过连射窗 → 连射计数归零，下次开火又是"前 4 发免散" */
+    if(S.valSpread<=0&&_停火>VAL_连射窗)S.valBurst=0;
+  }
+  /* 上方那条线：三套准星（通用/纪念/万圣节）各管各的。
+     ⚠️ 以前只改 el（通用准星）那一套 —— 拿南瓜皮开枪，被藏的是看不见的通用层，
+     南瓜准星的上方线一直亮着；换回普通枪时那条线的 opacity 还留在 '0' 上，
+     于是"准星少了一条线"。这里改成三套都处理，而且非瓦模式也负责恢复。 */
+  var _藏线=_valOn&&((S.valSpread||0)>0.0008);
+  var _三层=[el,纪念层,南瓜层];
+  for(var _ci=0;_ci<_三层.length;_ci++){
+    var _层=_三层[_ci];
+    if(!_层||!_层.querySelector)continue;
+    var _u=_层.querySelector('i.u');
+    if(!_u)continue;
+    var _ov=_藏线?'0':'';
+    if(_u.style.opacity!==_ov)_u.style.opacity=_ov;
+  }
   var px=_散布像素(_当前散布());
   px=Math.max(0,Math.min(90,px));
   if(!S.onGround)px+=3;                  /* 空中额外张开：纯显示，子弹不受影响 */
-  px+=Math.min(14,(S.recoilKick||0)*90); /* 刚开过枪 → 抖一下（recoilKick 会自己衰减到 0） */
+  /* 瓦罗兰特模式：准星只按真实弹道张开，不再叠加开火抖动
+     （那一项满值 7.2px，会让"实际 0 散射"的前几发看起来也在散） */
+  if(!_valOn)px+=Math.min(14,(S.recoilKick||0)*90);
   var 目标=4+px;                         /* 4px 是静息间隙，中央留出视线 */
   if(typeof S.xhairGap!=='number')S.xhairGap=目标;
   S.xhairGap+=(目标-S.xhairGap)*Math.min(1,dt*18);
@@ -989,17 +1046,87 @@ function updatePlayer(){
   S.roll=-S.lean*LEAN_ROLL;
   // 【关键】每帧都把「侧倾」写进相机姿态。原先只有 mousemove / touchmove 才写，
   // 电脑端鼠标一停就只剩平移、动一下鼠标才突然倾斜 —— 这就是探头卡顿的根因。
-  camera.quaternion.setFromEuler(new THREE.Euler(pitch+(S.recoilPunch||0),yaw,S.roll||0,'YXZ'));
+  /* 【1.9.52】瓦罗兰特后坐力：偏移量单独累加（js/21 的 瓦后坐力一发），
+     相机显示 = pitch + 偏移。停火后这里把偏移量收回去 —— pitch 本身没被动过，
+     所以松开鼠标，枪线会**自己回到你开火前瞄的那个点**。 */
+  if(typeof 瓦后坐力回落==='function')瓦后坐力回落(dt);
+  /* 【1.9.53】相机只吃 15%（准星轻微上抬），剩下 85% 在 js/21 的 attack 里加到子弹方向 ——
+     所以准星和弹道是分开的：准星几乎不动，子弹一路往上飘。 */
+  var _vS=(typeof VAL_视觉比==='number')?VAL_视觉比:0.15;
+  var _vRY=(S.valRecoilY||0)*_vS, _vRX=(S.valRecoilX||0)*_vS;
+  camera.quaternion.setFromEuler(new THREE.Euler(pitch+(S.recoilPunch||0)+_vRY,yaw+_vRX,S.roll||0,'YXZ'));
   recoilPivot.rotation.z=-S.lean*0.22;
   updateLeftHand(dt);
   /* 【batch146】虚化（日蚀之门）中不放枪 / 不放刀：这一句是**每帧执行**的权威口径，
    不在它里面让位的话，heroGhostFx() 的隐藏会被立刻覆盖掉。 */
   /* 狙击枪(scope:true)开镜→隐藏枪身与手部（透过镜看不挡视野）；由模组 def 的 scope 控制，其它枪不受影响 */
   var _scoping=false;try{var _gdS=activeGunDef();if(_gdS&&_gdS.scope&&S.aimProgress>0.35)_scoping=true;}catch(e){}
-  weaponGroup.visible=(!S.onLadder&&SK.ghost<=0&&!_scoping);
+  /* 【1.10.5】这里每帧都是**权威口径**，必须把「手里拿着道具」算进去 ——
+     以前没有 !SK.holdHideGun，于是 heroHoldShow 刚把枪/刀藏起来，下一帧又被这一行设回 visible，
+     手上同时又挂着投掷物 → 用户看到的"枪械或刀的模型都没有被正常清除"。
+     heroHoldHide 会把 holdHideGun 置回 false，所以放下道具立刻恢复，不用额外还原逻辑。 */
+  weaponGroup.visible=(!S.onLadder&&SK.ghost<=0&&!_scoping&&!SK.holdHideGun);
   /* 【batch203】纪念枪开镜**不藏枪**：它的镜筒就是枪上的真部件，靠把枪推到眼前形成镜内视野。
      （只有 def 里带 scope:true 的枪才整组隐藏，见上面的 _scoping） */
-  leftHandCamGroup.visible=(!S.onLadder&&currentWeapon===WEAPON_KNIFE&&SK.ghost<=0&&!_scoping);
+  leftHandCamGroup.visible=(!S.onLadder&&currentWeapon===WEAPON_KNIFE&&SK.ghost<=0&&!_scoping&&!SK.holdHideGun);
+  /* 【1.10.5】左手互斥：枪手 leftHandAnchor 是 weaponGroup 的子节点，
+     换弹/举枪动画会把它设成 visible=true，切到刀之后没人清 → 刀手 + 枪手同时画出来 = "两个左手"。
+     这里每帧兜一次底：不是枪就收枪手（刀模式下刀手由上一行负责）。 */
+  if(currentWeapon!==WEAPON_GUN)leftHandAnchor.visible=false;
+  /* 【1.10.6】手里拿着道具时的「每帧权威同步」。
+     引擎里能把手持物状态顶掉的路径不止一条 —— 切枪动画、升级 tryBuy→applyUpgrades→rebuildWeaponModel、
+     模组对 heroHoldShow / heroCast / heroDoThrow 的包装、几个英雄自己技能的收尾……
+     以前只靠 heroHoldShow 里"设一次"+上面那句读 SK.holdHideGun，
+     只要其中任一环提前 return / 抛错，就会出现用户报的那个现象：
+     **弹药数消失了，但枪还举着、左下角还是「步枪」**。
+     所以这里不再信任任何单点写入：只要 SK.hold 还在，就直接把枪收掉、名字写成道具名。
+     这是幂等的、每帧都跑的，任何一处被改错，下一帧自动纠正回来。 */
+  try{
+    var _有持物=!!(S.playing&&!S.over&&!(S.hp<=0)&&SK.hold);
+    if(_有持物){
+      if(!SK.holdHideGun)SK.holdHideGun=true;
+      if(weaponGroup.visible)weaponGroup.visible=false;
+      if(typeof leftHandAnchor!=='undefined'&&leftHandAnchor)leftHandAnchor.visible=false;
+      if(typeof leftHandCamGroup!=='undefined'&&leftHandCamGroup&&leftHandCamGroup.visible)leftHandCamGroup.visible=false;
+      /* 【1.10.13】DOM 引用缓存：这两个元素永远不会被替换，懒取一次就行，
+         不再每帧两次 getElementById。 */
+      if(!window.__dom枪名)window.__dom枪名=document.getElementById('weapon-name');
+      if(!window.__dom弹药)window.__dom弹药=document.getElementById('ammo');
+      var _hn=window.__dom枪名;
+      var _想名=SK.holdName||SK.hold.名称||'投掷物';
+      if(_hn&&_hn.textContent!==_想名)_hn.textContent=_想名;
+      var _am2=window.__dom弹药;
+      if(_am2&&_am2.style.display!=='none')_am2.style.display='none';
+    }
+    /* 【1.10.7】持物的那只手（js/41 的 _holdHand）是**独立挂在 camera 下**的 Group，
+       不在 weaponGroup 里，所以光收枪收不掉它。它原来只在 heroHoldShow / heroHoldHide
+       各设一次 visible —— 投掷出手、技能被打断、死亡、切图这些路径只要漏掉一次，
+       那只手就永远举在镜头前（用户报的"用技能时手部模型没被删除"）。
+       这里每帧按 SK.hold 对账：手里真有东西才留手，否则一律收。 */
+    if(typeof _holdHand!=='undefined'&&_holdHand){
+      var _该有手=!!(_有持物&&_holdObj);
+      if(_holdHand.visible!==_该有手)_holdHand.visible=_该有手;
+    }
+    /* 【1.10.7】没拿道具了 → 左下角必须回到主武器名。
+       原来只在 heroHoldHide 里靠 data-主 还原一次，投掷出手 / 技能被打断 / 死亡这些
+       不走 hide 的路径会让名字永久停在「战术探测器」。这里每帧对账。 */
+    /* ⚠️ 月引举着潮汐之筒时（SK.yUlt）不走这条：那不是 SK.hold，名字由它自己管，
+       不排除的话每帧都会把「🌀 潮汐之筒」改回「🔫 步枪」。 */
+    if(!_有持物&&!(typeof SK!=='undefined'&&SK&&SK.yUlt)){
+      var _hn2=window.__dom枪名||(window.__dom枪名=document.getElementById('weapon-name'));
+      var _主名=(typeof window.__主武器显示名==='string')?window.__主武器显示名:'';
+      if(_hn2&&_主名&&_hn2.textContent!==_主名){
+        _hn2.textContent=_主名;
+        if(_hn2.getAttribute('data-主'))_hn2.removeAttribute('data-主');
+      }
+    }
+    /* 【1.10.7】刀手互斥：leftHandCamGroup 是**刀的左手**，同样挂在 camera 下。
+       以前只有下面那句"切到刀才显示"，但 44 / 70 里的技能收尾、切枪动画中途都会把它设回 true，
+       于是刀切枪之后那只左手的网格还留在画面上（用户报的"从刀切到枪右手/左手没清除"）。 */
+    if(typeof leftHandCamGroup!=='undefined'&&leftHandCamGroup&&currentWeapon!==WEAPON_KNIFE&&leftHandCamGroup.visible){
+      leftHandCamGroup.visible=false;
+    }
+  }catch(_e持物){}
 climbHands.visible=S.onLadder;
   /* 【batch184e】开镜遮挡修复：标记 adsHide 的瞄具网格（镜身/镜片）在开镜时隐藏，
      改由 #redDotFx 浮层显示红点，避免“镜子挡住视野”。非开镜时照常显示。
@@ -1059,7 +1186,7 @@ climbHands.visible=S.onLadder;
   var recoilRecoverySpeed=0.12/S.recoilMul;
   // 开镜时模型不参与后坐力表现：模型后坐/摆动/倾斜按 (1-开镜进度) 衰减，满开镜时枪身纹丝不动，后坐力只由视角向上表达
   var _rScale=1-S.aimProgress;
-  if(S.recoilKick>0.001){recoilPivot.position.z=S.recoilKick*_rScale;recoilPivot.rotation.x=-S.recoilRot*_rScale;S.recoilKick=Math.max(0,S.recoilKick-recoilRecoverySpeed*dt);S.recoilRot=Math.max(0,S.recoilRot-recoilRecoverySpeed*1.5*dt);}
+  if(S.recoilKick>0.001){recoilPivot.position.z=S.recoilKick*_rScale;/* 【1.9.58】rotation.x 要用**正**：挂在 camera 上的枪朝 -Z，绕 X 正转 = 枪口上抬；以前写 -recoilRot，开火时枪口是往下压 0.15rad(8.6°) —— 用户说的"枪线往下"就是它。 */recoilPivot.rotation.x=S.recoilRot*_rScale;S.recoilKick=Math.max(0,S.recoilKick-recoilRecoverySpeed*dt);S.recoilRot=Math.max(0,S.recoilRot-recoilRecoverySpeed*1.5*dt);}
   else{recoilPivot.position.z=0;recoilPivot.rotation.x=0;S.recoilKick=0;S.recoilRot=0;}
   /* 【batch184f】视角后坐冲量逐帧回落（快上慢回，约 0.2s 归零） */
   if(S.recoilPunch>0.0001)S.recoilPunch=Math.max(0,S.recoilPunch-0.22*dt);else S.recoilPunch=0; /* 【batch184f】回正放慢：用户嫌归零太快，0.6→0.22(约2.7倍慢) */
@@ -1068,10 +1195,17 @@ climbHands.visible=S.onLadder;
   // 持续后坐力：按住开火键，视角平滑持续向上攀升（连续上抬，不是每发一跳）；开镜时略收敛更好压枪
   if(mouseDown&&currentWeapon===WEAPON_GUN&&canAct()&&S.ammo>0&&S.auto!==false){
     var _cl=RECOIL_PER_SHOT*(1000/S.fireRate)*S.recoilMul*(1-S.aimProgress*0.3)*dt;
-    pitch=Math.min(1.4,pitch+_cl);
-    camera.quaternion.setFromEuler(new THREE.Euler(pitch+(S.recoilPunch||0),yaw,S.roll||0,'YXZ'));
+    if(typeof 瓦罗兰特生效==='function'&&瓦罗兰特生效()){
+      /* 瓦罗兰特：视角只跟"每发偏移量"走，这里不再连续抬 pitch ——
+         抬多少由 js/21 的弹道图案决定，松手自动回落。 */
+      pitch=Math.max(-1.45,Math.min(1.45,pitch));
+    }else{
+      pitch=Math.min(1.4,pitch+_cl);
+    }
+    camera.quaternion.setFromEuler(new THREE.Euler(pitch+(S.recoilPunch||0)+(S.valRecoilY||0)*(typeof VAL_视觉比==='number'?VAL_视觉比:0.15),yaw+(S.valRecoilX||0)*(typeof VAL_视觉比==='number'?VAL_视觉比:0.15),S.roll||0,'YXZ'));
   }
 
+  if(!mouseDown)S.valFiring=0;
   if(switchAnimState===ANIM_LOWERING){var elapsed=now-switchAnimStart,t=Math.min(1,elapsed/SWITCH_LOWER_DURATION),ease=t*t;weaponGroup.position.set(basePos.x,basePos.y-ease*0.5,basePos.z+ease*0.1);weaponGroup.rotation.x=-ease*0.3;if(t>=1){currentWeapon=pendingWeapon;rebuildWeaponModel();switchAnimState=ANIM_RAISING;switchAnimStart=now;}}
   else if(switchAnimState===ANIM_RAISING){var elapsed=now-switchAnimStart,t=Math.min(1,elapsed/SWITCH_RAISE_DURATION),c1=1.70158,c3=c1+1,ease=1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);weaponGroup.position.set(basePos.x,basePos.y-(1-ease)*0.5,basePos.z+(1-ease)*0.1);weaponGroup.rotation.x=-(1-ease)*0.3;if(t>=1){switchAnimState=ANIM_IDLE;weaponGroup.position.set(basePos.x,basePos.y,basePos.z);weaponGroup.rotation.set(0,0,0);}}
   else if(switchAnimState===ANIM_IDLE){

@@ -94,10 +94,13 @@ function netKeepAlive(on){
   NET.ka=setInterval(function(){
     if(!NET.connected)return;
     netSend({t:'ping',ts:Date.now()});                     // 心跳兼测延迟
-    // 【半死连接自检】TCP 看着还连着，但隧道网关/NAT 把连接表悄悄丢了之后，
-    // 浏览器会迟迟不报 onclose —— 玩家就卡在"显示已联机、其实早就没数据"。
-    // 服务端 30Hz 广播 + 每 2 秒回 pong，正常绝不可能 9 秒一个包都收不到。
-    if(NET.lastRecv&&Date.now()-NET.lastRecv>9000)netForceReconnect('连接已失效，正在重连…');
+    /* 【半死连接自检】TCP 看着还连着，但隧道网关/NAT 把连接表悄悄丢了之后，
+       浏览器会迟迟不报 onclose —— 玩家就卡在"显示已联机、其实早就没数据"。
+       服务端 30Hz 广播 + 每 2 秒回 pong，正常绝不可能这么久一个包都收不到。
+       【1.9.49】wss（云端 / 隧道）跨境延迟高、偶发丢包，阈值从 9 秒放宽到 25 秒，
+       否则一次正常抖动就被判掉线，来回重连反而更卡。 */
+    var 失联阈值 = NET.secure ? 25000 : 9000;
+    if(NET.lastRecv&&Date.now()-NET.lastRecv>失联阈值)netForceReconnect('连接已失效，正在重连…');
   },2000);
 }
 /* 退避重连的等待时间：越连不上等得越久（带抖动，防一堆人同时敲服务器）。
@@ -136,7 +139,9 @@ if(typeof document!=='undefined'&&document.addEventListener){
   document.addEventListener('visibilitychange',function(){
     if(document.hidden)return;
     if(!netIsMulti()||NET.replaced)return;
-    if(!NET.connected||(NET.lastRecv&&Date.now()-NET.lastRecv>6000))netForceReconnect('欢迎回来，正在重连…');
+    /* 【1.9.49】切回来时如果 6 秒没数据就重连，对云端太苛刻（跨境一次抖动就 10 秒+），
+       放宽到 15 秒；反正真的断了还有 onclose 和哨兵兜着。 */
+    if(!NET.connected||(NET.lastRecv&&Date.now()-NET.lastRecv>15000))netForceReconnect('欢迎回来，正在重连…');
   });
 }
 if(typeof window!=='undefined'&&window.addEventListener){
@@ -161,7 +166,26 @@ function netConnect(){
   var proto=(NET.secure||(typeof location!=='undefined'&&location.protocol==='https:'))?'wss://':'ws://';
   var _ws;try{_ws=new WebSocket(proto+_host+'/ws');}catch(e){NET.reconnecting=false;return;}
   NET.ws=_ws;
+  /* 【1.9.49】连接超时哨兵 —— 云端（Render）冷启动的直接对策。
+     Render 免费实例休眠后，第一个请求要 50~60 秒才醒；这期间 WebSocket 会一直卡在
+     CONNECTING（既不 onopen 也不 onclose），于是出现死锁：
+       · NET.reconnecting 永远 true  → netConnect 第一行就 return，自己把自己挡住了
+       · NET.ws.readyState 永远 0    → 15 秒保活探测也被同一个判断挡住
+     表现就是「一直连不上、不报错、也不重试」，玩家干等到放弃。
+     现在给每次连接挂一个哨兵：到点还没连上就主动掐掉、复位标志、重新排队。 */
+  var 连接超时 = (proto === 'wss://') ? 45000 : 20000;   // wss（云端/隧道）放宽到 45 秒，够冷启动
+  var 哨兵 = setTimeout(function () {
+    if (NET.ws !== _ws || _ws.readyState === 1) return;
+    try { _ws.onopen = null; _ws.onmessage = null; _ws.onclose = null; _ws.onerror = null; _ws.close(); } catch (e) { }
+    if (NET.ws === _ws) NET.ws = null;
+    NET.connected = false; NET.reconnecting = false;      // 关键：把卡死的标志解开
+    NET.retry++; NET.tries++;
+    var 等 = netRetryDelay(NET.retry);
+    if (!NET.quiet) showMsg('连接超时（云端冷启动要等一分钟），' + Math.round(等 / 1000) + ' 秒后重试…', '#fc0');
+    setTimeout(function () { if (!NET.connected) netConnect(); }, 等);
+  }, 连接超时);
   _ws.onopen=function(){
+    clearTimeout(哨兵);
     if(NET.ws!==_ws)return;
     NET.connected=true;NET.reconnecting=false;NET.lastRecv=Date.now();
     if(NET.retry>0)showMsg('已重新连上服务器','#6f6');      // 重连回来：给个明确的好消息
@@ -218,6 +242,7 @@ function netConnect(){
     try{netOnMsg(JSON.parse(ev.data));}catch(e){}
   };
   _ws.onclose=function(ev){
+    clearTimeout(哨兵);
     if(NET.ws!==_ws)return;              // 已被替换的旧连接：它的一切事件全部忽略，不再触发重连
     NET.connected=false;netKeepAlive(false);
     NET.closeCode=(ev&&ev.code)||0;
@@ -943,7 +968,11 @@ function netOnMsg(m){
        否则复活时 SK.downed 还是正数 → 人躺在地上起不来（用户实测）。 */
     SK.downed=0;SK._dbT=0;
     var d=document.getElementById('netDeath');if(d)d.style.display='flex';
-    try{if(document.exitPointerLock)document.exitPointerLock();}catch(e){}
+    /* 【1.9.56】死亡**不再**主动退出鼠标锁定（用户报的 bug）。
+       以前这里 exitPointerLock() 会连带触发 pointerlockchange → openGameMenu()，
+       结果是"一死就弹暂停菜单 + 鼠标跑出来"，3 秒后重生还得再点一下才重新锁上。
+       死亡遮罩只是「☠️ 阵亡 / 3 秒后自动重生」，没有任何要点的按钮，
+       保持锁定反而能继续转视角看周围。玩家真想暂停按 Esc 就行。 */
     return;
   }
   if(m.t==='respawn'){
@@ -953,7 +982,8 @@ function netOnMsg(m){
     if(typeof clearAllStatusFx==='function')clearAllStatusFx();
     camera.position.set(m.x,2,m.z);S.velY=0;S.landKick=0;S.onLadder=false;S.mantle=0;
     var d2=document.getElementById('netDeath');if(d2)d2.style.display='none';
-    if(!isTouch&&typeof lockPointer==='function')lockPointer();
+    /* 死亡时没解锁了，这里只在"确实不在锁定状态"时才补一次（比如玩家自己按过 Esc） */
+    if(!isTouch&&!document.pointerLockElement&&typeof lockPointer==='function')lockPointer();
     showMsg('已重生','#6f6');
     return;
   }

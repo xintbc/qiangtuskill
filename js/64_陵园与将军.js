@@ -649,7 +649,7 @@ function 将军手持清掉(){
 function 将军持物(kind){
   if(typeof heroHoldShow!=='function')return;
   将军手持清掉();          /* 换手前先收干净上一件（heroHoldHide 认不到我们的 wrap） */
-  heroHoldShow(kind);
+  _holdShowAlias(kind, (kind==='g_spear'?'爆炸长矛':kind==='g_coffin'?'石棺':''));   /* 【1.10.5】别名 */
   /* heroHoldShow 对未知 kind 会塞一个烟雾罐；这里换掉 —— 而且**不再交回 _holdObj**。
      ⚠️【batch249】"长矛根本没有特殊手持动画"的真因：
        js/41 的 updateHero 每帧都按 HOLD_POSE 重写 _holdObj 的 position / rotation.y / rotation.z

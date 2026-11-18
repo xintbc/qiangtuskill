@@ -1,5 +1,8 @@
 // ==================== ENEMY AI ====================
 var _dir=new THREE.Vector3(),_sep=new THREE.Vector3(),_avoid=new THREE.Vector3(),_steer=new THREE.Vector3(),_tangent=new THREE.Vector3();
+/* 【1.10.13】热路径复用向量：瞄准线每帧、开火每枪原来各 new/clone 3~4 个 Vector3，
+   敌人一多就是固定的 GC 压力。_vAim/_vOrigin/_vDir2 只在 updateEnemies 里用，不跨帧。 */
+var _vAim=new THREE.Vector3(),_vOrigin=new THREE.Vector3(),_vDir2=new THREE.Vector3();
 var FOV_HALF = 117*Math.PI/360;
 function pickPatrolTarget(e){
   var cx=e.root.position.x, cz=e.root.position.z;
@@ -171,9 +174,9 @@ function updateEnemies(){
       if(seen){
         if(e.aiState==='chase'){ if(inRange&&!tooClose&&hasLOS){ e.aiState='aiming'; e.aimStartTime=now; if(e.aimLine){e.aimLine.visible=true;e.aimLine.material.opacity=0.2;} } }
         else if(e.aiState==='aiming'){
-          if(e.aimLine){ var gunWorldPos=new THREE.Vector3(0,e.sz*0.9,-e.sz*0.5); gunWorldPos.applyMatrix4(e.g.matrixWorld); var pos=e.aimLine.geometry.attributes.position.array; pos[0]=gunWorldPos.x; pos[1]=gunWorldPos.y; pos[2]=gunWorldPos.z; pos[3]=_tg.x; pos[4]=_tg.y; pos[5]=_tg.z; e.aimLine.geometry.attributes.position.needsUpdate=true; var progress=Math.min(1,(now-e.aimStartTime)/e.aimTime); e.aimLine.material.opacity=0.2+progress*0.6; }
+          if(e.aimLine){ _vAim.set(0,e.sz*0.9,-e.sz*0.5).applyMatrix4(e.g.matrixWorld); var pos=e.aimLine.geometry.attributes.position.array; pos[0]=_vAim.x; pos[1]=_vAim.y; pos[2]=_vAim.z; pos[3]=_tg.x; pos[4]=_tg.y; pos[5]=_tg.z; e.aimLine.geometry.attributes.position.needsUpdate=true; var progress=Math.min(1,(now-e.aimStartTime)/e.aimTime); e.aimLine.material.opacity=0.2+progress*0.6; }
           if(!inRange||tooClose||!hasLOS){ e.aiState='chase'; if(e.aimLine)e.aimLine.visible=false; }
-          else if(now-e.aimStartTime>=e.aimTime){ var origin=e.root.position.clone(); origin.y+=e.sz*0.9; _dir.set(dx, _tg.y-origin.y, dz); var dLen=_dir.length(); if(dLen>0.001)_dir.divideScalar(dLen); else _dir.set(0,0,1); origin.add(_dir.clone().multiplyScalar(e.sz*0.5)); for(var b=0;b<e.bulletCount;b++){ var bDir=_dir.clone(); bDir.x+=(Math.random()-0.5)*e.spread; bDir.y+=(Math.random()-0.5)*e.spread; bDir.z+=(Math.random()-0.5)*e.spread; var bLen=bDir.length(); if(bLen>0.001)bDir.divideScalar(bLen); else bDir.set(0,0,1); spawnEnemyBullet(origin,bDir,e.bulletSpd,e.dmg,e); } playEnemyShot(e.root.position); netMuzzleFlash(origin.x,origin.y,origin.z,0xff8a3d); e.rec=Math.min(1,(e.rec||0)+0.85); e.lastShot=now; e.aiState='cooldown'; if(e.aimLine)e.aimLine.visible=false; }
+          else if(now-e.aimStartTime>=e.aimTime){ var origin=_vOrigin.copy(e.root.position); origin.y+=e.sz*0.9; _dir.set(dx, _tg.y-origin.y, dz); var dLen=_dir.length(); if(dLen>0.001)_dir.divideScalar(dLen); else _dir.set(0,0,1); origin.addScaledVector(_dir,e.sz*0.5); for(var b=0;b<e.bulletCount;b++){ var bDir=_vDir2.copy(_dir); bDir.x+=(Math.random()-0.5)*e.spread; bDir.y+=(Math.random()-0.5)*e.spread; bDir.z+=(Math.random()-0.5)*e.spread; var bLen=bDir.length(); if(bLen>0.001)bDir.divideScalar(bLen); else bDir.set(0,0,1); spawnEnemyBullet(origin,bDir,e.bulletSpd,e.dmg,e); } playEnemyShot(e.root.position); netMuzzleFlash(origin.x,origin.y,origin.z,0xff8a3d); e.rec=Math.min(1,(e.rec||0)+0.85); e.lastShot=now; e.aiState='cooldown'; if(e.aimLine)e.aimLine.visible=false; }
         }
         else if(e.aiState==='cooldown'){ if(now-e.lastShot>e.shootCD)e.aiState='chase'; }
         desiredDirX=dx; desiredDirZ=dz;
