@@ -29,6 +29,26 @@ SRC = os.path.join(ROOT, '多文件版')
     '实际端口.txt', '公网地址.txt', '启动日志.txt', '服务端',
 }
 
+# 【1.10.18】发版前先过手机版守卫。
+# 用户要求：手机版操作层（js/72 + #touchUI 那套）以后不能被升级顶掉。
+# 校验脚本会同时核对 源码分片 / index.html / 唯一源 / 客户端·安卓两个副本，
+# 只要有一处被换回旧结构或者副本没同步，这里直接中止发布，不发出去。
+def 校验手机版():
+    脚本 = os.path.join(ROOT, '_以删除_20261018', '工具', '校验手机版.js')
+    if not os.path.isfile(脚本):
+        print('⚠️  找不到手机版校验脚本，跳过（%s）' % 脚本)
+        return
+    try:
+        import subprocess
+        r = subprocess.run(['node', 脚本], cwd=ROOT)
+    except FileNotFoundError:
+        print('⚠️  这台机器没有 node，跳过手机版校验')
+        return
+    if r.returncode != 0:
+        print('\n❌ 手机版操作层校验不通过，已中止发布（没有生成任何版本包）。')
+        print('   修好后重跑：node "_以删除_20261018/工具/校验手机版.js"')
+        sys.exit(1)
+
 def 版本(默认='1.7.5'):
     return sys.argv[1] if len(sys.argv) > 1 else 默认
 
@@ -39,6 +59,44 @@ def 类型():
     if len(sys.argv) > 3 and ('预览' in sys.argv[3] or 'snapshot' in sys.argv[3].lower()):
         return '预览'
     return '正式'
+
+# ==================== 版本号 → 平台（1.10.26 起） ====================
+# 用户定的规矩：
+#   x.y.z              → 全平台（电脑 + 手机 一起发）
+#   x.y.z-mobile1      → 只有手机，电脑版**保持原版本号不动**
+#   x.y.z-pc1          → 只有电脑，手机版**保持原版本号不动**
+# 前三段数字只要变了，两个平台都必须跟上（所以裸号 = 全平台）。
+import re as _版本re
+
+def 版本平台(v):
+    """'1.10.26' → 全平台 / '1.10.26-mobile1' → 安卓 / '1.10.26-pc2' → 电脑"""
+    m = _版本re.match(r'^\d+\.\d+\.\d+-([A-Za-z]+)(\d+)$', str(v or ''))
+    if not m:
+        return '全平台'
+    t = m.group(1).lower()
+    if t in ('mobile', 'apk', 'android', 'm'):
+        return '安卓'
+    if t in ('pc', 'win', 'windows', 'desktop'):
+        return '电脑'
+    return '全平台'
+
+def 平台覆盖(本次, 平台):
+    """本次发布是否要更新这个平台"""
+    return 本次 == '全平台' or 本次 == 平台
+
+def 后缀号(v):
+    """'1.10.26-pc12' → 12；裸号 → 0"""
+    m = _版本re.search(r'-([A-Za-z]+)(\d+)$', str(v or ''))
+    return int(m.group(2)) if m else 0
+
+def 读游戏版本(路径):
+    """从一个 js/02 文件里读 GAME_VER（读不到返回空串）"""
+    try:
+        with io.open(路径, encoding='utf-8') as f:
+            m = _版本re.search(r"GAME_VER\s*=\s*'([0-9][0-9A-Za-z.\-]*)'", f.read())
+            return m.group(1) if m else ''
+    except Exception:
+        return ''
 
 # 玩家包白名单：只打「开游戏真正用得到」的文件。
 # 以前是整目录复制（黑名单排除），结果 zip 里塞满了开发用的东西：
@@ -132,7 +190,10 @@ def md5(文件):
     return h.hexdigest()
 
 def 主():
+    校验手机版()
     ver = 版本()
+    本次平台 = 版本平台(ver)
+    print('📦 本次发布 %s → 平台范围：%s' % (ver, 本次平台))
     zip名 = '枪战突击_v%s.zip' % ver
     zip路径 = os.path.join(版本目录, zip名)
     打zip(SRC, zip路径)
@@ -152,6 +213,7 @@ def 主():
         'md5': md5(zip路径),
         '日期': __import__('datetime').date.today().isoformat(),
         '说明': 说明(),
+        '平台': 本次平台,     # 【1.10.26】启动器/客户端按它过滤，避免跨平台收到别人的更新
     }
     新条目['类型'] = 类型()
     m['版本'] = [x for x in m.get('版本', []) if x.get('版本') != ver]
@@ -159,7 +221,9 @@ def 主():
     # 版本号排序要容得下「1.8.0-p1」这种预览版后缀（旧的 int(p) 会直接崩）
     import re as _re
     def _版本键(x):
-        # 【1.10.26】支持平台后缀 1.10.26-mobile1 / -pc1：主体三段 → 后缀号 → 平台字母
+        # 【1.10.26】1.10.26-mobile1 / -pc1 这种平台后缀也要参与排序：
+        #   主体三段 → 后缀号 → 平台字母。只取前 3 个数字会让
+        #   「1.10.25-mobile1」和「1.10.25」并列，每次发布 manifest 顺序随机抖动。
         _s = str(x.get('版本', '0'))
         nums = _re.findall(r'\d+', _s)
         while len(nums) < 3: nums.append('0')
@@ -301,9 +365,15 @@ def 主():
     # 电脑玩家也得先解压再找 exe。这里把两个「双击就能装」的产物一起放上去。
     # 【1.7.9】改成**保留历史**：每个版本都留着，玩家想回旧版随时能下
     # （安装包必须和服务器版本对得上，所以清单里要能看出是哪个版本）。
+    # 【1.10.26】每个平台各带一个「包内版本来源」：
+    #   只发手机版（-mobileN）时，电脑包一个字节都不动，条目也保持上一版的版本号，
+    #   以前两平台共用同一个 ver，会把旧电脑包改名成手机版号 → 电脑端收到手机版更新、
+    #   一个版本里两个平台版本号对不上。
     安装包源 = [
-        ('安卓', os.path.join(SRC, '手机版安卓', '枪战突击.apk'), '枪战突击_安卓_v%s.apk', '📱 安卓 APK（手机）'),
-        ('电脑', os.path.join(SRC, '客户端', '枪战突击_安装程序.exe'), '枪战突击_安装程序_v%s.exe', '💻 电脑安装程序（Windows）'),
+        ('安卓', os.path.join(SRC, '手机版安卓', '枪战突击.apk'), '枪战突击_安卓_v%s.apk', '📱 安卓 APK（手机）',
+         os.path.join(SRC, '手机版安卓', 'app', 'src', 'main', 'assets', 'js', '02_状态键位与粒子.js')),
+        ('电脑', os.path.join(SRC, '客户端', '枪战突击_安装程序.exe'), '枪战突击_安装程序_v%s.exe', '💻 电脑安装程序（Windows）',
+         os.path.join(SRC, '客户端', '游戏', 'js', '02_状态键位与粒子.js')),
     ]
 
     # 【1.9.33b】防再犯：安装包/APK 是**独立打包**的（打包安装包.py / _一键打包.py），
@@ -311,7 +381,7 @@ def 主():
     _游戏源 = os.path.join(SRC, 'js', '02_状态键位与粒子.js')
     if os.path.isfile(_游戏源):
         _源时 = os.path.getmtime(_游戏源)
-        for _平台, _文件, _t, _标题 in 安装包源:
+        for _平台, _文件, _t, _标题, _版本源 in 安装包源:
             if os.path.isfile(_文件) and os.path.getmtime(_文件) < _源时:
                 import time as _time
                 print('⚠️  警告：%s（%s）比游戏源码旧（打包于 %s），内嵌的可能不是本版内容！'
@@ -325,22 +395,28 @@ def 主():
     try:
         import re as _re
         with io.open(_游戏源, encoding='utf-8') as _f:
-            _mm = _re.search(r"GAME_VER\s*=\s*'([0-9.]+)'", _f.read())
+            _mm = _re.search(r"GAME_VER\s*=\s*'([0-9][0-9A-Za-z.\-]*)'", _f.read())
             if _mm:
                 _ver = _mm.group(1)
     except Exception:
         pass
     if _ver != '?':
+        # 【1.10.26】只查本次真正发布的平台：
+        #   只发手机版时，电脑那份 index.html 停在旧版本号是**正常的**
+        #   （它没跟着重打），以前一刀切检查会把正常情况判成"没同步"拒绝发布。
+        _要查 = [os.path.join(SRC, 'index.html')]
+        if 平台覆盖(本次平台, '安卓'):
+            _要查.append(os.path.join(SRC, '手机版安卓', 'app', 'src', 'main', 'assets', 'index.html'))
+        if 平台覆盖(本次平台, '电脑'):
+            _要查.append(os.path.join(SRC, '客户端', '游戏', 'index.html'))
         _坏的 = []
-        for _h in [os.path.join(SRC, 'index.html'),
-                   os.path.join(SRC, '客户端', '游戏', 'index.html'),
-                   os.path.join(SRC, '手机版安卓', 'app', 'src', 'main', 'assets', 'index.html')]:
+        for _h in _要查:
             if not os.path.isfile(_h):
                 continue
             with io.open(_h, encoding='utf-8') as _f:
                 _t = _f.read()
             import re as _re2
-            _旧 = set(_re2.findall(r'\?v=([0-9]+\.[0-9]+\.[0-9]+)', _t))
+            _旧 = set(_re2.findall(r'\?v=([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z]+[0-9]+)?)', _t))
             if _旧 and _旧 != {_ver}:
                 _坏的.append('%s（%s）' % (os.path.relpath(_h, ROOT), '/'.join(sorted(_旧))))
         if _坏的:
@@ -360,10 +436,24 @@ def 主():
         if isinstance(x, dict) and x.get('平台') and x.get('文件'):
             条目表[(x['平台'], str(x.get('版本', '')))] = x
 
-    for 平台, 源文件, 模板, 标题 in 安装包源:
+    for 平台, 源文件, 模板, 标题, 版本源 in 安装包源:
         if not os.path.isfile(源文件):
             print('ℹ️  跳过 %s：没有 %s（先打包客户端/APK 再跑本脚本）' % (平台, os.path.basename(源文件)))
             continue
+        # 【1.10.26】只发一个平台时，另一个平台的包原样不动
+        if not 平台覆盖(本次平台, 平台):
+            _旧版 = sorted({str(x.get('版本', '')) for x in 旧客 if x.get('平台') == 平台} - {''})
+            print('⏭️  %s：本次是「%s」单独更新，保持原版本 %s 不动'
+                  % (平台, 本次平台, '、'.join(_旧版) if _旧版 else '（暂无）'))
+            continue
+        # 包内真实版本号（打 APK / 安装包时写进去的 GAME_VER），必须和本次发布号一致，
+        # 否则说明忘了重打 —— 宁可中止，也不要把旧包标成新版本发出去。
+        包版本 = 读游戏版本(版本源) or ver
+        if 包版本 != ver:
+            print('❌ %s 安装包里的玩家版本是 %s，但本次发布的是 %s。' % (平台, 包版本, ver))
+            print('   说明这个平台的包没跟着重打（或重打时 GAME_VER 还是旧的），拒绝发布。')
+            print('   先重打：%s' % ('手机版安卓/_一键打包.py' if 平台 == '安卓' else '客户端/打包安装包.py'))
+            sys.exit(1)
         文件名 = 模板 % ver
         目标 = os.path.join(版本目录, 文件名)
         shutil.copy2(源文件, 目标)
@@ -381,15 +471,13 @@ def 主():
     # 【1.7.9】再把目录里已经存在的历史安装包也补进清单：
     # 只靠"旧清单 + 本版本"会漏 —— 补历史包是直接往目录里丢文件的，清单里就没它们。
     import re as _re2
+    _包前缀 = r'^枪战突击_(安卓|安装程序)_v(\d+\.\d+\.\d+(?:-[A-Za-z]+\d+)?)\.(apk|exe)$'
     for _f in os.listdir(版本目录):
-        _m = _re2.match(r'^枪战突击_安卓_v(\d+\.\d+\.\d+)\.apk$', _f)
-        if _m:
-            _平台, _ver = '安卓', _m.group(1)
-        else:
-            _m = _re2.match(r'^枪战突击_安装程序_v(\d+\.\d+\.\d+)\.exe$', _f)
-            if not _m:
-                continue
-            _平台, _ver = '电脑', _m.group(1)
+        _m = _re2.match(_包前缀, _f)
+        if not _m:
+            continue
+        _平台 = '安卓' if _m.group(1) == '安卓' else '电脑'
+        _ver = _m.group(2)
         if (_平台, _ver) in 条目表:
             continue
         _全 = os.path.join(版本目录, _f)
@@ -406,11 +494,13 @@ def 主():
     # 只留文件真的还在的条目（有人手工删了文件，清单不能指向空气）
     客户端列表 = [x for x in 条目表.values()
               if os.path.isfile(os.path.join(版本目录, x['文件']))]
-    # 排序：版本倒序；同版本 安卓 在前
+    # 排序：主体版本倒序 → 同主体后缀号大的在前 → 同版本 安卓 在前
     def _客键(x):
-        nums = _re.findall(r'\d+', str(x.get('版本', '0')))
+        _s = str(x.get('版本', '0'))
+        nums = _re2.findall(r'\d+', _s)
         while len(nums) < 3: nums.append('0')
-        return (-int(nums[0]), -int(nums[1]), -int(nums[2]), 0 if x.get('平台') == '安卓' else 1)
+        return (-int(nums[0]), -int(nums[1]), -int(nums[2]), -后缀号(_s),
+                0 if x.get('平台') == '安卓' else 1)
     客户端列表.sort(key=_客键)
     m['客户端'] = 客户端列表
 
