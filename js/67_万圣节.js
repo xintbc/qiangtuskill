@@ -284,8 +284,9 @@ function 万圣节_刷新提示(){
   var 近=万圣节_最近();
   var 要=(!!近)&&(typeof S!=='undefined')&&S.playing&&!S.paused&&!S.over;
   if(要){
-    var 手机='ontouchstart' in window;
-    万圣节_提示牌.textContent=手机?'点「上梯」按钮戴上南瓜头':'按 F 戴上南瓜头';
+    /* 【1.10.19】上梯键已升级成「交互键」，靠近南瓜时它会自己亮起来 */
+    var 手机=(typeof isTouch!=='undefined')?isTouch:('ontouchstart' in window);
+    万圣节_提示牌.textContent=手机?'点右下方的「交互」键戴上南瓜头':'按 F 戴上南瓜头';
     万圣节_提示牌.style.display='block';
   }else{
     万圣节_提示牌.style.display='none';

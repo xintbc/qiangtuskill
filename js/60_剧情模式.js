@@ -179,7 +179,7 @@ function storyStart(){
   if(STORY_.on)storyAbort();
   storyShowPick(false);storyShowDone(false);storyCutShow(false);storyShowChap(false);
   rescueShow(false);storyAmbushClear();
-  var _rb0=document.getElementById('mobRescue');if(_rb0)_rb0.style.display='none';   /* 【batch159】开局收掉手机救援按钮 */
+  /* 【1.10.19】手机「救援」按钮已合并进 js/72 的统一交互键（看 STORY_.rescueNear 自己亮），这里不用再管 DOM */
   STORY_.started=0;
   ['go','wave-shop','netDeath'].forEach(function(id){var el=storyEl(id);if(el)el.style.display='none';});
   S.over=false;S.paused=false;
@@ -679,10 +679,8 @@ function storyRescueTick(dt){
   var dx=camera.position.x-LAB_RESCUE.x, dz=camera.position.z-LAB_RESCUE.z;
   var near=(dx*dx+dz*dz<=RESCUE_R*RESCUE_R);
   STORY_.rescueNear=near;
-  /* 【batch159】手机没有 F 键：靠近营救点时弹出「救援」按钮（按住＝长按 F，松开＝松手）。
-     电脑端靠 .only-touch 自动隐藏（body 没有 .is-touch 时 display:none!important 压过内联样式）。 */
-  var _rb=document.getElementById('mobRescue');
-  if(_rb)_rb.style.display=(isTouch&&near&&SK.downed<=0&&SK.ghost<=0)?'flex':'none';
+  /* 【1.10.19】手机端的「救援」不再单独建键：js/72 的交互键读 STORY_.rescueNear 自己亮，
+     按住就是长按 F（松手缓慢回退）。这里只管攒进度，DOM 一律不碰。 */
   var hold=near&&!!keys.KeyF&&SK.downed<=0&&SK.ghost<=0;
   if(hold)STORY_.rescueP=Math.min(RESCUE_NEED,STORY_.rescueP+dt);
   else if(STORY_.rescueP>0)STORY_.rescueP=Math.max(0,STORY_.rescueP-dt*0.55);   // 松手缓慢回退
@@ -757,7 +755,6 @@ function storyTick(){
 /* ---------- 结局 ---------- */
 function storyEnd(res){
   if(STORY_.phase==='end'||STORY_.phase==='done')return;
-  var _rb=document.getElementById('mobRescue');if(_rb)_rb.style.display='none';   /* 【batch159】离开营救阶段收掉手机救援按钮 */
   var byMob=(STORY_.phase==='hunt'||STORY_.phase==='rescue');   // 【batch128/149】清剿 / 营救阶段被打死
   STORY_.diedByMob=byMob;                     // 【batch129】阵亡提示要按死因分文案
   STORY_.phase='end';STORY_.res=(res==='win')?'win':'lose';STORY_.cut=true;

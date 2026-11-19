@@ -764,6 +764,10 @@ function heroRemoteThrow(e,kind,s,th){
   /* 【batch282】镇岳 SP「电磁减速网」：别人以前**完全看不到**这颗网（heroRemoteThrow 里没有它）。
      现在飞一遍、贴面即停，0.6 秒后消失（网本身由 spZone 广播画）。 */
   else if(kind==='guard_sp'&&s===1){mesh=heroMeshSpNet();lf=0.6;}
+  /* 【1.10.22】月引 ②吸引手雷：别人也要看见它飞过来、贴在他面前再炸。
+     模型直接借她本机那套（js/70 的 月引_手雷模型 每次调用都新建，挂到别人手上没问题）；
+     落地后按"吸 1.3 秒 + 贴雷引信 0.4 秒"给它 1.7 秒寿命，和施法者那边的节奏一致。 */
+  else if(kind==='yueyin'&&s===1){ try{ mesh=(typeof 月引_手雷模型==='function')?月引_手雷模型():null; }catch(e){ mesh=null; } lf=1.7; }
   if(!mesh)return;
   var _landR=null;
   if(kind==='eclipse'&&s===2)_landR=function(pp){
@@ -814,6 +818,12 @@ function heroRemoteBoom(m){
     heroFXOrbPop(x,_sy,z);
     var _om2=heroMeshOrb();scene.add(_om2);_om2.position.set(x,_sy,z);
     SK.orbs.push({x:x,z:z,y:_sy,r:ORB_R,life:(_左!=null?_左:ORB_LIFE),obj:_om2,remote:true,zapT:0,hitT:{}});
+  }
+  /* 【1.10.22】月引 ②吸引手雷爆炸：青蓝色引力环 + 粒子（伤害由施法者本机 netHitRemote 上报，
+     这里只补画面 —— 以前这一枪在别人屏幕上完全没有痕迹）。 */
+  else if(m.k==='yueyin'&&s===1){
+    heroFxRingAt(x,_sy,z,0x9fe8ff,0.5,3.0,0.5);
+    try{ spawnParticle(new THREE.Vector3(x,_sy+0.4,z),0x9fe8ff,18,0.55,true); }catch(_){}
   }
   else if(m.k==='yingyue'&&s===0){                     // 【batch161】别人的暗影烟雾弹：紫色烟团（之前远端完全看不到烟）
     heroFXSmokePop(x,_my,z,false,true);
@@ -874,6 +884,23 @@ function heroRemoteFX(e,kind,s,x,y,z,nx,ny,nz,m){
     if(s===2){                                    // 蚀日 · 白夜：暗色大环 + 金边（天整个黑下来）
       heroFxRingAt(_px,_pz,0x1a1030,26,1.2,0.7);
       heroFxRingAt(_px,_pz,0xffb347,14,1.0,0.5);
+      return;
+    }
+  }
+  /* 【1.10.22】月引（k='yueyin'）：以前客户端和服务端都没登记，别人屏幕上一点反应都没有。
+     现在补两个"看得见"的：
+       ① 引力支点：青蓝起手环（支点本体和引力索只有施法者本机能看见，那是第一人称演出）
+       ③ 潮汐之筒：青色大环 + 粒子，表示"他把筒举起来了"（筒身本身是施法者本机的第一人称模型） */
+  if(kind==='yueyin'){
+    if(s===0){
+      heroFxRingAt(_px,_pz,0x9fe8ff,0.5,3.2,0.45);
+      try{ spawnParticle(new THREE.Vector3(_px,_py+1.0,_pz),0x9fe8ff,12,0.45,true); }catch(_){}
+      return;
+    }
+    if(s===2){
+      heroFxRingAt(_px,_pz,0xbfefff,0.6,4.5,0.6);
+      heroFxRingAt(_px,_pz,0x9fe8ff,0.35,2.2,0.4);
+      try{ spawnParticle(new THREE.Vector3(_px,_py+1.2,_pz),0xbfefff,20,0.5,true); }catch(_){}
       return;
     }
   }

@@ -204,7 +204,15 @@ function tuningApplyToUI(){
   if(s2)s2.value=MM_SIZE;if(v2)v2.textContent=MM_SIZE;
   /* 【1.9.43】界面大小倍率回填滑块 */
   var su=document.getElementById('spUi'),vu=document.getElementById('spUiVal');
-  if(su){var _uk=1;try{if(typeof 读界面缩放==='function')_uk=读界面缩放();}catch(e){}su.value=_uk;if(vu)vu.textContent=Number(_uk).toFixed(2)+'x';}
+  if(su){
+    /* 【1.10.24】滑块下限跟视口走：窄屏拉到最左 = 刚好铺满，不是"缩成一小块" */
+    var _mn=0.5;try{if(typeof 界面最小倍率==='function')_mn=Math.ceil(界面最小倍率()*20)/20;}catch(e){}
+    if(_mn<0.5)_mn=0.5;
+    su.min=String(_mn);
+    var _uk=1;try{if(typeof 读界面缩放==='function')_uk=读界面缩放();}catch(e){}
+    if(_uk<_mn)_uk=_mn;
+    su.value=_uk;if(vu)vu.textContent=Number(_uk).toFixed(2)+'x';
+  }
 }
 function applyTuning(){
   tuningLoad();

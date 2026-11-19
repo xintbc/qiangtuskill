@@ -404,7 +404,11 @@ function _TP复制第一人称(rig,def){
   /* 拉机柄：合批会跳过 animPart='charging' 的件，找出它给换弹动画用 */
   try{
     inner.traverse(function(o){
-      if(!rig.userData.tpBolt&&o.isMesh&&o.userData&&o.userData.animPart==='charging'){
+      /* 【1.10.22】'bolt' 也要认：引力狙击（js/71）和南瓜枪皮（js/69）的拉栓件标的是
+         animPart='bolt'，以前这里只认 'charging' → 别人看你打引力狙，枪机永远不动。
+         远端只要能抓到这块网格，js/30 的 tpBolt 位移就能按时序播出来。 */
+      if(!rig.userData.tpBolt&&o.isMesh&&o.userData&&
+         (o.userData.animPart==='charging'||o.userData.animPart==='bolt')){
         rig.userData.tpBolt=o;rig.userData.tpBoltZ=o.position.z;
       }
     });

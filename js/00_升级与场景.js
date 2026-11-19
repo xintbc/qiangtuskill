@@ -22,9 +22,32 @@
     var _us = parseFloat(localStorage.getItem('gunGame.uiScale.v1'));
     if (isFinite(_us) && _us >= 0.5 && _us <= 2) 用户倍率 = _us;
   } catch (e) { }
+  /* 【1.10.24】自动适配（**不含**用户倍率）：按宽度对齐到 1080 母版；竖屏不缩放。
+     【1.10.22】用户口径："手机版为什么始终用小一号的尺寸？用大一号的尺寸直接等比例缩小，强行兼容。"
+     —— 以前是 min(w/1080,h/607) 再 Math.max(1,k)：手机横屏永远被钉在 1 倍，
+     等于把 1080 的界面原样塞进小屏，只能靠"手机专用 --u 布局"硬挤。
+     现在按**宽度**求缩放比：手机 800 宽 → 0.74，元素占屏比例和电脑 1080 屏完全一致，只是整体小一圈。 */
+  function 自动K() {
+    var w = (window.innerWidth || 0), h = (window.innerHeight || 0);
+    if (!w || !h) return 1;
+    if (h > w) return 1;                                       /* 竖屏保持原样 */
+    return Math.max(0.5, Math.min(w / 基准W, 最大));
+  }
+  /* 【1.10.24】「刚好铺满」的绝对底线 = **自动K 本身**（不是 1）。
+     ⚠️ 用户两次反馈：
+       ① 第一次：把「界面大小」拉到最小，菜单缩成屏幕正中间一小块、四周全黑。
+       ② 第二次（MuMu 模拟器）：改完仍然没占满全屏。
+     —— 真因是我把下限写成了 `min(1, k0)`，也就是"1080 母版 1:1"。
+     这对 1080 宽的屏刚好等于铺满，可一旦视口比 1080 宽（MuMu 常见的 1600/1920，
+     k0 = 1.48~1.78），下限 1.0 就只让界面占屏 56%~67% —— 看起来就是"没占满"。
+     正确口径：**视觉最小 = 按宽度铺满 = k0**。所以「界面大小」是纯放大滑块（1.00x 就是铺满）。 */
+  function 最小倍率() {
+    return 1;                                                  /* k 的绝对下限 = k0 = 按宽度铺满 */
+  }
+  window.界面最小倍率 = 最小倍率;
   window.设界面缩放 = function (倍) {
     倍 = parseFloat(倍); if (!isFinite(倍) || 倍 <= 0) 倍 = 1;
-    用户倍率 = Math.max(0.5, Math.min(2, 倍));
+    用户倍率 = Math.max(最小倍率(), Math.min(2, 倍));
     try { localStorage.setItem('gunGame.uiScale.v1', String(用户倍率)); } catch (e) { }
     应用();
   };
@@ -58,21 +81,58 @@
     function 应用() {
       var w = (window.innerWidth || 0), h = (window.innerHeight || 0);
       if (!w || !h) return;
-      var k = 1;
-      if (h <= w) {                                            /* 横屏才放大；竖屏保持手机原样 */
-        k = Math.min(w / 基准W, h / 基准H);
-        k = Math.min(k, 最大);
-        k = Math.max(1, k);                                    /* 自动适配不低于 1：小屏（手机）永远原样 */
+      var k0 = 自动K();                                        /* 自动适配（不含用户倍率） */
+      var 下限 = k0;                                           /* 【1.10.24-2】视觉最小 = 按宽度铺满（不是 1080 母版 1:1） */
+      var 期望 = k0 * 用户倍率;
+      var k = Math.max(下限, Math.min(期望, 最大));
+      /* 【1.10.24】被底线抬起时把「用户倍率」也修正回来。
+         否则会出现「滑块显示 0.70x、实际却是 1.0」—— 用户以为滑块坏了。
+         修正后滑块读到的是真实生效值，且下次启动直接就是对的。 */
+      if (k > 期望 + 1e-6 && k0 > 0) {
+        用户倍率 = Math.min(2, k / k0);
+        try { localStorage.setItem('gunGame.uiScale.v1', String(用户倍率)); } catch (e) { }
       }
-      k *= 用户倍率;                                           /* 【1.9.43】设置面板的手动倍率 */
-      k = Math.max(0.5, Math.min(k, 最大));                    /* 只有手动倍率能把它调到 1 以下 */
-      层.style.zoom = (k === 1 ? '' : String(Math.round(k * 1000) / 1000));
+      k = Math.round(k * 1000) / 1000;
+      层.style.zoom = (k === 1 ? '' : String(k));
       /* 【1.9.57】把缩放系数暴露给 CSS。
          原因：zoom 会把元素的**布局尺寸**整体放大，而 vh 是按真实视口算的 ——
          `max-height:92vh` 在 1920×1080（k≈1.78）下视觉高度变成 0.92×1080×1.78 ≈ 1766px，
          比屏幕还高，设置面板上下各被裁掉 80 多像素（用户："横屏有一部分看不见"）。
          CSS 里统一写成 calc(92vh / var(--uiz, 1)) 就抵消掉了。 */
       try { 层.style.setProperty('--uiz', String(k)); } catch (e) { }
+      /* 【1.10.23】单独暴露「用户倍率」。
+         原因（用户实测）：拉大设置里的「界面大小」时，菜单卡片**只有宽度在变大，高度一动不动**
+         —— 因为面板高度写的是 `calc(92vh / var(--uiz))`，除以 k 之后视觉高度恒等于 92vh。
+         高度要跟着倍率一起长，就只能乘"用户倍率"这一项（自动适配那一截已经由 zoom 吃掉了，
+         再乘一遍会变成 k²，横屏大屏直接就飞出屏幕）。
+         所以多给一个变量：视觉高 = 92vh × 用户倍率（封顶 96vh，超出部分内部滚动）。 */
+      try { document.documentElement.style.setProperty('--uiuser', String(用户倍率)); } catch (e) { }
+      /* 【1.10.24】滑块自身的最小值也跟着视口走。
+         窄屏（自动适配 <1，手机）滑块拉到最左就是 1.00x —— 界面刚铺满，再往左没有意义；
+         宽屏（4K 自动适配 3.5 倍）仍然允许缩到 0.6 左右，不会一刀砍死。
+         ⚠️ 必须向上取到 step(0.05) 的倍数，否则 min=0.99 会让合法值变成 0.99/1.04/1.09… 很怪。 */
+      try {
+        var su = document.getElementById('spUi');
+        if (su) {
+          var mn = Math.ceil(最小倍率() * 20) / 20;
+          if (mn < 0.5) mn = 0.5;
+          if (su.min !== String(mn)) su.min = String(mn);
+          if (parseFloat(su.value) < mn) su.value = String(mn);
+          var vu2 = document.getElementById('spUiVal');
+          if (vu2) vu2.textContent = Number(用户倍率).toFixed(2) + 'x';
+          /* 【1.10.24-2】把真实视口/缩放比写在滑块下面：
+             安卓 WebView 的 innerWidth 和桌面浏览器不是一回事，出问题时要一眼看出是哪个数不对。 */
+          var info = document.getElementById('spUiInfo');
+          if (info) info.textContent = '屏幕 ' + w + '×' + h + ' · 实际 ' + k.toFixed(2) + 'x · 像素比 ' +
+            (Math.round((window.devicePixelRatio || 1) * 100) / 100);
+        }
+      } catch (e) { }
+      /* 【1.10.22】局内 HUD 也吃同一个缩放比。
+         #hud / #skillHud 是 #uiZoom 的**兄弟节点**（按原有设计留 body、不搬进缩放层：
+         里面有 fixed 小地图 canvas 和准星，搬进去会改掉定位和层叠），
+         所以把 k 写到 :root，让 CSS 用 var(--hudk) 自己 transform:scale。
+         ⚠️ 不写这一行，手机版 HUD 会保持 1:1，和缩小的菜单对不上，又变成"两套尺寸"。 */
+      try { document.documentElement.style.setProperty('--hudk', String(k)); } catch (e) { }
       /* 缩放模式下给 html 挂 .ui-zoomed：超宽屏三栏（1600px 断点）是按真实视口判定的，
          缩放后布局宽度其实只有 ~1080，三栏会被挤爆 —— 让位给母版的两列布局 */
       try { document.documentElement.classList.toggle('ui-zoomed', k > 1); } catch (e) { }
@@ -80,6 +140,10 @@
     }
     应用();
     addEventListener('resize', 应用);
+    /* 【1.10.25】设置面板在 body 后半段，首次 应用() 时 #spUiInfo 还不存在（诊断行写不进去）。
+       DOM 就绪后再跑一次，保证用户一打开设置就看到「屏幕 1920×1080 · 实际 1.78x」。 */
+    addEventListener('DOMContentLoaded', 应用);
+    try { setTimeout(应用, 600); } catch (e) { }
     addEventListener('orientationchange', function () { setTimeout(应用, 120); });
   } catch (e) { }
 })();
@@ -96,7 +160,7 @@
 function ensureEngineDom(){
   var ids=['startBtn','btnResume','btnQuit','storyBtn','storyTag','nameOk','wsContinue',
            'upgrade-grid','ws-upgrade-grid','wave-shop','ws-gold','ws-wave','shop-gold',
-           'score','gold-hud','relockBtn','menuTitle','menuSetBtn','mobRescue','storyChapGrid',
+           'score','gold-hud','relockBtn','menuTitle','menuSetBtn','storyChapGrid',
            'storyPickGrid','downedTip','ghostTip','shadowTip','netBoard','netDeath','go','fs',
            'fg','fk','fw','myIdLine'];
   for(var i=0;i<ids.length;i++){

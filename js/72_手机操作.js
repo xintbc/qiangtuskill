@@ -297,24 +297,91 @@ var crouchEl=$('mobCrouch'),crouchOn=false;
 /* ---- 换枪：打开武器面板 ---- */
 按住($('mobSwap'),function(){ if(typeof showWeaponSelect==='function')showWeaponSelect(); });
 
-/* ---- 上梯 / 救援：靠近梯子才出现；剧情第二章营救阶段按住＝长按 F ---- */
+/* ---------------------------------------------------------------------------
+   3.4 左右探头（1.10.21 加回）
+   ---------------------------------------------------------------------------
+   电脑上是 Q / E 按住探头、松手回正；手机上给两个圆键，行为完全一致。
+   ⚠️ 别用 dispatchEvent 合成 KeyQ/KeyE：js/22 的 keydown 里根本没有这两个键的分支
+      （探头是 js/24 直接读 keys.KeyQ / keys.KeyE 算侧倾）。
+      而 keys 上的 KeyQ/KeyE 是 defineProperty 出来的**带 setter 的别名**，
+      setter 会写 _raw[KEYMAP.leanL] —— 直接赋值既能生效，又跟着"设置里改键位"走。 */
+function 绑探头(id,别名){
+  var el=$(id);if(!el)return;
+  按住(el,function(){
+    try{ keys[别名]=true; }catch(e){}
+    el.classList.add('on');
+  },function(){
+    try{ keys[别名]=false; }catch(e){}
+    el.classList.remove('on');
+  });
+}
+绑探头('mobPeekL','KeyQ');
+绑探头('mobPeekR','KeyE');
+
+/* ---------------------------------------------------------------------------
+   3.5 交互键（原「上梯」键）—— 一个键管全部"靠近才能用"的动作
+   ---------------------------------------------------------------------------
+   四种目标，优先级从高到低：
+     ① 剧情第二章营救：走近营救点 → **按住**＝长按 F（松手缓慢回退）
+     ② 载具（赛车场 / 模组）：附近有车 → 点一下上车；在车上 → 点一下下车
+     ③ 经典图的爬梯：靠近梯子 → 点一下上下梯
+     ④ 万圣节南瓜头：附近有瓜 → 点一下戴上；已经戴着 → 点一下摘下
+        （放最后：戴着瓜走到梯子旁时，键要先给"上梯"，走开再按就是"摘瓜"）
+
+   ⚠️ 以前这里有两个坑：
+     · 显示条件只认"靠近梯子"，万圣节的提示写着「点上梯按钮」却根本没有按钮可点；
+     · 营救段只要 `phase==='rescue'` 就一直亮着 —— 一进第二章屏幕中间就挂个键，
+       而且和 js/60 单独控制的「救援」键重复，两个键同时出现。
+   现在：**有没有目标**决定显示；营救改看 `rescueNear`（真走近了才亮）；
+   救援键合并进这一个键，不再单独存在。 */
 var climbEl=$('mobClimb');
+var 交互态='';                       // '' | 'rescue' | 'tap'
+
+function 交互目标(){
+  /* ① 营救：条件与 js/60 里 hold 的判定同口径（走近 + 没倒地 / 没虚化） */
+  try{
+    if(typeof STORY_!=='undefined'&&STORY_.on&&STORY_.phase==='rescue'&&STORY_.rescueNear){
+      var 不能=!!(typeof SK!=='undefined'&&SK&&((SK.downed||0)>0||(SK.ghost||0)>0));
+      if(!不能)return {kind:'rescue',label:'救援'};
+    }
+  }catch(e){}
+  /* ② 载具：现在游戏里没有入口，留给赛车场 / 模组；没这系统时整段跳过 */
+  try{
+    if(typeof 载具!=='undefined'&&载具){
+      if(typeof 载具.在开车==='function'&&载具.在开车())return {kind:'tap',label:'下车'};
+      if(typeof camera!=='undefined'&&camera&&typeof 载具.最近的车==='function'&&
+         载具.最近的车(camera.position.x,camera.position.z,4.2))return {kind:'tap',label:'上车'};
+    }
+  }catch(e){}
+  /* ③ 爬梯：和电脑端 F 的判定同一套变量，半径放宽到 2.2（手指没有准星那么准） */
+  try{
+    if(typeof MAP_HAS_LADDER!=='undefined'&&MAP_HAS_LADDER&&typeof camera!=='undefined'&&camera&&
+       typeof LADDER_X!=='undefined'&&
+       Math.abs(camera.position.x-LADDER_X)<2.2&&Math.abs(camera.position.z-LADDER_Z)<2.2)
+      return {kind:'tap',label:'上梯'};
+  }catch(e){}
+  /* ④ 南瓜头：js/67 自己监听 KeyF，这里只负责把键亮出来、文字对上。
+     ⚠️ 排在梯子后面：戴着瓜走到梯子旁要先能上梯，摘瓜走开再按就有 */
+  try{
+    if(typeof 万圣节_已戴==='function'&&万圣节_已戴())return {kind:'tap',label:'摘瓜'};
+    if(typeof 万圣节_最近==='function'&&万圣节_最近())return {kind:'tap',label:'戴瓜'};
+  }catch(e){}
+  return null;
+}
+
+var 交互按下='';
 按住(climbEl,function(){
-  if(typeof STORY_!=='undefined'&&STORY_.on&&STORY_.ch===2&&STORY_.phase==='rescue'){
-    keys.KeyF=true;
-    if(climbEl)climbEl.textContent='救援';
+  var tg=交互目标();
+  交互按下=tg?tg.kind:'';
+  if(tg&&tg.kind==='rescue'){
+    keys.KeyF=true;                  // 长按：js/60 的 rescueP 自己累积
   }else{
-    tapKey('KeyF');
+    tapKey('KeyF');                  // 点按：走真实键盘流程，万圣节 / 载具 / 梯子各自处理
   }
 },function(){
-  if(typeof STORY_!=='undefined'&&STORY_.on&&STORY_.ch===2&&STORY_.phase==='rescue'){
-    keys.KeyF=false;
-    if(climbEl)climbEl.textContent='上梯';
-  }
+  if(交互按下==='rescue')keys.KeyF=false;
+  交互按下='';
 });
-
-/* ---- 营救：按住＝长按 F（由 js/60 控制显隐） ---- */
-按住($('mobRescue'),function(){ keys.KeyF=true; },function(){ keys.KeyF=false; });
 
 /* ---- 暂停 ---- */
 按住($('mobPause'),function(){ if(typeof openGameMenu==='function')openGameMenu(); });
@@ -396,18 +463,301 @@ function 界面对账(){
       crouchEl.textContent=蹲?'站':'蹲';
     }
   }
-  /* 上梯键：靠近梯子才出现（和电脑端 F 键的判定同口径） */
-  if(climbEl){
-    var 梯=false;
-    try{
-      if(typeof MAP_HAS_LADDER!=='undefined'&&MAP_HAS_LADDER&&typeof camera!=='undefined'&&camera&&typeof LADDER_X!=='undefined'){
-        梯=Math.abs(camera.position.x-LADDER_X)<2.2&&Math.abs(camera.position.z-LADDER_Z)<2.2;
-      }
-    }catch(e){}
-    if(typeof STORY_!=='undefined'&&STORY_.on&&STORY_.ch===2&&STORY_.phase==='rescue')梯=true;
-    climbEl.style.display=梯?'flex':'none';
+  /* 交互键：有目标才亮。⚠️ 编辑模式别碰它 —— 那边用 CSS !important 强制显示，
+     这里再写内联 display 等于每秒把它藏回去，用户就摸不到这个键了。 */
+  if(climbEl&&!按键编辑中){
+    var tg=交互目标();
+    if(tg){
+      交互态=tg.kind;
+      if(climbEl.style.display!=='flex')climbEl.style.display='flex';
+      if(climbEl.textContent!==tg.label)climbEl.textContent=tg.label;
+    }else{
+      交互态='';
+      if(climbEl.style.display!=='none')climbEl.style.display='none';
+    }
+  }
+  /* 聊天 / 语音两个键是 js/62 动态建的，可能比这个脚本晚 —— 建好后补一次自定义样式 */
+  var _cb=$('chatBtn'),_vb=$('voiceBtn');
+  if(_cb&&_cb.getAttribute('data-moblay')!=='1'){_cb.setAttribute('data-moblay','1');应用一项('chatBtn');}
+  if(_vb&&_vb.getAttribute('data-moblay')!=='1'){_vb.setAttribute('data-moblay','1');应用一项('voiceBtn');}
+}
+
+/* ---------------------------------------------------------------------------
+   4.5 按键设置：位置 / 大小 / 透明度（1.10.19）
+   ---------------------------------------------------------------------------
+   【为什么用 CSS 变量 + 百分比，而不是直接写像素】
+     · 大小/透明度写在元素内联 style 的 --ks / --ka 上，CSS 里 transform/opacity 读它们：
+       `.down` 的按压反馈还能叠乘（scale(calc(var(--ks,1)*.91))），不会互相覆盖；
+     · 位置写 left/top 的**中心点百分比** + `.mobPos` 的 translate(-50%,-50%)：
+       换屏幕比例、换分辨率都不跑偏，也不跟 --u 的等比缩放打架；
+     · 只存用户改过的项 —— 没改的继续走 CSS 默认布局，默认值和以前一模一样。
+
+   【编辑模式怎么不误触】
+     用 document 上的**捕获阶段**监听统一接管触摸：父级捕获先于元素自身的目标阶段执行，
+     所以能一次性拦掉开火、跳、摇杆、视角。底部操作条自己放行（滑块要能拖）。 */
+var 布局键='gunGame.mobKeys.v1';
+var 布局表={};
+var 可编辑名={mobFire:'开火',mobAim:'开镜',mobReload:'换弹',mobJump:'跳跃',mobCrouch:'蹲下',
+  mobSwap:'换枪',mobClimb:'交互',mobPeekL:'左探头',mobPeekR:'右探头',
+  mobPause:'菜单',chatBtn:'发消息',voiceBtn:'开麦',minimap:'小地图'};
+var 可编辑=[['mobFire','开火'],['mobAim','开镜'],['mobReload','换弹'],['mobJump','跳跃'],
+  ['mobCrouch','蹲下'],['mobSwap','换枪'],['mobClimb','交互'],
+  ['mobPeekL','左探头'],['mobPeekR','右探头'],
+  ['mobPause','菜单'],['chatBtn','发消息'],['voiceBtn','开麦'],['minimap','小地图']];
+
+var 按键编辑中=false, 选中键=null, 拖动=null;
+
+function 读数(){
+  try{
+    var t=JSON.parse(localStorage.getItem(布局键)||'{}');
+    布局表=(t&&typeof t==='object')?t:{};
+  }catch(e){ 布局表={}; }
+}
+function 存数(){ try{ localStorage.setItem(布局键,JSON.stringify(布局表)); }catch(e){} }
+
+function 应用一项(id){
+  var el=$(id);if(!el)return;
+  var o=布局表[id];
+  if(o&&o.x!=null&&o.y!=null){
+    el.classList.add('mobPos');
+    el.style.right='auto';el.style.bottom='auto';
+    el.style.left=o.x+'%';el.style.top=o.y+'%';
+    el.style.setProperty('--ks',o.s||1);
+    el.style.setProperty('--ka',(o.a==null?1:o.a));
+  }else{
+    el.classList.remove('mobPos');
+    el.style.left='';el.style.top='';el.style.right='';el.style.bottom='';
+    el.style.removeProperty('--ks');el.style.removeProperty('--ka');
   }
 }
+function 应用布局(){ for(var i=0;i<可编辑.length;i++)应用一项(可编辑[i][0]); }
+function 全部复位(){ 布局表={};应用布局();存数();选中键刷新(); }
+
+/* 【1.10.22】百分比的基准。
+   以前一律除以 window.innerWidth/innerHeight —— 那只对 #touchUI 里的按键成立。
+   #hud 从 1.10.22 起整层 transform:scale(--hudk) 缩小，它的布局宽是"视口/--hudk"
+   （虚拟画布 100%/k），小地图就住在里面：还按真实视口算，拖 100px 会被记成
+   "100/视口"的百分比，实际却作用在虚拟宽上 → 位置越拖越偏。
+   解决：一切以"最近的定位祖先"为基准 —— 它的**布局尺寸**算百分比，
+   它的**视觉 rect**算拖动位移，两者比例天然一致（缩放多少都不影响）。 */
+function 父层(el){
+  var p=el&&el.offsetParent;
+  if(!p||p===document.body)return null;
+  return p;
+}
+function 基宽(el){
+  var p=父层(el);
+  return (p&&p.offsetWidth>0)?p.offsetWidth:(window.innerWidth||1);
+}
+function 基高(el){
+  var p=父层(el);
+  return (p&&p.offsetHeight>0)?p.offsetHeight:(window.innerHeight||1);
+}
+/* 父层在屏幕上的视觉宽高（拖动位移用：dx 是视觉像素） */
+function 视宽(el){ var p=父层(el); var r=p?p.getBoundingClientRect():null; return (r&&r.width>0)?r.width:(window.innerWidth||1); }
+function 视高(el){ var p=父层(el); var r=p?p.getBoundingClientRect():null; return (r&&r.height>0)?r.height:(window.innerHeight||1); }
+
+/* 把 CSS 的 right/bottom 定位换成"中心点百分比"。不换的话拖动第一下会跳。
+   ⚠️ 必须先量再改：`.mobPos` 的 translate 带 0.07s 过渡，改完立刻读 rect
+   拿到的是过渡中途的值（会偏半个按钮高），所以中心点用**改之前**的 rect 算，
+   并且把算出来的值传出去给 当前项 用。 */
+function 中心化(el){
+  if(!el)return null;
+  var r=el.getBoundingClientRect();
+  if(!r.width||!r.height)return null;
+  var p=父层(el), pr=p?p.getBoundingClientRect():null;
+  var L=pr?pr.left:0, T=pr?pr.top:0;
+  var x=+((r.left+r.width/2-L)/视宽(el)*100).toFixed(2);
+  var y=+((r.top +r.height/2-T)/视高(el)*100).toFixed(2);
+  if(!el.classList.contains('mobPos')){
+    /* 临时关掉过渡：translate 的 0.07s 会让"改完立刻读"拿到中途值 */
+    var 旧过渡=el.style.transition;
+    el.style.transition='none';
+    el.style.right='auto';el.style.bottom='auto';
+    el.style.left=x+'%';el.style.top=y+'%';
+    el.classList.add('mobPos');
+    void el.offsetWidth;
+    el.style.transition=旧过渡;
+  }
+  return {x:x,y:y};
+}
+/* 拿（必要时新建）这一项的设置；只调大小/透明度也要建条目，否则滑块改了存不下来 */
+function 当前项(已量){
+  if(!选中键||!选中键.id)return null;
+  var id=选中键.id;
+  if(!布局表[id]){
+    var c=已量||中心化(选中键)||{x:50,y:50};
+    布局表[id]={x:c.x,y:c.y,s:1,a:1};
+  }
+  return 布局表[id];
+}
+function 选中键刷新(){
+  var 名=$('mobEditName'),sz=$('mobEditSize'),sa=$('mobEditAlpha'),
+      sv=$('mobEditSizeVal'),av=$('mobEditAlphaVal');
+  if(!选中键){
+    if(名)名.textContent='未选中';
+    if(sz)sz.value=100;if(sa)sa.value=100;
+    if(sv)sv.textContent='—';if(av)av.textContent='—';
+    return;
+  }
+  var o=布局表[选中键.id]||{s:1,a:1};
+  if(名)名.textContent=可编辑名[选中键.id]||选中键.id;
+  var svv=Math.round((o.s==null?1:o.s)*100), avv=Math.round((o.a==null?1:o.a)*100);
+  if(sz)sz.value=svv;if(sa)sa.value=avv;
+  if(sv)sv.textContent=svv+'%';if(av)av.textContent=avv+'%';
+}
+function 选中元素(el){
+  if(选中键&&选中键!==el)选中键.classList.remove('mobSel');
+  选中键=el;
+  if(el){
+    el.classList.add('mobSel');
+    /* ⚠️ 中心点必须用"改之前"量到的那个：中心化 之后再读一次 rect 会拿到过渡中途值 */
+    var c=中心化(el);
+    当前项(c);                      // 建条目，位置就定在这儿
+  }
+  选中键刷新();
+}
+
+/* 从触摸目标往上找可编辑元素（不用 closest：老 WebView 没有这个方法） */
+function 找可编辑(el){
+  while(el&&el!==document.body){
+    if(el.id&&可编辑名[el.id])return el;
+    el=el.parentElement;
+  }
+  return null;
+}
+/* 拖动边界：按元素**自身半宽/半高**算，别让按钮一半跑到屏幕外。
+   offsetWidth 不含 transform:scale，所以乘上用户设的大小倍率才是真实视觉半径；
+   分母用父层布局尺寸（#hud 缩放后是虚拟画布，和 left/top 的百分比同一套坐标）。 */
+function 屏内X(el,v){
+  var k=(布局表[el.id]&&布局表[el.id].s)||1;
+  var 半=el.offsetWidth*k/2/基宽(el)*100;
+  return Math.max(Math.min(半,45),Math.min(100-Math.min(半,45),v));
+}
+function 屏内Y(el,v){
+  var k=(布局表[el.id]&&布局表[el.id].s)||1;
+  var 半=el.offsetHeight*k/2/基高(el)*100;
+  return Math.max(Math.min(半,45),Math.min(100-Math.min(半,45),v));
+}
+
+/* 统一接管：捕获阶段，先于任何按钮自身的 touchstart */
+function 编辑放下(cx,cy,target){
+  var el=找可编辑(target);
+  if(!el)return false;
+  选中元素(el);
+  var o=当前项();if(!o)return false;
+  拖动={id:el.id,el:el,px:cx,py:cy,x0:o.x,y0:o.y};
+  return true;
+}
+function 编辑移动(cx,cy){
+  if(!拖动)return;
+  var o=布局表[拖动.id];if(!o)return;
+  /* 位移是视觉像素 → 除以父层的**视觉**宽高，才和 left/top 的百分比同口径 */
+  o.x=+屏内X(拖动.el,拖动.x0+(cx-拖动.px)/视宽(拖动.el)*100).toFixed(2);
+  o.y=+屏内Y(拖动.el,拖动.y0+(cy-拖动.py)/视高(拖动.el)*100).toFixed(2);
+  拖动.el.style.left=o.x+'%';
+  拖动.el.style.top=o.y+'%';
+}
+function 编辑抬起(){ if(拖动){拖动=null;存数();} }
+
+var 编辑条=$('mobEditBar');
+function 在操作条里(t){ return !!(编辑条&&t&&编辑条.contains(t)); }
+
+document.addEventListener('touchstart',function(e){
+  if(!按键编辑中)return;
+  if(在操作条里(e.target))return;                 // 底部滑块 / 按钮放行
+  if(e.cancelable)e.preventDefault();
+  e.stopPropagation();
+  var t=e.changedTouches[0];
+  if(t)编辑放下(t.clientX,t.clientY,e.target);
+},true);
+document.addEventListener('touchmove',function(e){
+  if(!按键编辑中||!拖动)return;
+  if(e.cancelable)e.preventDefault();
+  e.stopPropagation();
+  var t=e.changedTouches[0];
+  if(t)编辑移动(t.clientX,t.clientY);
+},true);
+document.addEventListener('touchend',function(e){
+  if(!按键编辑中)return;
+  if(在操作条里(e.target))return;
+  e.stopPropagation();
+  编辑抬起();
+},true);
+document.addEventListener('touchcancel',function(){ if(按键编辑中)编辑抬起(); },true);
+
+/* 电脑上 ?touch=1 调试：鼠标也能拖 */
+document.addEventListener('mousedown',function(e){
+  if(!按键编辑中||在操作条里(e.target))return;
+  e.preventDefault();e.stopPropagation();
+  if(编辑放下(e.clientX,e.clientY,e.target)){
+    var mv=function(ev){编辑移动(ev.clientX,ev.clientY);};
+    var up=function(){编辑抬起();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  }
+},true);
+
+/* ---- 进入 / 退出 ---- */
+function 按键设置(开){
+  开=!!开;
+  if(开===按键编辑中)return;
+  按键编辑中=开;
+  try{ document.body.classList.toggle('mob-edit',开); }catch(e){}
+  if(开){
+    try{ if(typeof openSettings==='function')openSettings(false); }catch(e){}
+    /* 进来先把"按住"状态全清掉，否则角色会一直往前走 / 一直开枪 */
+    moveId=null;摇杆居中();lookId=null;
+    try{ S.aiming=false; }catch(e){}
+    mouseDown=false;freshTrigger=false;
+    if(aimEl)aimEl.classList.remove('on');
+    应用布局();
+    选中元素($('mobFire')||null);
+  }else{
+    存数();
+    编辑抬起();
+    if(选中键)选中键.classList.remove('mobSel');
+    选中键=null;
+    选中键刷新();
+    /* 退出后让交互键立刻回到"该藏就藏"，不用等下一次对账 */
+    交互态='';
+  }
+}
+window.mobKeySettings=按键设置;
+
+(function 绑编辑按钮(){
+  var b=$('spMobKeys');if(b)b.addEventListener('click',function(e){e.preventDefault();按键设置(true);});
+  /* 【1.10.21】暂停菜单 / 主菜单里的直达入口：不用先开设置面板，
+     点一下直接进编辑层（进之前 openSettings(false) 会把设置关掉，菜单由 CSS 藏起来）。 */
+  var pb=$('mobKeyBtn');if(pb)pb.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();按键设置(true);});
+  var mb2=$('mobKeyBtn2');if(mb2)mb2.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();按键设置(true);});
+  var d=$('mobEditDone');if(d)d.addEventListener('click',function(e){e.preventDefault();按键设置(false);});
+  var r=$('mobEditReset');if(r)r.addEventListener('click',function(e){
+    e.preventDefault();
+    if(!选中键)return;
+    delete 布局表[选中键.id];
+    应用一项(选中键.id);
+    选中键刷新();
+    存数();
+  });
+  var ra=$('mobEditResetAll');if(ra)ra.addEventListener('click',function(e){e.preventDefault();全部复位();});
+  var sz=$('mobEditSize');if(sz)sz.addEventListener('input',function(){
+    var o=当前项();if(!o)return;
+    o.s=+sz.value/100;
+    选中键.style.setProperty('--ks',o.s);
+    var v=$('mobEditSizeVal');if(v)v.textContent=sz.value+'%';
+    存数();
+  });
+  var sa=$('mobEditAlpha');if(sa)sa.addEventListener('input',function(){
+    var o=当前项();if(!o)return;
+    o.a=+sa.value/100;
+    选中键.style.setProperty('--ka',o.a);
+    var v=$('mobEditAlphaVal');if(v)v.textContent=sa.value+'%';
+    存数();
+  });
+})();
+
+读数();
+应用布局();
 
 /* ---------------------------------------------------------------------------
    7. 旧接口保留（别的分片会调用）
@@ -443,6 +793,11 @@ window.addEventListener('blur',function(){
   moveId=null;摇杆居中();lookId=null;
   S.aiming=false;mouseDown=false;
   if(aimEl)aimEl.classList.remove('on');
+  /* 探头是"按住"状态，切后台必须手动松开，否则回来角色一直歪着 */
+  try{ keys.KeyQ=false; keys.KeyE=false; }catch(e){}
+  var _pl=$('mobPeekL'),_pr=$('mobPeekR');
+  if(_pl)_pl.classList.remove('on');
+  if(_pr)_pr.classList.remove('on');
 });
 
 try{ if(typeof 界面对账==='function')界面对账(); }catch(e){}

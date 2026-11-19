@@ -365,8 +365,20 @@ function 月战_刷一个(){
   e.spHitAt=0;
   月战.raiders.push(e);月战.spawned++;
 }
+/* 【1.10.23】友方判定：月影的爆炸 / 潮汐之筒 / 吸附 一律不打自己人。
+   两种"自己人"：
+     · 友军小兵（石棺里爬出来的己方兵，e.友军=1）—— 原版子弹/刀/爆炸本来就跳过它们；
+     · 联机真人队友 —— 爆能器按阵营（netIsFriendly）、原版按组队（netIsMate，含社交队伍）。
+   用户口径：「影月补充还有队伍呢，不要给队友炸死。」 */
+function 月_是友方(e){
+  if(!e)return false;
+  if(e.友军)return true;
+  try{ if(e.isNet&&typeof netIsMate==='function'&&netIsMate(e))return true; }catch(_){}
+  return false;
+}
 function 月战_伤害(e,dmg,hs){
   if(!e)return;
+  if(月_是友方(e))return;                       /* 【1.10.23】自己人：一点血都不掉 */
   if(e.isNet){ try{ netHitRemote(e,!!hs,dmg,new THREE.Vector3(e.root.position.x,e.root.position.y+1,e.root.position.z),false); }catch(_){} return; }
   e.hp-=dmg;e.flash=Math.max(e.flash||0,0.22);
   if(e.hb){ e.hb.scale.x=Math.max(0,e.hp/e.maxHp); }
@@ -753,8 +765,10 @@ function 月引_抛雷(){
   月弹={m:m,x:p.x,y:p.y,z:p.z,vx:v.vx,vy:v.vy,vz:v.vz,
         st:'fly',t:0,stick:null,attract:0,det:0,spin:0};
   try{ heroFxRingAt(camera.position.x,camera.position.z,0x9fe8ff,0.3,1.3,0.35); }catch(_){}
-  /* 联机：把出生点+初速发出去（同房间的人能看到它飞） */
-  try{ if(netIsMulti()&&NET.connected)netSend({t:'skill',k:'yueyin',s:1,th:{x:p.x,y:p.y,z:p.z,vx:v.vx,vy:v.vy,vz:v.vz,fuse:-1}}); }catch(_){}
+  /* 联机：把出生点+初速发出去（同房间的人能看到它飞）。
+     【1.10.22】带上 stick:1 —— 这颗雷是"碰面就吸住"，不带的话别人那边会按弹性弹开，
+     同一颗雷两边落点完全不同（和 batch282 给其它粘性投掷物修的同一个坑）。 */
+  try{ if(netIsMulti()&&NET.connected)netSend({t:'skill',k:'yueyin',s:1,th:{x:p.x,y:p.y,z:p.z,vx:v.vx,vy:v.vy,vz:v.vz,fuse:-1,stick:1}}); }catch(_){}
   showMsg('抛出：吸引手雷','#9fd8ff');
   heroHudUpdate(true);
   return true;
@@ -767,6 +781,7 @@ function 月引_手雷Tick(dt){
     for(var i=0;i<enemies.length;i++){
       var e=enemies[i];
       if(e.isNet?(!e.alive):(e.hp<=0))continue;
+      if(月_是友方(e))continue;                 /* 【1.10.23】队友身上不贴雷 */
       var ep=heroEntWorld(e);
       var ex=b.x-ep.x,ey=b.y-(ep.y+1.0),ez=b.z-ep.z;
       if(ex*ex+ey*ey+ez*ez<1.3){
@@ -799,6 +814,7 @@ function 月引_手雷Tick(dt){
         for(var j=0;j<enemies.length;j++){
           var en=enemies[j];
           if(en.isNet?(!en.alive):(en.hp<=0))continue;
+          if(月_是友方(en))continue;              /* 【1.10.23】不把队友往雷上拽 */
           var p2=heroEntWorld(en);
           var ddx=b.x-p2.x, ddz=b.z-p2.z, dd2=ddx*ddx+ddz*ddz;
           if(dd2<R2&&dd2>0.0004){
@@ -835,10 +851,14 @@ function 月引_手雷炸(){
   月弹=null;
   try{ heroFxRingAt(cx,cz,贴人?0xff8a3d:0x9fe8ff,0.5,贴人?3.4:月弹_R,0.5); }catch(_){}
   try{ spawnParticle(new THREE.Vector3(cx,cy,cz),贴人?0xff8a3d:0x9fe8ff,18,0.55,true); }catch(_){}
+  /* 【1.10.22】联机：把引爆点广播出去，别人那边才看得到爆炸（服务端 handleBoom 只转播、不结算 ——
+     伤害本来就走 月战_伤害 → netHitRemote 上报，服务端再走一遍会双倍）。 */
+  try{ if(netIsMulti()&&NET.connected)netSend({t:'boom',k:'yueyin',s:1,x:cx,y:cy,z:cz}); }catch(_){}
   if(贴人&&主人){ 月战_伤害(主人,月弹_贴身伤害,false); return; }
   for(var i=enemies.length-1;i>=0;i--){
     var e=enemies[i];
     if(e.isNet?(!e.alive):(e.hp<=0))continue;
+    if(月_是友方(e))continue;                   /* 【1.10.23】爆炸不伤队友 */
     var p=heroEntWorld(e);
     var dx=p.x-cx,dz=p.z-cz;
     if(dx*dx+dz*dz<=月弹_R*月弹_R) 月战_伤害(e,月弹_伤害,false);
@@ -1028,6 +1048,15 @@ function 月引_锁住(e){
 }
 function 月引_放开一个(e){
   if(!e)return;
+  /* 【1.10.23】被吸的**真人**：告诉他"松开了"，他本机才会停吸、掉下来、把屏幕特效关掉。
+     不发的话他那边会一直贴着最后收到的姿态，直到 600ms 超时才松。 */
+  if(e.isNet&&e.月锁){
+    try{
+      if(typeof netIsMulti==='function'&&netIsMulti()&&NET.connected&&e.netId>0)
+        netSend({t:'yhold',w:e.netId|0,on:0});
+    }catch(_){}
+    e.月发T=0;
+  }
   e.月锁=null;
   if(e._原noAI!==undefined){ e.noAI=e._原noAI; delete e._原noAI; }       // 兼容旧存档 / 旧状态
   if(e._原canShoot!==undefined){ e.canShoot=e._原canShoot; delete e._原canShoot; }
@@ -1092,6 +1121,7 @@ function 月引_筒Tick(dt){
   for(var i=enemies.length-1;i>=0;i--){
     var e=enemies[i];
     if(e.isNet?(!e.alive):(e.hp<=0))continue;
+    if(月_是友方(e))continue;                   /* 【1.10.23】队友不被筒标记暴露 */
     if(月_算在筒里(e)) e.spHitAt=performance.now()+3000;
   }
   /* 掉血：每 0.5 秒结算 1 点（＝每秒 2 点，帧率无关） */
@@ -1101,6 +1131,7 @@ function 月引_筒Tick(dt){
     for(var j=enemies.length-1;j>=0;j--){
       var en=enemies[j];
       if(en.isNet?(!en.alive):(en.hp<=0))continue;
+      if(月_是友方(en))continue;                /* 【1.10.23】筒内灼烧不伤队友 */
       if(月_算在筒里(en)) 月战_伤害(en,月筒_每秒*0.5,false);
     }
     if(月_玩家在筒内(0)){ try{ takeDmg(月筒_每秒*0.5,null); }catch(_){} }
@@ -1122,6 +1153,7 @@ function 月引_吸力Tick(dt){
     var e=enemies[i];
     if(!e||!e.root)continue;
     if(e.isNet?(!e.alive):(e.hp<=0)){ 月引_放开一个(e); continue; }
+    if(月_是友方(e)){ 月引_放开一个(e); continue; }   /* 【1.10.23】筒不吸队友 */
     if(e.月锁){
       /* 已经锁住的**不再用几何判定复检**：筒一转，它那一刻必然"看起来在筒外"（因为它还没被摆过去）。
          只要筒还够长（沿轴 t 在范围内）就继续吸着；要挣脱就等每 5 秒那 1 秒停吸、或者大招结束。 */
@@ -1131,7 +1163,15 @@ function 月引_吸力Tick(dt){
       月引_锁住(e);
       if(!e.月锁)continue;
     }
-    if(e.isNet)continue;
+    if(e.isNet){
+      /* 【1.10.23】真人：本机**不摆他的位置**（真人位置由他自己那台机器权威）。
+         只把"筒的当前姿态 + 他在筒里的锁参数"点对点发给他 —— 他本机每帧把自己吸到轴上，
+         再照常经 t:'p' 上报，我们（以及所有人）看到的就是"他被吸着贴在筒上"。
+         100ms 一发：筒在转、在动，太稀会拖影；每帧发在多人房里纯属浪费带宽。 */
+      var _nw=performance.now();
+      if(!e.月发T||_nw-e.月发T>=100){ e.月发T=_nw; 月引_发吸附(e,e.月锁); }
+      continue;
+    }
     var L=e.月锁;
     /* 按当前筒重建世界坐标：t 沿轴、ou/ov 是当初的垂向偏移 → 筒怎么转，人怎么跟着转 */
     var cx=ox+c.dir.x*L.t+b.u.x*L.ou+b.v.x*L.ov;
@@ -1147,11 +1187,153 @@ function 月引_吸力Tick(dt){
 /* 这一帧这个人算不算"在筒里"（被吸住的一律算 —— 他是被筒带着走的，不在几何判定范围内很正常） */
 function 月_算在筒里(e){ if(!e)return false; if(e.月锁)return true; return 月_在筒内(e,0); }
 
+/* 把"他被吸在筒的哪个位置"发给被吸的人。
+   dx/dy/dz 是筒轴**世界单位向量**；t/ou/ov 是他相对筒轴的坐标（和施法者本地同一套）；
+   by＝脚比胸口低多少。接收方只用这几个数就能算出自己每帧该在哪（见 月吸_Tick）。 */
+function 月引_发吸附(e,L){
+  if(!e||!L)return;
+  var c=月筒;if(!c)return;
+  if(!(typeof netIsMulti==='function'&&netIsMulti()&&NET.connected))return;
+  if(!(e.netId>0))return;
+  try{
+    netSend({t:'yhold',w:e.netId|0,on:1,
+      ox:camera.position.x,oy:camera.position.y,oz:camera.position.z,
+      dx:c.dir.x,dy:c.dir.y,dz:c.dir.z,
+      len:c.len,lt:L.t,ou:L.ou,ov:L.ov,by:L.baseY});
+  }catch(_){}
+}
+
+/* ==================== ④ 被别人用潮汐之筒吸住（联机 · 全程本地） ====================
+   用户口径：「大招直接吸就行了，被吸到的人屏幕上会有个特效。都是玩家本地都有的，
+   并且上报给服务端让它每帧更新位置。」
+   分工：
+     · 施法者那台机器：判定谁在筒里，每 100ms 把「筒的姿态 + 他的锁参数」点对点发过来；
+     · 我（被吸的人）：每帧把自己摆到筒轴上（位移在本地做），位置照常经 t:'p' 上报 →
+       别人看到的就是「我被吸着贴在筒上」，服务端不需要做任何物理权威；
+     · 特效也是本地的：全屏青色暗角 + 两道旋转光环 + 身上两圈 3D 环，谁的机器上都自带。
+   服务端只转发报文，并给这 400ms 挂一个校验豁免窗口（否则一帧挪超过 3 米会被当瞬移抓回来）。 */
+var 月吸={on:false,until:0,ox:0,oy:0,oz:0,dx:0,dy:0,dz:0,len:0,t:0,ou:0,ov:0,by:-0.6,el:null,rings:null};
+function 月吸_建特效(){
+  if(月吸.el){ return; }
+  var d=document.createElement('div');
+  d.id='yueHoldFx';
+  d.innerHTML='<i class="yhx"></i><i class="yhx yhx2"></i><b class="yht">🌊 被潮汐之筒吸住</b>';
+  try{ document.body.appendChild(d); }catch(e){ return; }
+  if(!document.getElementById('yueHoldFxStyle')){
+    var st=document.createElement('style');
+    st.id='yueHoldFxStyle';
+    st.textContent=
+      '#yueHoldFx{position:fixed;inset:0;z-index:9;pointer-events:none;display:none;'+
+        'background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 38%,rgba(96,214,255,.26) 100%);}'+
+      '#yueHoldFx.on{display:block;animation:yHp 1.2s ease-in-out infinite;}'+
+      '#yueHoldFx .yhx{position:absolute;left:50%;top:50%;width:66vmin;height:66vmin;margin:-33vmin 0 0 -33vmin;'+
+        'border-radius:50%;border:2px solid rgba(160,236,255,.55);'+
+        'box-shadow:0 0 42px rgba(110,210,255,.5) inset;animation:yHs 3s linear infinite;}'+
+      '#yueHoldFx .yhx2{width:46vmin;height:46vmin;margin:-23vmin 0 0 -23vmin;border-style:dashed;'+
+        'border-color:rgba(120,220,255,.75);animation:yHs 2.1s linear infinite reverse;}'+
+      '#yueHoldFx .yht{position:absolute;left:0;right:0;bottom:16%;text-align:center;color:#d8f3ff;'+
+        'font:600 15px/1 "Microsoft YaHei",sans-serif;letter-spacing:3px;'+
+        'text-shadow:0 0 14px rgba(120,220,255,.95);}'+
+      '@keyframes yHp{0%,100%{opacity:.72}50%{opacity:1}}'+
+      '@keyframes yHs{to{transform:rotate(360deg)}}';
+    try{ document.head.appendChild(st); }catch(_){}
+  }
+  月吸.el=d;
+}
+function 月吸_建环(){
+  if(月吸.rings)return;
+  try{
+    var g=new THREE.Group();
+    var r1=new THREE.Mesh(new THREE.TorusGeometry(1.15,0.035,8,40),
+      new THREE.MeshBasicMaterial({color:0x9fe8ff,transparent:true,opacity:.55,side:THREE.DoubleSide,depthWrite:false}));
+    var r2=new THREE.Mesh(new THREE.TorusGeometry(0.85,0.025,8,36),
+      new THREE.MeshBasicMaterial({color:0xd8f3ff,transparent:true,opacity:.42,side:THREE.DoubleSide,depthWrite:false}));
+    r1.rotation.x=Math.PI/2; r2.rotation.y=Math.PI/2;
+    g.add(r1); g.add(r2);
+    g.traverse(function(o){o.raycast=function(){};});
+    scene.add(g);
+    月吸.rings={g:g,r1:r1,r2:r2};
+  }catch(_){}
+}
+function 月吸_清(){
+  if(!月吸.on&&!月吸.rings&&!月吸.el)return;
+  月吸.on=false; 月吸.until=0;
+  if(月吸.el){ try{ 月吸.el.classList.remove('on'); }catch(_){} }
+  if(月吸.rings){
+    try{ if(月吸.rings.g.parent)月吸.rings.g.parent.remove(月吸.rings.g); }catch(_){}
+    try{ 月吸.rings.r1.geometry.dispose(); 月吸.rings.r1.material.dispose();
+         月吸.rings.r2.geometry.dispose(); 月吸.rings.r2.material.dispose(); }catch(_){}
+    月吸.rings=null;
+  }
+}
+/* 收报文（js/30 netOnMsg 分流过来）。600ms 没有新报文就自动松 —— 施法者掉线/收筒都不用额外通知 */
+function 月吸_收到(m){
+  if(!m)return;
+  if(!m.on){ 月吸_清(); return; }
+  if(typeof NET!=='undefined'&&NET.id&&(m.i|0)===NET.id)return;     // 自己发的自己收（不该发生）：忽略
+  var now=performance.now();
+  var 刚被吸=!月吸.on;
+  月吸.on=true; 月吸.until=now+600;
+  月吸.ox=+m.ox||0; 月吸.oy=+m.oy||0; 月吸.oz=+m.oz||0;
+  月吸.dx=+m.dx||0; 月吸.dy=+m.dy||0; 月吸.dz=+m.dz||0;
+  月吸.len=+m.len||0; 月吸.t=+m.lt||0;      /* ⚠️ 是 lt 不是 t：t 是报文类型 */
+  月吸.ou=+m.ou||0; 月吸.ov=+m.ov||0;
+  月吸.by=(typeof m.by==='number')?m.by:-0.6;
+  月吸_建特效(); 月吸_建环();
+  if(月吸.el){ try{ 月吸.el.classList.add('on'); }catch(_){} }
+  if(刚被吸){ try{ showMsg('🌊 你被潮汐之筒吸住了 —— 动不了，但还能开枪','#9fe8ff'); }catch(_){} }
+}
+function 月吸_Tick(dt){
+  if(!月吸.on)return;
+  var now=performance.now();
+  if(now>月吸.until){ 月吸_清(); return; }
+  if(typeof S!=='undefined'&&S&&S.hp<=0){ 月吸_清(); return; }
+  if(!(dt>0))dt=0.016;
+  /* 筒轴基向量：和施法者那边 月_筒基() 同一套算法，两边算出来必须是同一个坐标系 */
+  var d=new THREE.Vector3(月吸.dx,月吸.dy,月吸.dz);
+  if(d.lengthSq()<1e-8){ 月吸_清(); return; }
+  d.normalize();
+  var u=new THREE.Vector3().crossVectors(d,new THREE.Vector3(0,1,0));
+  if(u.lengthSq()<1e-6)u.set(1,0,0);
+  u.normalize();
+  var v=new THREE.Vector3().crossVectors(d,u).normalize();
+  /* 筒轴上的"胸口点"→ 再抬一个眼高差（约 0.95 米）就是相机该在的位置 */
+  var tx=月吸.ox+d.x*月吸.t+u.x*月吸.ou+v.x*月吸.ov;
+  var ty=月吸.oy+d.y*月吸.t+u.y*月吸.ou+v.y*月吸.ov+0.95;
+  var tz=月吸.oz+d.z*月吸.t+u.z*月吸.ou+v.z*月吸.ov;
+  /* 平滑吸附，且**一帧最多挪 2.4 米**：服务端 moveGuard 单包最低放行 3 米，
+     超了就被判瞬移抓回原地 —— 人会在筒里一抽一抽地来回弹。 */
+  var dx=tx-camera.position.x, dy=ty-camera.position.y, dz=tz-camera.position.z;
+  var k=Math.min(1,dt*9);
+  var sx=dx*k, sy=dy*k, sz=dz*k;
+  var sl=Math.sqrt(sx*sx+sy*sy+sz*sz);
+  if(sl>2.4){ sx*=2.4/sl; sy*=2.4/sl; sz*=2.4/sl; }
+  var eye=standEyeY(), py=camera.position.y-eye;
+  var nx=camera.position.x+sx, nz=camera.position.z+sz;
+  if(Math.abs(nx)<worldLimit()&&!playerBlocked(nx,camera.position.z,py,eye))camera.position.x=nx;
+  if(Math.abs(nz)<worldLimit()&&!playerBlocked(camera.position.x,nz,py,eye))camera.position.z=nz;
+  camera.position.y+=sy;
+  /* 悬着：每帧把竖直速度清零，否则重力一直往 velY 上攒，松手那一下会砸进地里 */
+  try{ S.velY=0; S.onGround=false; }catch(_){}
+  if(月吸.rings){
+    var g=月吸.rings.g;
+    g.position.set(camera.position.x,camera.position.y-0.35,camera.position.z);
+    g.rotation.y+=dt*1.6;
+    月吸.rings.r1.rotation.z+=dt*2.4;
+    月吸.rings.r2.rotation.y+=dt*3.1;
+  }
+  if(Math.random()<0.5){
+    try{ spawnParticle(new THREE.Vector3(camera.position.x+(Math.random()-0.5)*1.7,
+      camera.position.y-0.4+(Math.random()-0.5)*1.5,camera.position.z+(Math.random()-0.5)*1.7),0x9fe8ff,1,0.55); }catch(_){}
+  }
+}
+
 /* 月引每帧总入口（由 updateHero 的包装调用） */
 var 月引_上一帧=0;
 function 月引Tick(){
   var now=performance.now();
   var dt=月引_上一帧?Math.min((now-月引_上一帧)/1000,0.1):0.016;月引_上一帧=now;
+  月吸_Tick(dt);              /* 【1.10.23】被别人吸住：每帧先把自己摆到筒轴上（不分英雄） */
   月引_钩索Tick(dt);
   月引_装置Tick();
   /* 冷却已经转好（且没在放筒）→ 自动退出大招状态（靶场无冷却，跳过） */
@@ -1181,6 +1363,7 @@ function 月引_清场(){
   if(月支点){ try{ if(月支点.g.parent)月支点.g.parent.remove(月支点.g); }catch(_){} 月支点=null; }
   if(月索){ try{ if(月索.parent)月索.parent.remove(月索); }catch(_){} 月索=null; }
   月引_放开全部();
+  月吸_清();                  /* 【1.10.23】换图 / 重开：别把"被吸"的状态和特效留到下一局 */
   SK.yHook=null;SK.yUlt=null;月引_上一帧=0;
   月引_持握姿态(false);
 }

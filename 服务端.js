@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.10.18';
+const SRV_VER = '1.10.25';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -571,7 +571,14 @@ const SKILL_IDS = ['scout', 'rusher', 'guard', 'medic', 'eclipse', 'lightning', 
                       以前这里没有 'general' → 客户端发的 {t:'skill',k:'general'} 在 handleSkill 第一行
                       就被 `SKILL_IDS.indexOf(k) < 0` 丢掉：别人屏幕上**永远看不到**将军的长矛 / 石棺 / 分身，
                       而且服务端也不记冷却（等于联机完全没做兼容）。 */
-                   'general'];   // 【batch120】⑤蚀日者 / ⑥闪电；【batch158】⑦影月；【模组】⑧魅影；【batch172】四英雄 SP 形态（联机记冷却防刷，特效暂由客户端本地播）【batch183】+eclipse_sp：蚀日者 SP 焚曜（致盲转发）
+                   'general',
+                   /* 【1.10.22】月引（第五章解锁的第九个英雄）。
+                      这一格以前漏了 → 客户端发的 {t:'skill',k:'yueyin'} 在 handleSkill 第一行
+                      就被 `SKILL_IDS.indexOf(k) < 0` 丢掉：别人屏幕上**看不到**吸引手雷飞过来、
+                      也看不到引力支点和大招的任何光效（用户："新英雄月影有没有做多人适配"）。
+                      月引的伤害不在这里结算 —— 她的手雷/筒伤都走客户端的 netHitRemote 上报，
+                      这里只负责"记冷却 + 把技能报文广播出去让同房间的人播特效"。 */
+                   'yueyin'];   // 【batch120】⑤蚀日者 / ⑥闪电；【batch158】⑦影月；【模组】⑧魅影；【batch172】四英雄 SP 形态（联机记冷却防刷，特效暂由客户端本地播）【batch183】+eclipse_sp：蚀日者 SP 焚曜（致盲转发）
 // 每个英雄 3 个技能的冷却（毫秒）：下标 0/1/2 对应电脑端 V / B / N
 const SKILL_CD = {
   scout:  [16000, 14000, 24000],
@@ -591,7 +598,10 @@ const SKILL_CD = {
   eclipse_sp: [18000, 22000, 80000],      // 【batch183】焚曜：日冕喷发 / 堕日 / 蚀日 · 白夜（与客户端 HERO_SP 的 cd 一致）
   /* 【batch260】大将军：与客户端 HEROES 里的 cd 严格一致（12 / 16 / 55 秒）。
      服务端这层冷却只是"防刷"：正常客户端自己也在本地记冷却，两边对不上就是刷技能。 */
-  general:  [12000, 16000, 55000]         // 爆炸长矛 / 石棺 / 将军分身
+  general:  [12000, 16000, 55000],        // 爆炸长矛 / 石棺 / 将军分身
+  /* 【1.10.22】月引：与客户端 HEROES 里的 cd 严格一致（20 / 40 / 100 秒）。
+     引力支点 / 吸引手雷 / 潮汐之筒 —— 服务端只防刷，不做结算。 */
+  yueyin:   [20000, 40000, 100000]
 };
 const SHIELD_MS = 7000;        // 镇岳①能量护盾持续（毫秒）
 const SHIELD_CUT = 0.3;        // 护盾期间伤害系数（减伤 70%）
@@ -641,6 +651,9 @@ const REFLECT_BACK = 0.5;      // 反射给开枪者的比例
    ④ 白泽治疗增益（烟中更强）→ healMulFor()，所有回血点都乘它 */
 const HERO_SCOUT = 0, HERO_RUSHER = 1, HERO_GUARD = 2, HERO_MEDIC = 3;   // 与客户端 HEROES 下标一致
 const HERO_ECLIPSE = 4, HERO_LIGHTNING = 5;                   // 【batch120】蚀日者 / 闪电
+/* 【1.10.23】月影（月引）：客户端 `HERO_YUEYIN=HEROES.length`（大将军 7 之后 = 8）。
+   ⚠️ 以后客户端再往后加英雄，这里也要跟着改，否则他的大招吸人会因"英雄号不对"被服务端丢掉。 */
+const HERO_YUEYIN = 8;
 /* 【batch120】⑤蚀日者「蚀日」：黑日周期脉冲 → 朝它看的人被致盲（口径与客户端 SOLAR_* 一致） */
 const SOLAR_R = 12;               // 笼罩半径（米）
 const SOLAR_LIFE_MS = 8000;       // 黑日存在（毫秒）
@@ -2078,6 +2091,10 @@ function moveGuard(p, x, z) {
   p._pAt = now;
   if (!p.alive || p.downed) return true;                       // 死了 / 倒地：不动
   if (now < (p._tpUntil || 0)) return true;                    // 合法瞬移窗口
+  /* 【1.10.23】被月影的潮汐之筒吸着：位移由**他自己那台机器**每帧算（筒会转、会被抬起来），
+     一帧挪两三米很正常 —— 不放行会被当瞬移抓回原地，人就在筒里来回抽搐。
+     窗口只有 400ms，施法者每 100ms 续一次，松手/掉线自然失效。 */
+  if (now < (p._holdUntil || 0)) return true;
   const dx = x - (p.x || 0), dz = z - (p.z || 0);
   const d = Math.sqrt(dx * dx + dz * dz);
   const allow = Math.max(MOVE_MIN_STEP, dt * MOVE_MAX_SPEED);
@@ -2236,6 +2253,50 @@ function handleChat(from, msg) {
   const txt = String(msg && msg.x || '').slice(0, 200);
   if (!txt.trim()) return;
   broadcast({ t: 'chat', i: from.id, n: from.name, c: from.color || 0, x: txt }, undefined, mapOf(from));
+}
+
+/* ============================================================================
+   【1.10.23】月影「潮汐之筒」吸真人
+   ----------------------------------------------------------------------------
+   用户口径：「大招直接吸就行了，被吸到的人屏幕上会有个特效，都是玩家本地都有的，
+              并且上报给服务端让它每帧更新位置。」
+   → 位移权威仍然在**被吸的人自己的客户端**（他每帧把自己摆到筒轴上，再照常 t:'p' 上报），
+     服务端不搬人。这里只做三件事：
+       ① 把筒的姿态点对点转发给目标（不广播：别人看的是目标的位置，不需要这一包）；
+       ② 在他身上挂 _holdUntil＝400ms：防瞬移 / "没按移动键却持续位移" 两项校验在这段时间放行；
+       ③ 把关：施法者活着、是月影、目标同房且在 40 米内、发送频率 ≤ 25 包/秒。
+   ⚠️ 锁参数叫 lt，不能叫 t —— t 是报文类型（'yhold'），同名会把类型覆盖成数字，整包直接进不来。
+   ==========================================================================*/
+const YUE_HOLD_MS = 400;
+function handleYueHold(from, msg) {
+  if (!from || !from.alive || from.downed) return;
+  if (from.hero !== HERO_YUEYIN) return;
+  const q = players.get(msg.w | 0);
+  if (!q || q.stale || q.id === from.id) return;
+  if (!sameRoom(from, q)) return;
+  if (sameSide(from, q)) return;                            /* 【1.10.23】不吸自己人（客户端也拦了一道，这里是权威） */
+  const now = Date.now();
+  if (from._yhAt && now - from._yhAt < 40) return;          // 限频：≤25 包/秒
+  const ddx = (q.x || 0) - (from.x || 0), ddz = (q.z || 0) - (from.z || 0);
+  if (ddx * ddx + ddz * ddz > 1600) return;                 // 40 米外不可能在筒里（筒最长 30 米）
+  from._yhAt = now;
+  if (!msg.on) { sendTo(q, { t: 'yhold', on: 0 }); return; }
+  let ux = +msg.dx || 0, uy = +msg.dy || 0, uz = +msg.dz || 0;
+  const L = Math.hypot(ux, uy, uz);
+  if (L < 0.2) return;                                      // 方向不合法：丢掉
+  ux /= L; uy /= L; uz /= L;
+  const cl = function (v, lo, hi) {
+    v = +v; if (!isFinite(v)) return 0;
+    return Math.max(lo, Math.min(hi, v));
+  };
+  q._holdUntil = now + YUE_HOLD_MS;
+  sendTo(q, {
+    t: 'yhold', on: 1, i: from.id,
+    ox: cl(msg.ox, -400, 400), oy: cl(msg.oy, -100, 300), oz: cl(msg.oz, -400, 400),
+    dx: +ux.toFixed(3), dy: +uy.toFixed(3), dz: +uz.toFixed(3),
+    len: cl(msg.len, 0, 40), lt: cl(msg.lt, 0.2, 40),
+    ou: cl(msg.ou, -40, 40), ov: cl(msg.ov, -40, 40), by: cl(msg.by, -5, 5)
+  });
 }
 
 function handleBoom(from, msg) {
@@ -2790,6 +2851,7 @@ function handleMsg(sock, raw) {
          客户端加载慢时心跳还在发旧图坐标，tp 窗口会把它采纳进来 —— 那不是作弊
          （甲修第一轮就这里被误判"未按移动键却持续位移"）。 */
       if (p._tpUntil && p._tpUntil > Date.now() - 3000) p._mvOff = 0;
+      if (p._holdUntil && p._holdUntil > Date.now() - 3000) p._mvOff = 0;   /* 【1.10.23】被吸＝被动位移 */
       const _ddx = p.x - _ox, _ddz = p.z - _oz;
       const _dist = Math.sqrt(_ddx * _ddx + _ddz * _ddz);
       if (p.mv || _dist < 0.3) p._mvOff = Math.max(0, (p._mvOff || 0) - _dist * 0.5);
@@ -3168,6 +3230,8 @@ function handleMsg(sock, raw) {
     /* 【batch282】粘性投掷物标记一起转发（模组的黏雷 / 陷阱：贴墙不弹走） */
     if (m.stick) _fx.stick = 1;
     broadcast(_fx, p.id, mapOf(p));
+  } else if (m.t === 'yhold') {                   // 【1.10.23】月影大招：把"筒的姿态 + 锁参数"点对点发给被吸的人
+    handleYueHold(p, m);
   } else if (m.t === 'boom') {                    // 投掷物「引爆 / 落地」：这一刻才按真实落点结算
     handleBoom(p, m);
   } else if (m.t === 'portal') {                  // 【batch145】日蚀之门：一对门的位置，转发给同房间的其他人

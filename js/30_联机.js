@@ -734,6 +734,9 @@ function netOnMsg(m){
     return;
   }
   if(m.t==='boom'){heroRemoteBoom(m);return;}       // 别人的投掷物引爆 → 在引爆点播爆闪/开箱特效
+  /* 【1.10.23】月影「潮汐之筒」把我吸住了：施法者每 100ms 点对点发来"筒的姿态 + 我的锁参数"，
+     本机每帧把自己摆到筒轴上（位置照常经 t:'p' 上报），特效也是本地播 —— 见 js/70 的 月吸_收到。 */
+  if(m.t==='yhold'){ try{ if(typeof 月吸_收到==='function')月吸_收到(m); }catch(_ey){} return; }
   /* 【batch184f-补4】服务端权威列车：收状态/位置/撞人（多人下状态在服务端，客户端只渲染） */
   if(m.t==='train'){trainApplyState(m);return;}
   if(m.t==='trainpos'){ try{ if(typeof TRAIN!=='undefined'){ TRAIN.head=(typeof m.head==='number')?m.head:TRAIN.head; if(typeof m.ti==='number')TRAIN.ti=m.ti; } }catch(e){} return; }

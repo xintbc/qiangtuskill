@@ -58,7 +58,9 @@ function 建DOM(){
       /* 【batch229】手机端：聊天 + 语音两个触屏按钮（只触屏显示，复用 tbtn 深色风格） */
       '#chatBtn,#voiceBtn{position:fixed;display:none;z-index:60;align-items:center;justify-content:center;' +
         'width:56px;height:56px;border-radius:14px;background:rgba(40,40,60,.62);border:2px solid rgba(255,255,255,.38);' +
-        'color:#fff;font-size:13px;font-weight:bold;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}' +
+        'color:#fff;font-size:13px;font-weight:bold;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;' +
+        /* 【1.10.19】这两个键也能在「按键设置」里调大小/透明度（--ks/--ka 由 js/72 写在元素上） */
+        'transform:scale(var(--ks,1));opacity:var(--ka,1);}' +
       '#chatBtn{left:14px;bottom:150px}' +
       '#voiceBtn{left:14px;bottom:214px}' +
       '#voiceBtn.on{background:rgba(200,40,40,.72);border-color:rgba(255,140,140,.6);}' +
