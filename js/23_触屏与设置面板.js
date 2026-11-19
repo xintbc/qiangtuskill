@@ -407,7 +407,7 @@ function openSettings(on){
       var 版本标签=document.getElementById('spUpNow');
       var 按钮=document.getElementById('spUpCheck');
       var 提示行=document.getElementById('spUpHint');
-      var 检查中=false, 可升级=null;
+      var 检查中=false, 可升级=null, 下载地址=null;
 
       /* 【1.9.61】版本号立刻用「正在运行的代码版本」GAME_VER 填上，不再等联网。
          以前要等 3 秒定时 + 一次联网检查（慢时 11~23 秒）才填，期间一直是「—」；
@@ -418,12 +418,81 @@ function openSettings(on){
       盒.style.display='block';
 
       function 说(html){ if(提示行) 提示行.innerHTML=html; }
+      /* 本机是不是手机端（js/23 顶部那个按操作系统判断的 isTouch） */
+      var 手机端=(typeof isTouch!=='undefined')?!!isTouch:false;
       function 版本段(v){ var t=String(v||'').split('.'), r=[]; for(var i=0;i<3;i++){ var n=parseInt(t[i],10); r.push(isNaN(n)?0:n); } return r; }
       function 版本比(a,b){ var x=版本段(a), y=版本段(b); for(var i=0;i<3;i++){ if(x[i]!==y[i]) return x[i]-y[i]; } return 0; }
-      function 没接口(因){
-        可升级=null;
+      /* 【1.10.26】后缀补丁号：1.10.26-mobile2 比 -mobile1 新；裸号算 0 */
+      function 补丁号(v){ var m=/-[A-Za-z]+(\d+)/.exec(String(v||'')); return m?parseInt(m[1],10):0; }
+      function 全版本比(a,b){ var c=版本比(a,b); if(c) return c; return 补丁号(a)-补丁号(b); }
+      /* 这个条目该不该给本机看：全平台谁都看；手机只看安卓，电脑只看电脑。
+         —— 同一主体下手机发 -mobile2、电脑发 -pc1，两边互不打扰；
+            只有前三段变了（裸号）才两端一起算新版本。 */
+      function 收条目(平台字段){
+        var t=String(平台字段||'全平台');
+        if(t==='全平台') return true;
+        return 手机端 ? (t==='安卓') : (t==='电脑');
+      }
+
+      /* 发布站：raw 永远实时，Pages 卡住时兜底 */
+      var 发布源=[
+        { 清单:'https://raw.githubusercontent.com/xintbc/qiangtuskill/main/docs/manifest.json',
+          根:'https://raw.githubusercontent.com/xintbc/qiangtuskill/main/docs' },
+        { 清单:'https://xintbc.github.io/qiangtuskill/manifest.json',
+          根:'https://xintbc.github.io/qiangtuskill' }
+      ];
+
+      /* 【1.10.26】没有 /api 的版本（网页版 / 手机版）以前只显示一句
+         「请手动安装安装包」，等于没有更新通知。现在自己拉 manifest：
+         按平台挑出**本机这个平台**的最新安装包，比版本，给下载按钮。
+         手机只能收到手机版通知、电脑只能收到电脑版通知，就是在这里保证的。 */
+      function 查线上(){
+        可升级=null; 下载地址=null;
         if(按钮) 按钮.style.display='none';
-        说('当前版本 <b>'+运行版本+'</b>'+(因?'（'+因+'）':'')+'<br>网页版 / 手机版没有一键更新，装新版请手动安装安装包。');
+        var 序=0;
+        function 下一源(){
+          if(序>=发布源.length){
+            说('当前版本 <b>'+运行版本+'</b><br>连不上发布站（可能没网），稍后再点「检查更新」试试。');
+            return;
+          }
+          var s=发布源[序++];
+          fetch(s.清单+'?t='+Date.now(),{cache:'no-store'}).then(function(r){
+            if(!r.ok) throw new Error('bad');
+            return r.json();
+          }).then(function(j){
+            var 平台名=手机端?'安卓':'电脑';
+            var 列表=(j&&j['客户端'])||[], 最好=null;
+            for(var i=0;i<列表.length;i++){
+              var it=列表[i];
+              if(!it||!it['文件']||!it['版本']) continue;
+              if(String(it['平台']||'')!==平台名) continue;      /* 只认本平台的包 */
+              if(!最好||全版本比(String(it['版本']),String(最好['版本']))>0) 最好=it;
+            }
+            if(!最好){
+              说('当前版本 <b>'+运行版本+'</b><br>发布站上还没有 '+平台名+' 安装包。');
+              return;
+            }
+            var 远=String(最好['版本']);
+            if(全版本比(远,运行版本)>0){
+              可升级=远;
+              下载地址=s.根+'/版本/'+encodeURIComponent(String(最好['文件']));
+              if(按钮){ 按钮.style.display=''; 按钮.textContent='⬇ 下载 v'+远; 按钮.disabled=false; }
+              说('发现新版本 <b>v'+远+'</b>（'+平台名+'）：点上面的按钮下载安装包，装完覆盖安装即可，存档不动。');
+            }else{
+              可升级=null; 下载地址=null;
+              if(按钮){ 按钮.style.display=''; 按钮.textContent='已是最新'; 按钮.disabled=false; }
+              说('已经是最新版本（'+运行版本+'）。');
+            }
+          }).catch(下一源);
+        }
+        下一源();
+      }
+
+      function 没接口(因){
+        可升级=null; 下载地址=null;
+        if(按钮) 按钮.style.display='none';
+        说('当前版本 <b>'+运行版本+'</b>'+(因?'（'+因+'）':'')+'<br>正在向发布站查询…');
+        查线上();
       }
 
       function 查(){
@@ -450,23 +519,30 @@ function openSettings(on){
           var 备注='';
           if(j.now&&j.now!==运行版本)
             备注='<br><span style="color:#ffb347">安装文件版本 '+j.now+' 与运行版本 '+运行版本+' 不一致（文件被单独替换过？），已按运行版本判断。</span>';
-          if(j.new&&版本比(j.new,运行版本)>0){
-            可升级=j.new;
+          /* 【1.10.26】用全版本比（三段 + 后缀补丁号）：
+             装了 1.10.25，远端发 1.10.25-pc1 —— 只比三段会判"一样"，
+             PC 补丁永远推不下去。C 端 need 字段也是按后缀号算的。 */
+          if((j.new&&全版本比(j.new,运行版本)>0)||(j.need&&j.new)){
+            可升级=j.new; 下载地址=null;
             if(按钮) 按钮.textContent='⬆ 升级到 '+j.new+' 并重启';
             说('发现新版本 <b>'+j.new+'</b>：点上面的按钮就会自动下载安装，<b>装完自己重启</b>（同目录覆盖，存档不动）。'+备注);
           }else{
-            可升级=null;
+            可升级=null; 下载地址=null;
             if(按钮) 按钮.textContent='已是最新';
             说('已经是最新版本（'+运行版本+'）。'+备注);
           }
-        }).catch(function(){       /* fetch 直接失败：本机服务没响应，可重试 */
+        }).catch(function(){       /* fetch 直接失败：也可能是压根没有 /api（网页版 / 手机版 file:// 加载）。
+                                     以前这里只提示"没连上本地服务"，网页版/手机版就永远看不到更新，
+                                     现在直接转去查发布站。 */
           检查中=false;
-          if(按钮){ 按钮.disabled=false; 按钮.style.display=''; }
-          说('没连上本地更新服务，点「检查更新」再试一次。<br>当前版本 <b>'+运行版本+'</b>');
+          if(按钮) 按钮.disabled=false;
+          没接口(null);
         });
       }
 
       按钮.addEventListener('click', function(){
+        /* 网页版 / 手机版：没有 /api 升级通道，点了就直接开下载页 */
+        if(下载地址){ try{ window.open(下载地址,'_blank'); }catch(_e){} return; }
         if(!可升级){ 查(); return; }
         按钮.disabled=true;
         说('正在下载安装包，<b>装完会自动重启</b>，请等一会儿（别关窗口）…');
