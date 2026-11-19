@@ -159,9 +159,13 @@ def 主():
     # 版本号排序要容得下「1.8.0-p1」这种预览版后缀（旧的 int(p) 会直接崩）
     import re as _re
     def _版本键(x):
-        nums = _re.findall(r'\d+', str(x.get('版本', '0')))
+        # 【1.10.26】支持平台后缀 1.10.26-mobile1 / -pc1：主体三段 → 后缀号 → 平台字母
+        _s = str(x.get('版本', '0'))
+        nums = _re.findall(r'\d+', _s)
         while len(nums) < 3: nums.append('0')
-        return [int(n) for n in nums[:3]]
+        _tag = _re.search(r'-([A-Za-z]+)(\d+)', _s)
+        return [int(n) for n in nums[:3]] + [int(_tag.group(2)) if _tag else 0,
+                                             _tag.group(1).lower() if _tag else '']
     m['版本'].sort(key=_版本键, reverse=True)
 
     # 扫模组目录里的 .js 填进清单。
@@ -186,7 +190,7 @@ def 主():
     # 升级包故意**不含** node.exe（90MB，基本不变）和 mode/模组/（玩家自己的模组）。
     try:
         with io.open(os.path.join(SRC, '服务端.js'), encoding='utf-8') as _f:
-            _mk = _re.search(r"const\s+SRV_VER\s*=\s*'([0-9.]+)'", _f.read())
+            _mk = _re.search(r"const\s+SRV_VER\s*=\s*'([0-9.]+(?:-[A-Za-z]+[0-9]+)?)'", _f.read())
         内核版 = _mk.group(1) if _mk else ver
     except Exception:
         内核版 = ver
