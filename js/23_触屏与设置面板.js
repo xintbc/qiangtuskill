@@ -253,6 +253,76 @@ function aoApply(on,save){
 function aoToggle(){ aoApply(aoLoad()!==true?true:false, true); }
 
 /* ============================================================================
+   【1.10.27】画质档位：流畅 / 均衡 / 高画质
+   ─ 为什么加：用户反馈客户端费内存费 CPU。实测（4 核机、单人对局、同一场景连续采）：
+       当前设置            517 MB / 单核 115% / 60.5 帧
+       像素比 1.0→0.72     511 MB / 单核  74% / 60.4 帧   ← 只这一项就少 41%
+       ＋关后处理          511 MB / 单核  70% / 60.3 帧
+       ＋关阴影            498 MB / 单核  64% / 60.5 帧   ← 合计少 51%
+     ⚠️ 内存几乎不动（517→498 只 -4%）：那 500 MB 里 250 MB 是浏览器内核
+        （browser/utility/gpu 进程）的固定开销，跟画面设置无关，调档也砍不掉。
+   ─ 三样一起管：PERF.锁定(内部渲染分辨率) / POST.开(后处理) / LIGHT.档位(阴影贴图)
+   ─ 存档键 gunGame.quality.v1，没存过 = 2（高画质，跟以前完全一样）
+   ============================================================================ */
+var QUALITY_KEY='gunGame.quality.v1';
+var 画质档表={
+  0:{名:'流畅',   pr:0.72, post:false, light:0},
+  1:{名:'均衡',   pr:1.00, post:false, light:1},
+  2:{名:'高画质', pr:0,    post:true,  light:2}   /* pr=0 表示「用游戏原本的 RENDER_PR」 */
+};
+function 画质载(){ try{ var v=parseInt(localStorage.getItem(QUALITY_KEY),10); return (v>=0&&v<=2)?v:2; }catch(e){ return 2; } }
+function 画质存(v){ try{ localStorage.setItem(QUALITY_KEY,String(v)); }catch(e){} }
+function 画质界面(v){
+  var t=document.getElementById('spQVal');
+  if(t)t.textContent=(画质档表[v]&&画质档表[v].名)||'高画质';
+  for(var i=0;i<3;i++){
+    var b=document.getElementById('spQ'+i);
+    if(!b)continue;
+    var on=(i===v);
+    b.style.background=on?'rgba(52,140,102,.85)':'rgba(60,120,200,.85)';
+    b.style.borderColor=on?'rgba(140,240,190,.55)':'rgba(255,255,255,.35)';
+    b.style.fontWeight=on?'700':'400';
+  }
+}
+/* v=档位；save=true 时写存档 */
+function 画质应用(v,save){
+  v=(v>=0&&v<=2)?v:2;
+  var 档=画质档表[v];
+  /* ① 内部渲染分辨率。高画质回到游戏自己的 RENDER_PR（不是 PERF.上限，
+        上限可能比 RENDER_PR 高，硬套反而更吃性能） */
+  try{
+    if(typeof PERF!=='undefined'&&PERF){
+      var 目标=(v===2)?((typeof RENDER_PR!=='undefined')?RENDER_PR:1):档.pr;
+      if(typeof PERF.锁定==='function')PERF.锁定(目标);
+      else { PERF.当前=目标; renderer.setPixelRatio(目标); }
+    }
+  }catch(e){}
+  /* ② 后处理总开关（AO 自己的存档不动，切回高画质就按它自己的开关恢复） */
+  try{ if(typeof POST!=='undefined'&&POST&&('开' in POST))POST.开=!!档.post; }catch(e){}
+  /* ③ 阴影档位 —— 只有降档时才强制压；选「高画质」不动它，
+        保留玩家自己在光影存档里设的档位（默认档位本来就是 2，等于没变） */
+  try{
+    if(v<2 && typeof LIGHT!=='undefined'&&LIGHT){
+      LIGHT.档位=档.light;
+      if(typeof LIGHT.应用档位==='function')LIGHT.应用档位();
+    }
+  }catch(e){}
+  画质界面(v);
+  if(save)画质存(v);
+  return v;
+}
+function 画质切换(v){
+  var 名=画质应用(v,true);
+  var 档=画质档表[名];
+  try{
+    if(typeof showMsg==='function'){
+      showMsg('⚡ 画质：'+档.名+(名===0?'（省一半 CPU，画面略糊）':''),'#9fd7ff');
+    }
+  }catch(e){}
+  return 名;
+}
+
+/* ============================================================================
    【batch139】手机端专有：全屏切换 + 陀螺仪微调（灵敏度 0~100，0＝关）。
    只在触屏端出现：对应的 DOM 行都带 class="only-touch"，
    电脑上由 `body:not(.is-touch) .only-touch{display:none}` 藏掉（用户："这些电脑版都没有"）。
@@ -393,6 +463,16 @@ function openSettings(on){
     try{ if(typeof showMsg==='function')showMsg(on?'🌑 后处理阴影：开':'🌑 后处理阴影：关','#9fd7ff'); }catch(_e){}
   });
   aoApply(aoLoad(),false);
+  /* 【1.10.27】画质档位：三个按钮 + 启动时按存档恢复。
+     ⚠️ 必须放在 aoApply 之后：画质应用会改 POST.开，先设 AO 再设总开关。 */
+  for(var _qi=0;_qi<3;_qi++)(function(i){
+    var b=document.getElementById('spQ'+i);
+    if(b)b.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      画质切换(i);
+    });
+  })(_qi);
+  画质应用(画质载(),false);
   /* 【1.9.50】瓦罗兰特模式开关 */
   (function(){
     /* 【1.9.55】客户端内升级
