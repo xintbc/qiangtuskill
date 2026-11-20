@@ -875,8 +875,12 @@
   }
 
   async function main() {
-    // 1) 先加载“载入清单”本身（它负责设置 window.MOD_FILES）
-    await loadOne(BASE + '载入清单.js');
+    /* 1) 先加载“载入清单”本身（它负责设置 window.MOD_FILES）
+       ⚠️【1.10.27-pc1】必须带时间戳：本地服务和 Node 服务端对 .js 都发
+       `immutable`（一年不过期），而 <script src> 的 URL 不变就会一直读旧缓存 ——
+       实测过：磁盘上的清单已经清空，页面里的 MOD_FILES 还是安装包带进来那 14 个，
+       玩家在模组面板里删了也删不掉，怎么刷新都还在。 */
+    await loadOne(BASE + '载入清单.js?t=' + Date.now());
 
     /* 1.5) 【batch225】问模组管理要一份「最终加载计划」：
        它会把「清单里的内置模组 + 本机已经装过的模组」合成一张表，
