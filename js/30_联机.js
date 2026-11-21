@@ -613,8 +613,13 @@ function netOnMsg(m){
     return;
   }
   if(m.t==='bye'){
-    NET.replaced=true;                                   // 停止自动重连（服务端不接纳本连接）
     var _why=m.why||'';
+    /* 【1.10.29】anticheat（行为校验踢出）**不算"被替换"**：服务端 1.10.29 起已经不再发它，
+       但如果连的是还没升级的旧服务器（≤1.10.28），它仍可能因为误判把正常玩家踢出。
+       以前这里无条件 replaced=true → 客户端彻底停止自动重连，玩家只能手动刷新，
+       体感就是"玩着玩着被踢了"。现在这一种放行自动重连：重连成功后服务端会清零校验计数，
+       等于放过，人还能接着玩。 */
+    if(_why!=='anticheat') NET.replaced=true;
     if(_why==='banned')netKickedHome('你已被管理员封禁，无法进入服务器');
     else if(_why==='full')netKickedHome('服务器已满（上限 '+(m.max||15)+' 人），请稍后再试');
     else if(_why==='dupname'){
@@ -643,7 +648,8 @@ function netOnMsg(m){
         netKickedHome('⛔ 模组不符，连不上这台服务器\n'+(行.join('\n')||'请检查你安装的模组'));
       }
     }
-    else showMsg('本页面身份已被另一个窗口占用，已停止自动重连','#fc0');
+    else if(_why==='anticheat') showMsg('服务器校验误判，正在自动重连…','#fc0');
+    else showMsg(NET.replaced?'本页面身份已被另一个窗口占用，已停止自动重连':'连接被服务器断开，正在重连…','#fc0');
     return;
   }
   if(m.t==='pong'){                                    // 心跳回包 → 实时延迟（HUD 上显示）

@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.10.28';
+const SRV_VER = '1.10.29';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -894,10 +894,14 @@ function shadowTick(now) {
     });
   }
 }
-/* 掉线容忍：客户端每 2 秒发一次心跳，这里给到 20 秒 —— 相当于允许连续丢 9 个心跳。
-   隧道/弱网下一次抖动就可能丢三五秒，阈值太低会把人反复误踢成"老是重连"。 */
-const TIMEOUT_MS = 20000;      // 超过这么久没上报 → 先判「疑似掉线」（还没删！）
-const GONE_MS = 45000;         // 疑似掉线后再等这么久没回来 → 才真正移除（宽限内重连无缝接回）
+/* 掉线容忍：客户端每 2 秒发一次心跳，这里给到 45 秒 —— 相当于允许连续丢 22 个心跳。
+   隧道/弱网下一次抖动就可能丢三五秒；手机切后台、电脑锁屏时浏览器还会冻结定时器。
+   【1.10.29】用户口径「玩得久了就可能会被踢掉，尽量保留所有玩家」：
+   原来 20 秒判掉线、45 秒移除，一次较长的网络抖动（比如跨境线路抽风、后台切回来慢）
+   就会把人清出对局。现在放宽到 45 秒判「疑似掉线」、再等 150 秒才真正移除 ——
+   总计 195 秒的重连窗口，正常网络波动几乎不可能被清出去。 */
+const TIMEOUT_MS = 45000;      // 超过这么久没上报 → 先判「疑似掉线」（还没删！）
+const GONE_MS = 150000;        // 疑似掉线后再等这么久没回来 → 才真正移除（宽限内重连无缝接回）
 载入开服设置();
 let MAX_PLAYERS = Math.max(1, Math.min(64, parseInt(开服设置.maxPlayers, 10) || 15));   // 【1.9.46】可在开服器里改（1~64）
 
@@ -1875,7 +1879,8 @@ function joinPlayer(sock, name, cid, code, mapId, clear, ecl, mode, room, teamWa
       op.mem = mem ? 1 : 0;                          // 【batch203】重连也要跟着更新：可能这几天刚好解锁了
       op.rushUntil = 0; op.adrenUntil = 0; op.healAuraUntil = 0; op.healAcc = 0;   // 重连：技能状态归零
       op.stale = false; op.staleAt = 0;              // 他回来了：从「疑似掉线」状态恢复
-      op._chkAt = 0; op._chkWhy = ''; op._vioCnt = 0; op._mvOff = 0; op._fgAt = 0;   // 【batch278】重连成功＝网络正常：行为校验全部放过
+      op._chkAt = 0; op._chkWhy = ''; op._vioCnt = 0; op._mvOff = 0; op._fgAt = 0;   // 【batch278】重连成功＝网络正常：行为校验全部放过【1.10.29】这些计数已不参与处置
+      op._hitWin = 0; op._hitN = 0;                  // 【1.10.29】命中限频窗口也重置，重连后第一枪不会被旧窗口挡住
       op.reconn = (op.reconn || 0) + 1;              // 统计重连次数（控制台 list 可见）
       /* 【batch283】刷新网页 / 退出回到主菜单后，这次 join 是 lobby=1 的 —— 必须**跟着改**。
          以前这里不更新 op.lobby：服务端一直记着他"还在对局里"，于是
@@ -2110,35 +2115,32 @@ function moveGuard(p, x, z) {
 /* ============================================================================
    【batch278】按键校验（服务端权威）
    ----------------------------------------------------------------------------
-   口径：客户端每个状态包（20Hz）带 mv / fg 两个"输入意图"标志——
-     电脑端：WASD / 鼠标左键；手机端：虚拟摇杆（直接映射 keys.KeyW/S/A/D）/ 开火钮（mouseDown）。
-     点射（按下短于 50ms 状态包间隔）由 attack() 补发一条 {t:'fg'}。
-   校验：
-     ① hit 命中上报时开火键没按着、2 秒内也没按过 → 违规；
-     ② 没按移动键却持续位移（无输入累计 40 米，被动位移如击飞会随站定回退）→ 违规。
-   处置（用户口径：先断开并尝试重连 / 探测网络；网络正常放过，不正常踢出对局）：
-     违规 → 发 {t:'ping'} 要求 2.5 秒内回 {t:'pong'}：
-       · 回得来 ＝ 网络正常 → 放过（60 秒内累计 3 次违规才升级踢出）；
-       · 回不来 ＝ 网络不正常 → 直接断开连接：客户端自动重连，重连成功＝放过
-         （校验计数清零、无缝接回原地）；一直重连不上 → 掉线宽限期满自动清出＝踢出对局。
+   【1.10.29 · 用户口径】「服务器有时候会异常踢人，玩得久了就可能被踢掉，
+                          把反作弊拉到最小，尽量保留所有玩家。」
+   ----------------------------------------------------------------------------
+   原来这里会在 60 秒内累计 3 次「行为可疑」就把人 dropPlayer（客户端收到
+   bye why:'anticheat' 后还会停掉自动重连，等于直接踢回主菜单）。实际运行中
+   误判来源太多 —— 被列车/击飞/月影筒吸着/踩传送点/搭载具/模组位移/手机端点射
+   上报时 fg 标志丢了 …… 都可能被算成一次违规，玩得越久越容易凑满 3 次。
+
+   现在：**只记录，不处置**。
+     · 不计数、不发网络检查 ping、不断开、不 dropPlayer；
+     · 一律写一行节流日志（5 秒一条），方便需要时自己在开服器黑窗口里看；
+     · 真正防刷的地方仍然保留（技能限频、伤害钳制、瞬移抓回原地），
+       但它们只会「不采纳这一次位移 / 这一发伤害」，不会把人踢出去。
+   ⚠️ 别再往这里加回断开/踢出的逻辑 —— 用户要的是「宁可放过，也不误伤」。
    ==========================================================================*/
 const DEAD_ACTS = { hit: 1, aihit: 1, tp: 1, meteor: 1, skill: 1, throwfx: 1, boom: 1, portal: 1,
   min: 1, minHit: 1, fg: 1, map: 1, grav: 1, heal: 1 };   // 死亡窗口内失效的"行为"报文
+/* 【1.10.29】当前没有调用点（两处触发都已降级成"只记录/只限频"）。
+   留着是因为以后想排查「谁在改客户端」时，直接调它就能在开服器黑窗口里留痕。 */
 function netViol(p, why) {
   if (!p || p.stale || !p.alive) return;
-  if (p._chkAt) return;                              // 正在检查中：不叠加
   const now = Date.now();
-  if (!p._vioWin || now - p._vioWin > 60000) { p._vioWin = now; p._vioCnt = 0; }
-  p._vioCnt = (p._vioCnt || 0) + 1;
-  if (p._vioCnt >= 3) {                              // 60 秒内 3 次：直接踢出对局
-    try { wsSend(p.ws, JSON.stringify({ t: 'bye', why: 'anticheat', msg: '行为校验多次未通过' })); } catch (e) { }
-    log('反作弊踢出：' + p.name + '（' + why + '；60 秒内第 ' + p._vioCnt + ' 次违规）');
-    dropPlayer(p.id);
-    return;
-  }
-  p._chkAt = now; p._chkWhy = why;
-  try { sendTo(p, { t: 'ping', why: why }); } catch (e) { }
-  log('行为校验：' + p.name + '（' + why + '）→ 要求 2.5 秒内回应网络检查（60 秒内第 ' + p._vioCnt + ' 次）');
+  /* 【1.10.29】只记录、不处置：同一个人 5 秒最多打一行，免得弱网时把黑窗口刷爆 */
+  if (p._vioLogAt && now - p._vioLogAt < 5000) return;
+  p._vioLogAt = now;
+  log('行为可疑（仅记录，不踢人）：' + (p.code || '') + ' ' + p.name + '（' + why + '）');
 }
 
 function handleHit(from, msg) {  if (from.downed) return;                                  // 【batch120】倒地的人开不了枪（也补不了刀）
@@ -2151,20 +2153,29 @@ function handleHit(from, msg) {  if (from.downed) return;                       
   if (!sameRoom(from, target)) return;            // 【batch113】打不到另一个房间的人（防作弊/防串味）
   /* 【batch169】友伤防护：同一队（爆能器 攻/防）不能互相伤害；原版没有队伍概念（team 为 undefined/-1）→ 照常打 */
   if (typeof from.team === 'number' && typeof target.team === 'number' && from.team >= 0 && target.team >= 0 && from.team === target.team) return;
-  /* 【batch278】按键校验②：开火键没按着、2 秒内也没按过/上报过开火，却报了命中。
-     点射由客户端 attack() 补发 {t:'fg'}，正常玩家（含手机端开火钮）不会误中这里。
-     【batch283】模组英雄的技能伤害是**按键放的、根本没有开火动作**，走这条必被当成作弊丢掉
-     —— 这就是"模组英雄打不动敌人 / 队友"的真因。报文带 sk:1 时改走限频：
+  /* 【batch283】模组英雄的技能伤害是**按键放的、根本没有开火动作**，走"按键校验"必被当成作弊丢掉
+     —— 这就是"模组英雄打不动敌人 / 队友"的真因。报文带 sk:1 时走限频：
        120ms 内最多 8 次（黑洞这种一次打多人的技能够用）、单次伤害 1~200，
-     既不误伤模组，也不给自改客户端留无限刷伤害的口子。 */
+     既不误伤模组，也不给自改客户端留无限刷伤害的口子。
+     【1.10.29】普通枪伤也不再按"开火键校验"判违规了，见下面注释。 */
   if (msg.sk) {
     const _now = Date.now();
     if (!from._skWin || _now - from._skWin > 120) { from._skWin = _now; from._skN = 0; }
     if (++from._skN > 8) return;
     const _d = Math.floor(Number(msg.d) || 0);
     if (_d < 1 || _d > 200) return;
-  } else if (!from.fg && (!from._fgAt || Date.now() - from._fgAt > 2000)) {
-    netViol(from, '未按键却上报命中'); return;
+  }
+  /* 【1.10.29】「开火键没按着却上报命中」不再判违规、不再踢人。
+     原来的误伤来源：手机端点射时 fg 标志丢包、模组武器没走 attack()、
+     切枪/换弹瞬间的状态包顺序、以及弱网下 fg 包比 hit 包晚到 —— 全都会被算一次违规，
+     60 秒凑满 3 次就 dropPlayer（用户：「玩得久了就可能会被踢掉」）。
+     现在只做一道**很宽松**的限频（120ms 内最多 20 条，正常枪械远达不到；
+     霰弹枪一发多目标也只是几条），超了丢掉这一条，不记录、不处置。
+     伤害本身仍有 applyDamage 的 1~120 钳制，脚本也刷不出秒杀。 */
+  {
+    const _hn = Date.now();
+    if (!from._hitWin || _hn - from._hitWin > 120) { from._hitWin = _hn; from._hitN = 0; }
+    if (++from._hitN > 20) return;
   }
   applyDamage(from, target, msg.d, !!msg.h);
 }
@@ -2840,7 +2851,7 @@ function handleMsg(sock, raw) {
       p._lx = p.x; p._lz = p.z; p._syncAt = _nowT;
     }
     /* 【batch278】输入意图（电脑端＝WASD/鼠标左键，手机端＝虚拟摇杆/开火钮，两端都汇总成这两个标志）。
-       按键校验用：服务端会核对"没按键却移动 / 没按键却开枪"（见 netViol）。 */
+       【1.10.29】只采集、不再据此判违规（见 netViol 的说明：只记录，不踢人）。 */
     p.mv = m.mv ? 1 : 0;
     if (m.fg) p._fgAt = Date.now();
     /* 按键校验①：没按移动键却持续位移（搬运 / 改速度脚本的典型特征）。
@@ -2854,10 +2865,20 @@ function handleMsg(sock, raw) {
       if (p._holdUntil && p._holdUntil > Date.now() - 3000) p._mvOff = 0;   /* 【1.10.23】被吸＝被动位移 */
       const _ddx = p.x - _ox, _ddz = p.z - _oz;
       const _dist = Math.sqrt(_ddx * _ddx + _ddz * _ddz);
+      /* 【1.10.29】「没按移动键却持续位移」不再判违规。
+         被动位移的来源太多（被列车撞飞、黑洞吸、月影潮汐之筒、载具搭载、踩点滑落、
+         电梯/传送、模组位移），玩久了必然凑满阈值 —— 以前就是这些误判把人踢掉。
+         这里只保留累计值给控制台观察，超过阈值也只是**清零重新累计**，不处置。 */
       if (p.mv || _dist < 0.3) p._mvOff = Math.max(0, (p._mvOff || 0) - _dist * 0.5);
       else {
         p._mvOff = (p._mvOff || 0) + _dist;
-        if (p._mvOff > 40) { p._mvOff = 0; netViol(p, '未按移动键却持续位移'); }
+        if (p._mvOff > 40) {
+          p._mvOff = 0;
+          if (!p._mvLogAt || Date.now() - p._mvLogAt > 60000) {
+            p._mvLogAt = Date.now();
+            log('位移累计（仅记录，不踢人）：' + (p.code || '') + ' ' + p.name);
+          }
+        }
       }
     }
     p.y = +m.y || 0;
@@ -4085,12 +4106,12 @@ function 服务端帧同步() {
       if (now - p.staleAt > GONE_MS) gone.push(p.id);
       return;                                       // 也不广播给别人（省带宽；别人眼里他就是离线了）
     }
-    /* 【batch278】按键校验的网络检查：2.5 秒没回 pong ＝ 网络不正常 → 断开让他重连
-       （重连成功＝放过；一直连不上 → 下面 GONE_MS 宽限期满自动清出＝踢出对局） */
+    /* 【1.10.29】网络检查超时：**不断开**，只把标记清掉。
+       以前这里会 p.ws.destroy() —— 弱网/隧道一次 2.5 秒的抖动就把连接掐了，
+       用户体感就是「玩着玩着突然被踢」。现在宁可当作一次网络抖动放过。 */
     if (p._chkAt && now - p._chkAt > 2500) {
-      log('网络检查超时：' + p.name + '（' + (p._chkWhy || '') + '）→ 断开连接，重连成功即放过');
-      try { p.ws.destroy(); } catch (e) { }
-      return;
+      p._chkAt = 0; p._chkWhy = '';
+      log('网络检查超时（仅记录，不断开）：' + p.name);
     }
     if (now - p.lastSeen > TIMEOUT_MS) {
       // 【重要】**不要立刻删人**！
@@ -4695,8 +4716,11 @@ server.on('upgrade', function (req, socket) {
     try { socket.destroy(); } catch (e) { }
   }
   /* 防挤爆·第二道闸：连上以后迟迟不进场（不发 join）→ 断开。
-     否则有人开一堆空连接就能把连接表占满，真玩家反而挤不进来。 */
-  socket._helloTimer = setTimeout(function () {
+     否则有人开一堆空连接就能把连接表占满，真玩家反而挤不进来。
+     【1.10.29】只在「防护 开」（floodOn）时生效：默认关闭限流时，手机弱网加载
+     几百个脚本 + 本地服务探测可能超过 8 秒才发出 join，以前会被白白掐断一条连接
+     （玩家看到"连不上、重试中"）。用户要求尽量保留所有玩家 → 默认不掐。 */
+  if (floodOn) socket._helloTimer = setTimeout(function () {
     if (closed || socket._pid) return;
     fStat.hello++;
     logThrottled('hello', '⛔ 防挤爆：一条连接连上 ' + Math.round(FLOOD.HELLO_MS / 1000) + ' 秒没进场，已断开');
