@@ -744,13 +744,25 @@ function 屏内Y(el,v){
 }
 
 /* 统一接管：捕获阶段，先于任何按钮自身的 touchstart */
-function 编辑放下(cx,cy,target){
+function 编辑放下(cx,cy,target,手){
   var el=找可编辑(target);
   if(!el)return false;
   选中元素(el);
   var o=当前项();if(!o)return false;
-  拖动={id:el.id,el:el,px:cx,py:cy,x0:o.x,y0:o.y};
+  /* 【1.11.4】手＝按下那根手指的 identifier：touchmove 只认它。
+     以前每个 move 都取 changedTouches[0]，两只手同时在动时拿到的是另一根 →
+     坐标突然从左边跳到右边，按键"嗖"地飞走。 */
+  拖动={id:el.id,el:el,px:cx,py:cy,x0:o.x,y0:o.y,手:(手===undefined?null:手)};
   return true;
+}
+/* 只取"按下时那根手指"的触点 */
+function 拖动手(e){
+  if(!拖动||拖动.手===null||拖动.手===undefined)return null;
+  var l=e.changedTouches||[],i;
+  for(i=0;i<l.length;i++)if(l[i].identifier===拖动.手)return l[i];
+  l=e.touches||[];
+  for(i=0;i<l.length;i++)if(l[i].identifier===拖动.手)return l[i];
+  return null;
 }
 function 编辑移动(cx,cy){
   if(!拖动)return;
@@ -771,21 +783,25 @@ document.addEventListener('touchstart',function(e){
   if(在操作条里(e.target))return;                 // 底部滑块 / 按钮放行
   if(e.cancelable)e.preventDefault();
   e.stopPropagation();
+  if(拖动)return;                                 // 已经在拖一个键：第二根手指不许重置基准
   var t=e.changedTouches[0];
-  if(t)编辑放下(t.clientX,t.clientY,e.target);
+  if(t)编辑放下(t.clientX,t.clientY,e.target,t.identifier);
 },true);
 document.addEventListener('touchmove',function(e){
   if(!按键编辑中||!拖动)return;
   if(e.cancelable)e.preventDefault();
   e.stopPropagation();
-  var t=e.changedTouches[0];
+  var t=拖动手(e);
   if(t)编辑移动(t.clientX,t.clientY);
 },true);
 document.addEventListener('touchend',function(e){
   if(!按键编辑中)return;
   if(在操作条里(e.target))return;
   e.stopPropagation();
-  编辑抬起();
+  if(!拖动){return;}
+  /* 只有"正在拖的那根手指"抬起才算放手 —— 另一根手指抬起不该结束拖动 */
+  var l=e.changedTouches||[],i;
+  for(i=0;i<l.length;i++)if(l[i].identifier===拖动.手){编辑抬起();return;}
 },true);
 document.addEventListener('touchcancel',function(){ if(按键编辑中)编辑抬起(); },true);
 
@@ -793,7 +809,7 @@ document.addEventListener('touchcancel',function(){ if(按键编辑中)编辑抬
 document.addEventListener('mousedown',function(e){
   if(!按键编辑中||在操作条里(e.target))return;
   e.preventDefault();e.stopPropagation();
-  if(编辑放下(e.clientX,e.clientY,e.target)){
+  if(编辑放下(e.clientX,e.clientY,e.target,null)){
     var mv=function(ev){编辑移动(ev.clientX,ev.clientY);};
     var up=function(){编辑抬起();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
@@ -873,38 +889,63 @@ var 窗位键='gunGame.mobEditWin.v1';
 function 窗位读(){
   try{ var v=JSON.parse(localStorage.getItem(窗位键)||'null'); return (v&&typeof v.x==='number')?v:null; }catch(e){ return null; }
 }
+/* 【1.11.4】小窗的百分比基准。
+   ⚠️ 以前一律按 window.innerWidth/innerHeight 算，但 left/top 的百分比是相对**父层布局宽**
+   （#mobEdit）。只要父层和视口不是 1:1（界面缩放 / 被搬进 #uiZoom / 将来加 transform），
+   手指挪 10px 会被记成 10/innerWidth 的百分比，作用在另一个宽度的容器上 →
+   小窗"稍一左移就跳到左边一大段"。现在统一用父层的**视觉 rect** 当基准：
+   布局位移 × 缩放 = 视觉位移，而视觉位移正好等于手指位移（和 js/72 按键那套同一口径）。 */
+function 窗基(){
+  var bar=$('mobEditBar');if(!bar)return null;
+  var p=bar.offsetParent||document.body;
+  var r=p?p.getBoundingClientRect():null;
+  if(!r||!r.width||!r.height)return null;
+  return {r:r,w:r.width,h:r.height};
+}
 function 窗位应用(){
   var bar=$('mobEditBar');if(!bar)return;
+  var b=窗基();if(!b)return;
   var w=窗位读();
   if(!w){
     var r=bar.getBoundingClientRect();
     if(!r.width)return;
-    w={x:+((r.left+r.width/2)/(window.innerWidth||1)*100).toFixed(2),
-       y:+((r.top+r.height/2)/(window.innerHeight||1)*100).toFixed(2)};
+    w={x:(r.left+r.width/2-b.r.left)/b.w*100,
+       y:(r.top +r.height/2-b.r.top )/b.h*100};
   }
   bar.style.left=w.x+'%';bar.style.top=w.y+'%';bar.style.transform='translate(-50%,-50%)';
 }
 (function 绑窗拖动(){
   var bar=$('mobEditBar'),tip=$('mobEditTip');
   if(!bar||!tip)return;
-  var 起=null;
-  function 下(cx,cy){
+  var 起=null, 手=null;      // 手＝正在拖的那根手指的 identifier
+  /* 只认按下时那根手指：touchmove 的 changedTouches[0] 不一定是它
+     （两只手同时操作时，[0] 可能是另一根 → 坐标突变，小窗瞬间跳走） */
+  function 找手(e){
+    var l,i;
+    if(手===null)return null;
+    l=e.changedTouches||[];
+    for(i=0;i<l.length;i++)if(l[i].identifier===手)return l[i];
+    l=e.touches||[];
+    for(i=0;i<l.length;i++)if(l[i].identifier===手)return l[i];
+    return null;
+  }
+  function 下(cx,cy,id){
     var r=bar.getBoundingClientRect();if(!r.width)return;
-    var vw=window.innerWidth||1,vh=window.innerHeight||1;
-    起={cx:cx,cy:cy,l:r.left,t:r.top,w:r.width,h:r.height,
-        x:(r.left+r.width/2)/vw*100,y:(r.top+r.height/2)/vh*100};
+    var b=窗基();if(!b)return;
+    手=(id===undefined?null:id);
+    起={cx:cx,cy:cy,
+        x:(r.left+r.width/2-b.r.left)/b.w*100,
+        y:(r.top +r.height/2-b.r.top )/b.h*100};
   }
   function 动(cx,cy){
     if(!起)return;
-    var vw=window.innerWidth||1,vh=window.innerHeight||1;
-    var x=(起.x*vw/100+(cx-起.cx))/vw*100, y=(起.y*vh/100+(cy-起.cy))/vh*100;
+    var b=窗基();if(!b)return;
+    var x=起.x+(cx-起.cx)/b.w*100, y=起.y+(cy-起.cy)/b.h*100;
     x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));   // 别拖出屏幕
     起.x=x;起.y=y;
-    /* 【1.11.2】必须同步更新基准点，否则位移会被**反复累加**：
-       起.cx 一直是最初按下的位置，第二次起 (cx-起.cx) 就是"从起点算的总位移"，
-       却又加在"上一次已经移动过的位置"上 → x ≈ x0 + n(n+1)/2，二次增长。
-       手指挪 100px（约 100 个 move 事件）小窗会跑 5000px，用户反馈"比手都快、不跟手"。
-       改成增量：每次动完把基准点挪到当前手指位置。 */
+    /* 【1.11.2】位移必须是「上次位置 + 这一小步」的增量：每次动完把基准点挪到当前手指位置。
+       否则 (cx-起.cx) 一直是"从最初按下算的总位移"，又加在已经移动过的位置上 →
+       x ≈ x0 + n(n+1)/2，二次增长（用户："比手都快、不跟手"）。 */
     起.cx=cx;起.cy=cy;
     bar.style.left=x.toFixed(2)+'%';bar.style.top=y.toFixed(2)+'%';
     bar.style.transform='translate(-50%,-50%)';
@@ -912,24 +953,31 @@ function 窗位应用(){
   function 抬(){
     if(!起)return;
     try{ localStorage.setItem(窗位键,JSON.stringify({x:+起.x.toFixed(2),y:+起.y.toFixed(2)})); }catch(e){}
-    起=null;
+    起=null;手=null;
   }
   tip.addEventListener('touchstart',function(e){
     if(e.cancelable)e.preventDefault();e.stopPropagation();
-    var t=e.changedTouches[0];if(t)下(t.clientX,t.clientY);
+    if(起)return;                                  // 已经在拖：第二根手指不许重置基准（重置＝位置瞬间跳）
+    var t=e.changedTouches[0];
+    if(t)下(t.clientX,t.clientY,t.identifier);
   },{passive:false});
   tip.addEventListener('touchmove',function(e){
     if(!起)return;
     if(e.cancelable)e.preventDefault();e.stopPropagation();
-    var t=e.changedTouches[0];if(t)动(t.clientX,t.clientY);
+    var t=找手(e);if(t)动(t.clientX,t.clientY);
   },{passive:false});
-  tip.addEventListener('touchend',function(e){e.stopPropagation();抬();});
+  tip.addEventListener('touchend',function(e){
+    e.stopPropagation();
+    if(!起)return;
+    var l=e.changedTouches||[];
+    for(var i=0;i<l.length;i++)if(l[i].identifier===手){抬();return;}
+  });
   tip.addEventListener('touchcancel',function(){抬();});
   /* 鼠标（muMu / 桌面 ?touch=1）同样能拖 */
   tip.addEventListener('mousedown',function(e){
     if(e.button!==0||!是鼠标())return;
     e.preventDefault();e.stopPropagation();
-    下(e.clientX,e.clientY);
+    下(e.clientX,e.clientY,null);
     var mv=function(ev){动(ev.clientX,ev.clientY);};
     var up=function(){抬();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);

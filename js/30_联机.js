@@ -548,7 +548,13 @@ function netMultiClick(){
 window.SPIKE_MAPS=window.SPIKE_MAPS||{
   classic:{sites:[{x:-28,z:-2},{x:28,z:-2}],spike:{x:0,z:34},atk:[-28,66],def:[2,-66]},
   eclipse:{sites:[{x:-16,z:34},{x:16,z:34}],spike:{x:0,z:38},atk:[18,80],def:[22,-70]},
-  lab:    {sites:[{x:-18,z:18},{x:18,z:18}],spike:{x:0,z:36},atk:[26,60],def:[-26,-60]}
+  lab:    {sites:[{x:-18,z:18},{x:18,z:18}],spike:{x:0,z:36},atk:[26,60],def:[-26,-60]},
+  /* 【1.11.4】新图补齐爆能器支持（以前这里只有三张老图 → 选图页 spikeMapOk 把新图直接过滤掉，
+     玩家看到的就是"新地图不能玩多人爆能器"）。坐标与服务端 SPIKE_MAP_CFG 逐点一致，
+     全部取自各图 MAP_SPAWNS 里已验证安全的点。 */
+  cemetery:{sites:[{x:-52,z:20},{x:52,z:20}],spike:{x:0,z:58},atk:[0,86],def:[0,-80]},
+  station: {sites:[{x:0,z:36},{x:0,z:-40}],spike:{x:0,z:12.5},atk:[-52,20],def:[52,20]},
+  moonbase:{sites:[{x:0,z:18},{x:0,z:-18}],spike:{x:0,z:32},atk:[0,46],def:[0,-46]}
 };
 function spikeMapOk(id){try{return !!(window.SPIKE_MAPS&&window.SPIKE_MAPS[id]);}catch(e){return false;}}
 // 【模组·暗影黑洞】引力源登记：被服务端通知"你在某黑洞范围内"时调用，刷新或新增一个短期引力源（约 160ms 过期，由施法者持续上报刷新）
