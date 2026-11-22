@@ -437,7 +437,13 @@ function heroHudUpdate(force){
     if(_emberSP)txt+='|熔核'+Math.round(SK.ember||0);
     if(force||txt!==SK._hud[i]||Math.abs(pct-SK._hudPct[i])>0.005||SK._hudSt[i]!==(ready?'ready':'no')){
       SK._hud[i]=txt;SK._hudPct[i]=pct;SK._hudSt[i]=ready?'ready':'no';
-      slot.className='skSlot '+(ready?'ready':'no');
+      /* 【1.11.2】⚠️ 千万别用 `slot.className='skSlot ...'` 整体覆盖：
+         手机端技能槽被玩家拖到自定义位置后带着 .mobPos（position:fixed + left/top），
+         一覆盖就把 .mobPos 冲掉，槽立刻弹回 flex 原位；对账 140ms 后再补回来。
+         冷却期间 pct 每帧都在变 → 每帧覆盖一次 → 槽在"原位/放置位"之间**来回闪**（用户实测）。
+         只切 ready / no 这两个状态类，别人的 class 一律不动。 */
+      if(slot.classList){slot.classList.toggle('ready',!!ready);slot.classList.toggle('no',!ready);}
+      else slot.className='skSlot '+(ready?'ready':'no');
       var ic=slot.querySelector('.skIcon');
       if(ic){ic.textContent=s.icon;ic.style.background=H.css;ic.style.color='#10131c';ic.style.opacity=ready?'1':'.5';}
       var nm=slot.querySelector('.skName');if(nm)nm.textContent=(SK.sp?'⚡SP ':'')+'['+keyTxt+'] '+s.name;
@@ -449,7 +455,9 @@ function heroHudUpdate(force){
         if(kk)kk.textContent=(SK.ember>=EMBER_COST?'🔥 ':'· ')+_em;
         if(i===2&&SK.spVeil>0){                                  /* 大招进行中：显示剩几秒 + 可引爆 */
           if(kk)kk.textContent='💥 引爆 '+SK.spVeil.toFixed(0)+'s';
-          slot.className='skSlot ready';
+          /* 【1.11.2】同 440 行：不能整体覆盖 className，否则丢掉 .mobPos → 技能槽弹回原位 */
+          if(slot.classList){slot.classList.add('ready');slot.classList.remove('no');}
+          else slot.className='skSlot ready';
         }
       }
     }

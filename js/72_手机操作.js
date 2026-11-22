@@ -509,6 +509,16 @@ if(hud){
    如果按钮外观只在自己被按的时候更新，就会出现"显示蹲着、其实站着"。 */
 var _对账=0;
 function 界面对账(){
+  /* 【1.11.2】技能槽补位**不参与**下面的 140ms 节流：
+     js/41 刷新冷却时会动槽位的 class（1.11.2 起已改成只切 ready/no，不再整体覆盖），
+     但万一以后又有别处覆盖，慢一拍玩家就看到"闪"。这里只是 3 次 classList.contains，
+     每帧跑一次代价可忽略。 */
+  for(var si=0;si<3;si++){
+    var sid='skSlot'+si;
+    if(!布局表[sid])continue;
+    var se=$(sid);
+    if(se&&!se.classList.contains('mobPos'))应用一项(sid);
+  }
   var now=performance.now();
   if(now-_对账<140)return;
   _对账=now;
@@ -533,15 +543,6 @@ function 界面对账(){
       交互态='';
       if(climbEl.style.display!=='none')climbEl.style.display='none';
     }
-  }
-  /* 【1.11.0】技能 HUD 是 innerHTML 重建的（js/41 每次换英雄/刷新都会重画），
-     重建后 inline 定位和 .mobPos 全丢 → 用户拖好的技能位置会"自己弹回去"。
-     这里只补"有条目但 class 丢了"的槽，避免每 140ms 白写一遍样式。 */
-  for(var si=0;si<3;si++){
-    var sid='skSlot'+si;
-    if(!布局表[sid])continue;
-    var se=$(sid);
-    if(se&&!se.classList.contains('mobPos'))应用一项(sid);
   }
   /* 聊天 / 语音两个键是 js/62 动态建的，可能比这个脚本晚 —— 建好后补一次自定义样式 */
   var _cb=$('chatBtn'),_vb=$('voiceBtn');
@@ -899,6 +900,12 @@ function 窗位应用(){
     var x=(起.x*vw/100+(cx-起.cx))/vw*100, y=(起.y*vh/100+(cy-起.cy))/vh*100;
     x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));   // 别拖出屏幕
     起.x=x;起.y=y;
+    /* 【1.11.2】必须同步更新基准点，否则位移会被**反复累加**：
+       起.cx 一直是最初按下的位置，第二次起 (cx-起.cx) 就是"从起点算的总位移"，
+       却又加在"上一次已经移动过的位置"上 → x ≈ x0 + n(n+1)/2，二次增长。
+       手指挪 100px（约 100 个 move 事件）小窗会跑 5000px，用户反馈"比手都快、不跟手"。
+       改成增量：每次动完把基准点挪到当前手指位置。 */
+    起.cx=cx;起.cy=cy;
     bar.style.left=x.toFixed(2)+'%';bar.style.top=y.toFixed(2)+'%';
     bar.style.transform='translate(-50%,-50%)';
   }
