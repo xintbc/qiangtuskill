@@ -1,4 +1,85 @@
 
+/* ==================== 【1.11.0】本机数据加密（存档防手改）====================
+   为什么装在这里、装在文件最前面：
+     后面所有模块（js/02 键位、js/14 地图、js/23 设置、js/26 枪皮币、js/40 英雄、
+     js/50 名字…）都是**边解析边读写 localStorage** 的，晚一步装就等于漏掉一半。
+   做什么：
+     把 localStorage 的 getItem / setItem 换一层 —— 写进去的自动变成
+     `__q1:校验和:base64(XOR(明文))`，读出来自动还原。**上层代码一行都不用改**，
+     照旧 `localStorage.getItem('gunGame.xxx')` 拿到的还是明文 JSON。
+   为什么这么做：
+     以前用开发者工具（F12 → Application → Local Storage）就能看到明文的金币、枪皮、
+     升级等级，改成 999999 再刷新就是"自造存档"。现在全是乱码，改一个字符校验就不过，
+     该存档按损坏处理（回默认），并且把原始坏值留到 `<键>.bad` 里便于排查。
+   ⚠️ 说清楚边界（别自欺欺人）：
+     · 这是**混淆 + 完整性校验**，不是密码学。算法就在源码里，会读源码的人能写回去。
+     · 浏览器里**没有"防内存读取"**：改内存/调试器 hook 依然可行。真正的公平对局
+       只能靠服务端判定（伤害/位移/拾取都以服务端为准），客户端数值只作表现。
+     · 目的很明确：挡住"顺手改一下"，让手改存档的成本高于正常玩。
+   ==================================================================== */
+(function () {
+  'use strict';
+  var LS;
+  try { LS = window.localStorage; } catch (e) { return; }
+  if (!LS || window.__存档加密已装) return;
+  try { window.__存档加密已装 = 1; } catch (e) { }
+
+  var 盐 = 'qiangzhan.saveBox.v1.k9Xq';
+  var 头 = '__q1:';
+
+  function 明转字节(s) {
+    try { return unescape(encodeURIComponent(s)); } catch (e) { return String(s); }
+  }
+  function 字节转明(b) {
+    try { return decodeURIComponent(escape(b)); } catch (e) { return b; }
+  }
+  function 流(s) {                       /* XOR 密钥流：和盐逐字节异或，对称 */
+    var o = '', i, n = s.length, m = 盐.length;
+    for (i = 0; i < n; i++) o += String.fromCharCode(s.charCodeAt(i) ^ 盐.charCodeAt(i % m) ^ ((i * 13 + 7) & 255));
+    return o;
+  }
+  function 校验(s) {                     /* 32 位滚动校验，取低 16 位 → 4 位十六进制 */
+    var h = 5381, i;
+    for (i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) & 0xffffffff;
+    return ('0000' + (h & 0xffff).toString(16)).slice(-4);
+  }
+  function 编(明) {
+    var x = 流(明转字节(String(明)));
+    var b;
+    try { b = btoa(x); } catch (e) { return null; }
+    return 头 + 校验(x) + ':' + b;
+  }
+  function 解(密) {
+    if (密.indexOf(头) !== 0) return { ok: true, val: 密 };      /* 老明文：原样放行 */
+    var 余 = 密.slice(头.length), p = 余.indexOf(':');
+    if (p !== 4) return { ok: false };
+    var c = 余.slice(0, 4), body = 余.slice(p + 1), x;
+    try { x = atob(body); } catch (e) { return { ok: false }; }
+    if (校验(x) !== c) return { ok: false };
+    return { ok: true, val: 字节转明(流(x)) };
+  }
+  function 记坏(k, v) {                   /* 坏值留档：排查"我的金币怎么没了"用，别直接吞掉 */
+    try { LS.setItem(k + '.bad', String(v).slice(0, 4000)); } catch (e) { }
+    try { console.warn('[存档] ' + k + ' 校验失败，已按损坏处理（原始值留在 ' + k + '.bad）'); } catch (e) { }
+  }
+
+  var 原取 = LS.getItem, 原存 = LS.setItem, 原删 = LS.removeItem;
+  LS.getItem = function (k) {
+    var v = 原取.call(LS, k);
+    if (v == null) return v;
+    var r = 解(v);
+    if (!r.ok) { 记坏(k, v); return null; }
+    return r.val;
+  };
+  LS.setItem = function (k, v) {
+    if (typeof v !== 'string') { try { v = String(v); } catch (e) { return; } }
+    if (v.indexOf(头) === 0) return 原存.call(LS, k, v);          /* 已经是密文，别套两层 */
+    var 密 = 编(v);
+    return 原存.call(LS, k, 密 == null ? v : 密);
+  };
+  LS.removeItem = function (k) { return 原删.call(LS, k); };
+})();
+
 /* ==================== 【1.9.41→1.9.42】界面等比放大（用户截图 1080×607 为母版）====================
    问题：以前界面全是死 px（13px 字号、36px 按钮……）。手机上看着正好，一到电脑
    窗口拉大，按钮和字还是那么小 —— 等于"画布变大了，东西没变大"，比例被拉歪。

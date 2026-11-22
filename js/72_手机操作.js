@@ -37,7 +37,20 @@ if(!root)return;
 function $(id){return document.getElementById(id);}
 function msg(t,c){ try{ if(typeof showMsg==='function')showMsg(t,c); }catch(e){} }
 /* 游戏里"能不能动手"：暂停、结算、菜单里一律不响应 */
-function 可操作(){ return !!S && S.playing && !S.paused && !S.over; }
+function 可操作(){
+  if(!S)return false;
+  if(S.paused||S.over)return false;
+  if(S.playing)return true;
+  /* 【1.11.0】真机专属兜底：电脑端靠 pointer lock 判定"进没进对局"，
+     手机上 pointer lock 本来就用不了 —— 一旦开始流程卡在半路，S.playing 会一直是 false，
+     于是**所有触摸都被这里丢掉**：按键看着在、点了没反应，屏幕也拖不动。
+     真正决定"能不能操作"的是菜单有没有挡着 → #blocker 已经收起就放行。 */
+  try{
+    var b=document.getElementById('blocker');
+    if(b&&(b.style.display==='none'||getComputedStyle(b).display==='none'))return true;
+  }catch(e){}
+  return false;
+}
 function 有原生触摸(){ return ('ontouchstart' in window) || (navigator.maxTouchPoints||0)>0; }
 
 /* ---------------------------------------------------------------------------
@@ -48,6 +61,22 @@ function 有原生触摸(){ return ('ontouchstart' in window) || (navigator.maxT
    电脑上用 ?touch=1 调试时没有触摸事件，补一套 mousedown/mouseup 兜底 ——
    但只在**确实没有触摸能力**时才绑，真手机不会绑，绝不双触发。 */
 var 有触摸=有原生触摸();
+
+/* 【1.11.0】鼠标兜底不再按"有没有触摸能力"决定，而是**一律绑上**。
+   根因（用户：mumu 模拟器无法模拟真实的手机端环境、手机端无法拖拽屏幕）：
+     · muMu / 雷电这类模拟器跑的仍是 Android WebView，UA 里带 Android、`ontouchstart` 也在，
+       于是 `有触摸=true`，老代码就**不绑鼠标事件**；
+     · 但模拟器的鼠标点击/拖动只发 mouse 事件（或只发一部分 touch），
+       结果按钮按不动、#mobLook 拖不转视角、摇杆也拖不出来。
+   现在两套事件都绑，用"最近 500ms 内发生过真实触摸"来抑制重复触发：
+   真手机上触摸后浏览器补发的兼容 mouse 事件会被这段窗口挡掉，不会双触发。 */
+var 末次触摸=0;
+function 是鼠标(){ return Date.now()-末次触摸>500; }
+if(document&&document.addEventListener){
+  document.addEventListener('touchstart',function(){末次触摸=Date.now();},true);
+  document.addEventListener('touchmove',function(){末次触摸=Date.now();},true);
+  document.addEventListener('touchend',function(){末次触摸=Date.now();},true);
+}
 
 function 按住(el,onDown,onUp,onMove){
   if(!el)return;
@@ -82,17 +111,30 @@ function 按住(el,onDown,onUp,onMove){
   el.addEventListener('touchend',function(e){e.stopPropagation();抬(e);});
   el.addEventListener('touchcancel',function(e){e.stopPropagation();抬(e);});
 
-  if(!有触摸){
-    el.addEventListener('mousedown',function(e){
-      if(e.button!==0)return;
-      e.preventDefault();e.stopPropagation();
-      el.classList.add('down');if(onDown)onDown(e);
-    });
-    el.addEventListener('mousemove',function(e){ if(onMove&&el.classList.contains('down'))onMove(e); });
-    var 起=function(){ if(!el.classList.contains('down'))return; el.classList.remove('down'); if(onUp)onUp(); };
-    el.addEventListener('mouseup',function(e){e.stopPropagation();起();});
-    el.addEventListener('mouseleave',起);
-  }
+  /* 【1.11.0】真机上「按了一次之后这颗键就再也不响应」的根因：
+     系统手势（全面屏侧滑/下拉）、来电、切后台时，touchend 可能永远不来，
+     tid 一直停在旧手指的 identifier 上 → 之后任何新触摸都被 `if(tid!==null)return` 挡掉。
+     暴露一个释放口，blur / 页面隐藏时统一清（见文件末尾的事件监听）。 */
+  el._mobRelease=function(){
+    if(tid===null)return;
+    tid=null;
+    el.classList.remove('down');
+    if(onUp)onUp();
+  };
+
+  /* 鼠标兜底：无条件绑（原因见上面「末次触摸」那段注释） */
+  el.addEventListener('mousedown',function(e){
+    if(e.button!==0||!是鼠标())return;
+    e.preventDefault();e.stopPropagation();
+    el.classList.add('down');if(onDown)onDown(e);
+  });
+  el.addEventListener('mousemove',function(e){
+    if(!是鼠标()||!el.classList.contains('down'))return;
+    if(onMove)onMove(e);
+  });
+  var 起=function(){ if(!el.classList.contains('down'))return; el.classList.remove('down'); if(onUp)onUp(); };
+  el.addEventListener('mouseup',function(e){e.stopPropagation();起();});
+  el.addEventListener('mouseleave',起);
 }
 
 /* ---------------------------------------------------------------------------
@@ -137,6 +179,22 @@ if(look){
   }
   look.addEventListener('touchend',视抬);
   look.addEventListener('touchcancel',视抬);
+
+  /* 【1.11.0】鼠标拖动视角（muMu / 桌面 ?touch=1）：
+     模拟器里"拖屏幕转身"走的往往是 mouse 事件，以前只绑了 touch → 拖不动。
+     移动监听挂在 document 上：手指/鼠标划出屏幕边缘也不会中断。 */
+  look.addEventListener('mousedown',function(e){
+    if(e.button!==0||!是鼠标())return;
+    e.preventDefault();
+    lookId='mouse';lookX=e.clientX;lookY=e.clientY;
+  });
+  document.addEventListener('mousemove',function(e){
+    if(lookId!=='mouse'||!是鼠标())return;
+    var dx=e.clientX-lookX,dy=e.clientY-lookY;
+    lookX=e.clientX;lookY=e.clientY;
+    if(Math.abs(dx)>0.1||Math.abs(dy)>0.1)转视角(dx,dy);
+  });
+  document.addEventListener('mouseup',function(){ if(lookId==='mouse')lookId=null; });
 }
 
 /* ---------------------------------------------------------------------------
@@ -206,15 +264,15 @@ if(movePad&&joy){
   movePad.addEventListener('touchend',移抬);
   movePad.addEventListener('touchcancel',移抬);
 
-  /* 电脑上 ?touch=1 调试：鼠标也能拖摇杆 */
-  if(!有触摸){
-    movePad.addEventListener('mousedown',function(e){
-      if(e.button!==0)return;e.preventDefault();e.stopPropagation();
-      摇杆起(e.clientX,e.clientY,'mouse');
-    });
-    document.addEventListener('mousemove',function(e){ if(moveId==='mouse')摇杆算(e.clientX,e.clientY); });
-    document.addEventListener('mouseup',function(){ if(moveId==='mouse'){ moveId=null; 摇杆居中(); } });
-  }
+  /* 【1.11.0】鼠标也能拖摇杆（muMu 模拟器 / 桌面 ?touch=1 调试）——
+     以前只在"没有触摸能力"时绑，模拟器 UA 带 Android 就永远绑不上。 */
+  movePad.addEventListener('mousedown',function(e){
+    if(e.button!==0||!是鼠标())return;
+    e.preventDefault();e.stopPropagation();
+    摇杆起(e.clientX,e.clientY,'mouse');
+  });
+  document.addEventListener('mousemove',function(e){ if(moveId==='mouse'&&是鼠标())摇杆算(e.clientX,e.clientY); });
+  document.addEventListener('mouseup',function(){ if(moveId==='mouse'){ moveId=null; 摇杆居中(); } });
 }
 
 /* ---------------------------------------------------------------------------
@@ -476,6 +534,15 @@ function 界面对账(){
       if(climbEl.style.display!=='none')climbEl.style.display='none';
     }
   }
+  /* 【1.11.0】技能 HUD 是 innerHTML 重建的（js/41 每次换英雄/刷新都会重画），
+     重建后 inline 定位和 .mobPos 全丢 → 用户拖好的技能位置会"自己弹回去"。
+     这里只补"有条目但 class 丢了"的槽，避免每 140ms 白写一遍样式。 */
+  for(var si=0;si<3;si++){
+    var sid='skSlot'+si;
+    if(!布局表[sid])continue;
+    var se=$(sid);
+    if(se&&!se.classList.contains('mobPos'))应用一项(sid);
+  }
   /* 聊天 / 语音两个键是 js/62 动态建的，可能比这个脚本晚 —— 建好后补一次自定义样式 */
   var _cb=$('chatBtn'),_vb=$('voiceBtn');
   if(_cb&&_cb.getAttribute('data-moblay')!=='1'){_cb.setAttribute('data-moblay','1');应用一项('chatBtn');}
@@ -499,11 +566,17 @@ var 布局键='gunGame.mobKeys.v1';
 var 布局表={};
 var 可编辑名={mobFire:'开火',mobAim:'开镜',mobReload:'换弹',mobJump:'跳跃',mobCrouch:'蹲下',
   mobSwap:'换枪',mobClimb:'交互',mobPeekL:'左探头',mobPeekR:'右探头',
-  mobPause:'菜单',chatBtn:'发消息',voiceBtn:'开麦',minimap:'小地图'};
+  mobPause:'菜单',chatBtn:'发消息',voiceBtn:'开麦',minimap:'小地图',
+  /* 【1.11.0】三个技能槽单独可调（用户："无法单独调整某个技能位置"）。
+     id 由 js/41 生成 skillHud 时写死（skSlot0/1/2）。 */
+  skSlot0:'技能①',skSlot1:'技能②',skSlot2:'技能③'};
 var 可编辑=[['mobFire','开火'],['mobAim','开镜'],['mobReload','换弹'],['mobJump','跳跃'],
   ['mobCrouch','蹲下'],['mobSwap','换枪'],['mobClimb','交互'],
   ['mobPeekL','左探头'],['mobPeekR','右探头'],
-  ['mobPause','菜单'],['chatBtn','发消息'],['voiceBtn','开麦'],['minimap','小地图']];
+  ['mobPause','菜单'],['chatBtn','发消息'],['voiceBtn','开麦'],['minimap','小地图'],
+  ['skSlot0','技能①'],['skSlot1','技能②'],['skSlot2','技能③']];
+/* 技能槽是 position:fixed、以**视口**为坐标 → 百分比基准不能用父层（#skillHud 会塌陷） */
+function 是技能(id){ return id==='skSlot0'||id==='skSlot1'||id==='skSlot2'; }
 
 var 按键编辑中=false, 选中键=null, 拖动=null;
 
@@ -531,7 +604,7 @@ function 应用一项(id){
   }
 }
 function 应用布局(){ for(var i=0;i<可编辑.length;i++)应用一项(可编辑[i][0]); }
-function 全部复位(){ 布局表={};应用布局();存数();选中键刷新(); }
+function 全部复位(){ 布局表={};技能已固定=false;应用布局();存数();选中键刷新(); }
 
 /* 【1.10.22】百分比的基准。
    以前一律除以 window.innerWidth/innerHeight —— 那只对 #touchUI 里的按键成立。
@@ -541,6 +614,9 @@ function 全部复位(){ 布局表={};应用布局();存数();选中键刷新();
    解决：一切以"最近的定位祖先"为基准 —— 它的**布局尺寸**算百分比，
    它的**视觉 rect**算拖动位移，两者比例天然一致（缩放多少都不影响）。 */
 function 父层(el){
+  /* 【1.11.0】技能槽是 position:fixed、相对**视口**定位；
+     #skillHud 容器在三个槽都脱离 flex 后会塌陷，拿它当基准百分比会全错。 */
+  if(el&&是技能(el.id))return null;
   var p=el&&el.offsetParent;
   if(!p||p===document.body)return null;
   return p;
@@ -606,10 +682,36 @@ function 选中键刷新(){
   if(sz)sz.value=svv;if(sa)sa.value=avv;
   if(sv)sv.textContent=svv+'%';if(av)av.textContent=avv+'%';
 }
+/* 【1.11.0】三个技能槽原来在 #skillHud 里用 flex 排一排。单独拖某一个时，
+   它一旦变成 fixed 脱离 flex，剩下两个会立刻重排 → 位置跳变。
+   所以"第一次拖技能"时先把三个槽的**当前视觉位置**全部量下来，再一起转成 fixed。
+   ⚠️ 必须先全部量完再应用：边量边改会让后量的那两个读到重排后的坐标。 */
+var 技能已固定=false;
+function 技能全转固定(){
+  if(技能已固定)return;
+  技能已固定=true;
+  var 量=[],VW=window.innerWidth||1,VH=window.innerHeight||1;
+  for(var i=0;i<3;i++){
+    var id='skSlot'+i, e2=$(id);
+    if(!e2||布局表[id])continue;
+    var r=e2.getBoundingClientRect();
+    if(!r.width||!r.height)continue;
+    量.push({id:id,x:+((r.left+r.width/2)/VW*100).toFixed(2),y:+((r.top+r.height/2)/VH*100).toFixed(2)});
+  }
+  for(var j=0;j<量.length;j++){
+    布局表[量[j].id]={x:量[j].x,y:量[j].y,s:1,a:1};
+    应用一项(量[j].id);
+  }
+}
+function 技能复位(){
+  技能已固定=false;
+  for(var i=0;i<3;i++){ delete 布局表['skSlot'+i]; 应用一项('skSlot'+i); }
+}
 function 选中元素(el){
   if(选中键&&选中键!==el)选中键.classList.remove('mobSel');
   选中键=el;
   if(el){
+    if(是技能(el.id))技能全转固定();      // 先批量转 fixed，再选中
     el.classList.add('mobSel');
     /* ⚠️ 中心点必须用"改之前"量到的那个：中心化 之后再读一次 rect 会拿到过渡中途值 */
     var c=中心化(el);
@@ -711,6 +813,7 @@ function 按键设置(开){
     mouseDown=false;freshTrigger=false;
     if(aimEl)aimEl.classList.remove('on');
     应用布局();
+    窗位应用();                     /* 【1.11.0】设置小窗回到上次拖到的位置 */
     选中元素($('mobFire')||null);
   }else{
     存数();
@@ -734,6 +837,8 @@ window.mobKeySettings=按键设置;
   var r=$('mobEditReset');if(r)r.addEventListener('click',function(e){
     e.preventDefault();
     if(!选中键)return;
+    /* 技能三个是一组：单复位一个会让另外两个留在 fixed 上错位 → 整组复位 */
+    if(是技能(选中键.id)){ 技能复位(); 选中键刷新(); 存数(); return; }
     delete 布局表[选中键.id];
     应用一项(选中键.id);
     选中键刷新();
@@ -758,6 +863,72 @@ window.mobKeySettings=按键设置;
 
 读数();
 应用布局();
+
+/* ---------------------------------------------------------------------------
+   4.6 设置小窗：拖标题栏移动 + 位置记忆（1.11.0）
+   ---------------------------------------------------------------------------
+   窗口位置存**百分比**（不是像素）：换分辨率、转屏、改窗口大小都不会跑到屏幕外。
+   位置只影响这个小窗，不影响按键布局。 */
+var 窗位键='gunGame.mobEditWin.v1';
+function 窗位读(){
+  try{ var v=JSON.parse(localStorage.getItem(窗位键)||'null'); return (v&&typeof v.x==='number')?v:null; }catch(e){ return null; }
+}
+function 窗位应用(){
+  var bar=$('mobEditBar');if(!bar)return;
+  var w=窗位读();
+  if(!w){
+    var r=bar.getBoundingClientRect();
+    if(!r.width)return;
+    w={x:+((r.left+r.width/2)/(window.innerWidth||1)*100).toFixed(2),
+       y:+((r.top+r.height/2)/(window.innerHeight||1)*100).toFixed(2)};
+  }
+  bar.style.left=w.x+'%';bar.style.top=w.y+'%';bar.style.transform='translate(-50%,-50%)';
+}
+(function 绑窗拖动(){
+  var bar=$('mobEditBar'),tip=$('mobEditTip');
+  if(!bar||!tip)return;
+  var 起=null;
+  function 下(cx,cy){
+    var r=bar.getBoundingClientRect();if(!r.width)return;
+    var vw=window.innerWidth||1,vh=window.innerHeight||1;
+    起={cx:cx,cy:cy,l:r.left,t:r.top,w:r.width,h:r.height,
+        x:(r.left+r.width/2)/vw*100,y:(r.top+r.height/2)/vh*100};
+  }
+  function 动(cx,cy){
+    if(!起)return;
+    var vw=window.innerWidth||1,vh=window.innerHeight||1;
+    var x=(起.x*vw/100+(cx-起.cx))/vw*100, y=(起.y*vh/100+(cy-起.cy))/vh*100;
+    x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));   // 别拖出屏幕
+    起.x=x;起.y=y;
+    bar.style.left=x.toFixed(2)+'%';bar.style.top=y.toFixed(2)+'%';
+    bar.style.transform='translate(-50%,-50%)';
+  }
+  function 抬(){
+    if(!起)return;
+    try{ localStorage.setItem(窗位键,JSON.stringify({x:+起.x.toFixed(2),y:+起.y.toFixed(2)})); }catch(e){}
+    起=null;
+  }
+  tip.addEventListener('touchstart',function(e){
+    if(e.cancelable)e.preventDefault();e.stopPropagation();
+    var t=e.changedTouches[0];if(t)下(t.clientX,t.clientY);
+  },{passive:false});
+  tip.addEventListener('touchmove',function(e){
+    if(!起)return;
+    if(e.cancelable)e.preventDefault();e.stopPropagation();
+    var t=e.changedTouches[0];if(t)动(t.clientX,t.clientY);
+  },{passive:false});
+  tip.addEventListener('touchend',function(e){e.stopPropagation();抬();});
+  tip.addEventListener('touchcancel',function(){抬();});
+  /* 鼠标（muMu / 桌面 ?touch=1）同样能拖 */
+  tip.addEventListener('mousedown',function(e){
+    if(e.button!==0||!是鼠标())return;
+    e.preventDefault();e.stopPropagation();
+    下(e.clientX,e.clientY);
+    var mv=function(ev){动(ev.clientX,ev.clientY);};
+    var up=function(){抬();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+})();
 
 /* ---------------------------------------------------------------------------
    7. 旧接口保留（别的分片会调用）
@@ -788,17 +959,27 @@ window.layoutEdit=false;
 /* 转屏：摇杆正在进行时强行位移会错位，直接收掉重来 */
 window.addEventListener('orientationchange',function(){ moveId=null; 摇杆居中(); lookId=null; });
 
-/* 失焦（切后台 / 来电）：把所有"按住"状态清干净，否则回来角色会一直往前走 */
-window.addEventListener('blur',function(){
+/* 失焦（切后台 / 来电 / 系统手势）：把所有"按住"状态清干净，否则回来角色会一直往前走，
+   更糟的是某颗按钮的 tid 卡在旧手指上 —— 那颗键之后**永远不响应**（真机高发）。 */
+function 全部松开(){
   moveId=null;摇杆居中();lookId=null;
-  S.aiming=false;mouseDown=false;
+  try{ S.aiming=false; }catch(e){}
+  mouseDown=false;freshTrigger=false;
   if(aimEl)aimEl.classList.remove('on');
   /* 探头是"按住"状态，切后台必须手动松开，否则回来角色一直歪着 */
   try{ keys.KeyQ=false; keys.KeyE=false; }catch(e){}
   var _pl=$('mobPeekL'),_pr=$('mobPeekR');
   if(_pl)_pl.classList.remove('on');
   if(_pr)_pr.classList.remove('on');
-});
+  /* 【1.11.0】逐颗按钮释放（清 tid / 移除 .down） */
+  try{
+    var _bs=document.querySelectorAll('#touchUI .mobBtn,#mobPause');
+    for(var _i=0;_i<_bs.length;_i++){ if(_bs[_i]&&_bs[_i]._mobRelease)_bs[_i]._mobRelease(); }
+  }catch(e){}
+}
+window.addEventListener('blur',全部松开);
+/* 安卓/iOS 切到后台时不一定触发 blur（尤其是全屏 WebView）→ 补一条页面隐藏 */
+document.addEventListener('visibilitychange',function(){ if(document.hidden)全部松开(); });
 
 try{ if(typeof 界面对账==='function')界面对账(); }catch(e){}
 })();

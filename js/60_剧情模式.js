@@ -1162,10 +1162,15 @@ function quitToHome(){
          否则退出后整页刷新，页面又静默把自己连回服务器 —— 用户看到的就是
          "点了退出，身份还留在服务器里"。标记只用一次，之后手动连/下次打开照常。 */
       try{ sessionStorage.setItem('gunGame.quitOnce','1'); }catch(e0){}
-      setTimeout(function(){
-        try{ location.reload(); }
-        catch(e){ window.__退出刷新中=0; }   /* 刷不了就留在主菜单（上面已经恢复好了） */
-      }, 60);
+      /* 【1.11.0】先亮载入屏、再刷新。
+         原来这里是 setTimeout(reload,60)：60ms 里用户看到的是「点了没反应」。
+         现在改成先画满一帧载入屏（js/73 的 重载() 内部等两次 rAF + 40ms 才 reload，
+         缓冲时间和原来的 60ms 基本一致，ws 关闭帧照样发得出去），
+         用户点完立刻看到「正在退出」的进度屏 —— 和死亡后「再来一局」是同一条路。 */
+      try{
+        if(window.载入屏) window.载入屏.重载('正在退出，回到主菜单…');
+        else setTimeout(function(){ try{ location.reload(); }catch(e){ window.__退出刷新中=0; } }, 60);
+      }catch(e){ window.__退出刷新中=0; try{ location.reload(); }catch(e2){} }
     }
   }catch(e){}
 }

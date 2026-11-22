@@ -1,4 +1,24 @@
 <!DOCTYPE html>
+<!--
+  ============================================================================
+   枪战 3D · 网页 3D 多人射击 Demo
+  ----------------------------------------------------------------------------
+   ⚠ 使用许可与免责声明（详细条款见仓库根目录「免责声明.md」）
+
+   · 本项目仅供学习与娱乐：研究 Three.js / WebGL、浏览器联机、前端工程化。
+   · 严禁将本项目（含源码、素材、协议、地图数据）用于任何违法用途，特别是：
+       - 制作、分发、售卖外挂（自瞄 / 透视 / 无后坐力 / 加速 / 内存修改器）；
+       - 破解或绕过本项目的文件校验、存档校验与反作弊；
+       - 搭建收费私服、代练、账号交易；
+       - 冒充"官方版本 / 官方防封工具"。
+   · 允许学习、修改、二创与非商业分享，但必须保留本声明与出处。
+   · 本机存档有加密与完整性校验，它只挡"顺手改档"，不能防止内存读取；
+     公平对局依赖服务端判定，客户端数值仅作表现。
+   · 第三方模型 / 贴图 / 音效版权归原作者，如不希望被引用请联系删除。
+   · 本项目按"现状"提供，不附带任何担保。
+  ============================================================================
+-->
+
 <html lang="zh" data-page-node-id="tG1qgkB5MafGnLsRPrflsZ">
 <head data-page-node-id="hh1Dj2uhacAc1EgaNotURj">
 <meta charset="UTF-8"
@@ -212,13 +232,22 @@ canvas{display:block;position:fixed;top:0;left:0;z-index:0;touch-action:none;-we
 /* 狙击开镜时技能栏压淡：镜片正下方就是技能栏，不淡掉会横穿镜片把视野切两半。
    只是压淡（0.32）不是隐藏 —— 冷却还能看，键位照常能用。收镜立刻恢复。 */
 body.scope-on #skillHud{opacity:.32;transition:opacity .18s linear}
-#skillHud{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:220;display:none;align-items:flex-end;gap:8px;padding:7px 12px;border-radius:12px;background:rgba(16,18,28,.72);border:2px solid rgba(255,255,255,.18);color:#e8eefc;font-size:12px;pointer-events:none}
-#skillHud .skSlot{display:flex;flex-direction:column;align-items:center;gap:2px;width:82px;padding:4px 2px;border-radius:9px;opacity:.55;transition:.15s}
+/* 【1.11.0】技能 HUD 改成」每个技能一张独立小卡」：
+   ① 容器不再有背景板/边框（去掉后拖动单个技能不会留下一个空框）；
+   ② 容器改为 left:0;right:0 + justify-content:center，**不能再用 transform** ——
+      transform 会让子元素里的 position:fixed 相对容器定位，拖动百分比就全错了；
+   ③ 三个槽都能在「按键设置」里单独拖到任意位置（js/72 会把三个一起转成 fixed）。 */
+#skillHud{position:fixed;left:0;right:0;bottom:calc(92*var(--u));transform:none;z-index:220;display:none;align-items:flex-end;justify-content:center;gap:calc(8*var(--u));padding:0;border-radius:0;background:none;border:none;color:#e8eefc;font-size:12px;pointer-events:none}
+#skillHud .skSlot{display:flex;flex-direction:column;align-items:center;gap:2px;width:calc(82*var(--u));padding:calc(4*var(--u)) calc(2*var(--u));border-radius:calc(9*var(--u));opacity:.55;transition:.15s;
+  background:rgba(16,18,28,.72);border:calc(2*var(--u)) solid rgba(255,255,255,.16)}
+/* 拖动过 / 正在编辑的技能槽：脱离 flex（fixed 到视口），大小透明度跟 --ks/--ka */
+#skillHud .skSlot.mobPos{position:fixed;left:0;top:0;z-index:221;margin:0;
+  transform:translate(-50%,-50%) scale(var(--ks,1));opacity:var(--ka,.55);}
 #skillHud .skSlot.ready{opacity:1;box-shadow:0 0 10px rgba(123,255,168,.30)}
-#skillHud .skSlot .skIcon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:bold}
-#skillHud .skSlot .skName{font-size:10px;color:#cfd8ea;white-space:nowrap}
-#skillHud .skSlot .skKey{font-size:10px;color:#8ea3c0}
-#skillHud .skSlot .skBarWrap{width:66px;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
+#skillHud .skSlot .skIcon{width:calc(32*var(--u));height:calc(32*var(--u));border-radius:calc(8*var(--u));display:flex;align-items:center;justify-content:center;font-size:calc(17*var(--u));font-weight:bold}
+#skillHud .skSlot .skName{font-size:calc(10*var(--u));color:#cfd8ea;white-space:nowrap}
+#skillHud .skSlot .skKey{font-size:calc(10*var(--u));color:#8ea3c0}
+#skillHud .skSlot .skBarWrap{width:calc(66*var(--u));height:calc(5*var(--u));border-radius:calc(3*var(--u));background:rgba(255,255,255,.15);overflow:hidden}
 #skillHud .skSlot .skBar{height:100%;width:0}
 
 .start-btn{margin-top:24px;padding:16px 60px;font-size:24px;font-weight:bold;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:10px;cursor:pointer;transition:.3s;letter-spacing:2px}
@@ -426,13 +455,111 @@ body.scope-on #memKill{opacity:.44}
   user-select:none;-webkit-user-select:none;touch-action:none;
   -webkit-tap-highlight-color:transparent;
 }
-/* ⚠️ --u 必须定义在 :root 上，不能只定义在 #touchUI 里：
-   HUD（#hud / #skillHud）是 #touchUI 的**兄弟节点**，定义在 #touchUI 上它继承不到，
-   calc(84*var(--u)) 会整条失效 → 元素退回到原位置，等于没重排。 */
-:root{--u:0.13333vw;}                                /* 兜底：老内核没有 min()，就按屏宽算 */
+/* ==================== 【1.11.0】统一缩放令牌（全比例 / 全尺寸兼容） ====================
+   旧的 --u 只有 min(宽约束, 高约束) 两条，没有上下界、也没扣浏览器工具栏，
+   于是：① 超窄/竖屏 按钮挤爆；② 720P + 地址栏把底部按键裁掉一条；
+   ③ 4K 上 HUD 无限放大。修法不是"再开几档"（那是补丁），而是一个公式 + 三层能力检测：
+
+     --u = clamp(下限, min( vw/820 , dvh/420 ), 上限)
+              0.52px                2.2px
+
+   · 设计基准 820×420（比原来 750×375 略大一档基准 → 同屏幕下按钮略小 8%，
+     正好落在"拇指能盖住、又不挡视野"的区间）；
+   · min(vw/A, vh/B) 保证**任何宽高比都同时满足宽高两个约束**，不会横向溢出；
+   · dvh（动态视口）扣掉手机浏览器地址栏，工具栏收起/展开都不裁底；
+   · clamp 下限保证极小窗口按钮仍 ≥54px（能点），上限保证 4K 不把 HUD 放大成墙；
+   · 三层 @supports 是**能力检测**（老内核没有 min()/clamp() 时逐级退回），
+     不是按屏幕尺寸开档 —— 任何设备只会命中"它支持的最高一层"，逻辑完全一致。 */
+:root{--u:0.12195vw;--sx:0px;--sy:0px;}
 @supports (width:min(1vw,1vh)){
-  :root{--u:min(0.13333vw,0.26667vh);}               /* 750×375 横屏时恰好等于 1px */
+  :root{--u:min(0.12195122vw,0.23809524vh);}
 }
+@supports (height:100dvh){
+  :root{--u:min(0.12195122vw,0.23809524dvh);}
+}
+@supports (width:clamp(1px,1vw,2px)){
+  :root{--u:clamp(0.52px,min(0.12195122vw,0.23809524vh),2.2px);}
+}
+@supports (width:clamp(1px,1vw,2px)) and (height:100dvh){
+  :root{--u:clamp(0.52px,min(0.12195122vw,0.23809524dvh),2.2px);}
+}
+/* 安全区：刘海/圆角屏横屏时左右内缩、底部手势条上抬（不支持 env 的设备恒为 0） */
+:root{
+  --sx:env(safe-area-inset-left,0px);
+  --sxr:env(safe-area-inset-right,0px);
+  --sy:env(safe-area-inset-bottom,0px);
+}
+
+/* 【1.11.0】这里原来有两档 `@media (max-height:780px/620px)` 缩小 --u —— 已删除。
+   按屏幕尺寸开档的问题是：720P 与 700P 会跳变、800P 又不缩，永远有一档是错的。
+   现在统一由上面的 clamp(下限, min(vw/820, dvh/420), 上限) 处理，
+   矮屏自动变小、大屏自动封顶，中间没有任何阶跃。 */
+
+/* 【1.11.0】竖屏策略：横屏射击游戏在竖屏下按键必然会互相压/出屏，
+   与其硬塞（截图实测 390×844 时开火键被挤出屏幕），不如给明确指引：
+   · 操作层/技能层/按键设置全部不渲染；
+   · 菜单、设置、起名字仍可竖屏正常浏览（弹窗宽度已改 min(92vw,…)）。
+   这不是"按尺寸开档"，而是产品行为：竖屏不提供对战操作。 */
+#rotateHint{display:none;position:fixed;inset:0;z-index:1300;
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;
+  background:radial-gradient(circle at 50% 38%,#1a2536,#070b12 72%);
+  color:#dbe9ff;text-align:center;font-size:15px;font-weight:800;line-height:1.8;padding:24px}
+#rotateHint b{font-size:38px;line-height:1}
+@media (orientation:portrait){
+  body.is-touch #rotateHint{display:flex}
+  body.is-touch #touchUI,body.is-touch.mob-edit #touchUI{display:none !important}
+  body.is-touch.mob-edit #mobEdit{display:none !important}
+  body.is-touch #skillHud{display:none !important}
+}
+
+/* ==================== 【1.11.0】载入屏 ====================
+   它必须是 body 的第一个元素：HTML 一渲染就整屏盖住，用户在 35 个 js 还没下完时
+   看到的是这个屏，不是白屏 / 半截菜单。三轮流程由 js/73 驱动。
+   z-index 9000 在 #rotateHint(1300) / #blocker 之上，脚本加载失败提示条(99999)之下。 */
+#boot{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 34%,#16203a,#05060c 74%);
+  color:#dbe9ff;font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  opacity:1;visibility:visible;transition:opacity .16s ease,visibility .16s ease}
+#boot.off{opacity:0;visibility:hidden;pointer-events:none}
+/* 淡出的这 160ms 里，下面的名字面板/主菜单会透上来和 logo 叠在一起（截图实测很难看）。
+   body.boot-on 由 js/73 在启动时挂上、收尾时摘掉：屏在的期间下面的界面一律不显示。
+   ⚠️ 只挂在 js 里、不写死在 body 标签上 —— js/73 万一没加载成功，菜单仍然照常可见。 */
+body.boot-on #blocker,body.boot-on #namePanel,body.boot-on #go{visibility:hidden}
+#boot .bootBox{width:clamp(300px,52vw,560px);padding:0 8px;text-align:center}
+#boot .bootLogo{font-size:clamp(26px,4.4vw,46px);font-weight:900;letter-spacing:.14em;
+  color:#fff;text-shadow:0 0 26px rgba(255,70,85,.55),0 0 60px rgba(255,70,85,.22)}
+#boot .bootLogo i{font-style:normal;color:#ff4655;font-size:.62em;letter-spacing:.06em}
+#boot .bootSub{margin-top:7px;font-size:clamp(10px,1.4vw,12px);color:#66748c;letter-spacing:.2em}
+#boot .bootSteps{list-style:none;margin:clamp(16px,3vh,32px) 0 0;padding:0;text-align:left}
+#boot .bootSteps li{display:flex;align-items:center;gap:10px;padding:7px 0;
+  font-size:clamp(12px,1.55vw,14px);color:#67758d;transition:color .25s}
+#boot .bootSteps li b{flex:none;width:9px;height:9px;border-radius:50%;
+  background:#28324a;box-shadow:0 0 0 3px rgba(40,50,74,.30)}
+#boot .bootSteps li span{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#boot .bootSteps li em{flex:none;font-style:normal;font-size:.86em;color:#4b576e}
+#boot .bootSteps li.run{color:#cfe0f8}
+#boot .bootSteps li.run b{background:#54a8ff;box-shadow:0 0 0 3px rgba(84,168,255,.22);
+  animation:bootPulse 1s ease-in-out infinite}
+#boot .bootSteps li.run em{color:#7fb6ff}
+#boot .bootSteps li.ok{color:#8fa3bd}
+#boot .bootSteps li.ok b{background:#3ddc84;box-shadow:0 0 0 3px rgba(61,220,132,.16)}
+#boot .bootSteps li.ok em{color:#4c9a72}
+#boot .bootSteps li.bad{color:#ff9a9a}
+#boot .bootSteps li.bad b{background:#ff5b5b;box-shadow:0 0 0 3px rgba(255,91,91,.20)}
+#boot .bootSteps li.bad em{color:#d97070}
+@keyframes bootPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.42;transform:scale(.80)}}
+#boot .bootBar{position:relative;height:6px;margin-top:clamp(14px,2.2vh,22px);border-radius:99px;
+  background:rgba(255,255,255,.08);overflow:hidden}
+#boot .bootBar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:99px;
+  background:linear-gradient(90deg,#ff4655,#ff8a5c);box-shadow:0 0 14px rgba(255,70,85,.55);
+  transition:width .28s cubic-bezier(.22,.8,.3,1)}
+#boot .bootFoot{display:flex;justify-content:space-between;gap:12px;margin-top:9px;
+  font-size:clamp(10px,1.45vw,12.5px);color:#7d8ca4}
+#boot #bootPct{flex:none;font-variant-numeric:tabular-nums;font-weight:700;color:#ff8a8a}
+#boot #bootMsg{flex:1 1 auto;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#boot .bootFix{display:none;margin-top:16px;padding:9px 16px;border:0;border-radius:8px;
+  background:#ff4655;color:#fff;font-weight:700;font-size:13px;cursor:pointer}
+#boot .bootFix.on{display:inline-block}
 
 /* ---- 触摸分区 ---- */
 #mobLook{position:absolute;inset:0;pointer-events:auto;z-index:10;}
@@ -481,35 +608,38 @@ body.scope-on #memKill{opacity:.44}
   box-shadow:0 0 0 calc(3*var(--u)) rgba(92,202,255,.26);}
 
 #mobFire{
-  right:calc(20*var(--u));bottom:calc(20*var(--u));
+  right:calc(20*var(--u) + var(--sxr));bottom:calc(20*var(--u) + var(--sy));
   width:calc(104*var(--u));height:calc(104*var(--u));
   font-size:calc(23*var(--u));
   background:radial-gradient(circle at 40% 34%,rgba(244,76,76,.86),rgba(154,24,24,.80));
   border-color:rgba(255,158,158,.60);
 }
-#mobAim{right:calc(24*var(--u));bottom:calc(134*var(--u));width:calc(82*var(--u));height:calc(82*var(--u));
+#mobAim{right:calc(24*var(--u) + var(--sxr));bottom:calc(134*var(--u) + var(--sy));width:calc(82*var(--u));height:calc(82*var(--u));
   font-size:calc(17*var(--u));background:rgba(26,84,154,.58);border-color:rgba(128,200,255,.50);}
-#mobReload{right:calc(136*var(--u));bottom:calc(26*var(--u));width:calc(70*var(--u));height:calc(70*var(--u));font-size:calc(16*var(--u));}
-#mobJump{right:calc(116*var(--u));bottom:calc(106*var(--u));width:calc(70*var(--u));height:calc(70*var(--u));font-size:calc(16*var(--u));}
-#mobCrouch{right:calc(220*var(--u));bottom:calc(30*var(--u));width:calc(66*var(--u));height:calc(66*var(--u));font-size:calc(15*var(--u));}
-#mobSwap{right:calc(204*var(--u));bottom:calc(106*var(--u));width:calc(66*var(--u));height:calc(66*var(--u));font-size:calc(15*var(--u));}
+#mobReload{right:calc(136*var(--u) + var(--sxr));bottom:calc(26*var(--u) + var(--sy));width:calc(70*var(--u));height:calc(70*var(--u));font-size:calc(16*var(--u));}
+#mobJump{right:calc(116*var(--u) + var(--sxr));bottom:calc(106*var(--u) + var(--sy));width:calc(70*var(--u));height:calc(70*var(--u));font-size:calc(16*var(--u));}
+#mobCrouch{right:calc(220*var(--u) + var(--sxr));bottom:calc(30*var(--u) + var(--sy));width:calc(66*var(--u));height:calc(66*var(--u));font-size:calc(15*var(--u));}
+#mobSwap{right:calc(204*var(--u) + var(--sxr));bottom:calc(106*var(--u) + var(--sy));width:calc(66*var(--u));height:calc(66*var(--u));font-size:calc(15*var(--u));}
 /* 交互键（原「上梯」）：梯子 / 万圣节南瓜 / 载具 / 剧情营救，全走这一个键 */
-#mobClimb{right:calc(280*var(--u));bottom:calc(126*var(--u));width:calc(80*var(--u));height:calc(80*var(--u));
+#mobClimb{right:calc(280*var(--u) + var(--sxr));bottom:calc(126*var(--u) + var(--sy));width:calc(80*var(--u));height:calc(80*var(--u));
   font-size:calc(16*var(--u));background:rgba(30,118,146,.62);border-color:rgba(126,232,255,.62);display:none;}
 
 /* 【1.10.21】左右探头（电脑上是 Q/E，按住才探、松手回正）。
    放在开镜键上方一排：左探靠里、右探靠外，两键圆心距 76 ≥ 30+30+8，不会串指。
    高度 200/212 是按 375 设计高算的，拇指上抬一点就够到，不挡开火区。 */
-#mobPeekL{right:calc(104*var(--u));bottom:calc(185*var(--u));
+/* 【1.11.0】探头键上移：原来 peekR 圆心(y=175) 与开镜(y=134) 只差 41u，
+   而半径和是 30+41=71u → 在 720P/1080P 上肉眼可见地叠在一起（截图实测）。
+   现在 peekR=228 / peekL=236：圆心距 83u，留 12u 净空隙；左右两键横距 76u 不串指。 */
+#mobPeekL{right:calc(104*var(--u) + var(--sxr));bottom:calc(236*var(--u) + var(--sy));
   width:calc(60*var(--u));height:calc(60*var(--u));font-size:calc(15*var(--u));
   background:rgba(26,84,154,.50);border-color:rgba(128,200,255,.45);}
-#mobPeekR{right:calc(28*var(--u));bottom:calc(175*var(--u));
+#mobPeekR{right:calc(28*var(--u) + var(--sxr));bottom:calc(228*var(--u) + var(--sy));
   width:calc(60*var(--u));height:calc(60*var(--u));font-size:calc(15*var(--u));
   background:rgba(26,84,154,.50);border-color:rgba(128,200,255,.45);}
 #mobPeekL.on,#mobPeekR.on{background:rgba(52,164,236,.72);border-color:rgba(160,230,255,.95);}
 
 #mobPause{
-  position:absolute;left:calc(16*var(--u));top:calc(14*var(--u));
+  position:absolute;left:calc(16*var(--u) + var(--sx));top:calc(14*var(--u) + env(safe-area-inset-top,0px));
   width:calc(56*var(--u));height:calc(56*var(--u));border-radius:calc(14*var(--u));
   display:flex;align-items:center;justify-content:center;
   background:rgba(16,22,34,.56);border:calc(2*var(--u)) solid rgba(255,255,255,.34);
@@ -557,14 +687,32 @@ body.mob-edit #mobEdit{display:block;}
    ④ 退出编辑时这些规则一起失效，#blocker 的内联 display:flex 自动回来，还是原来的暂停菜单。 */
 body.mob-edit #blocker{display:none !important;}
 body.mob-edit #touchUI{display:block !important;z-index:190 !important;background:rgba(8,12,20,.74);}
-#mobEditTip{position:absolute;left:50%;top:calc(8*var(--u));transform:translateX(-50%);
-  padding:calc(6*var(--u)) calc(16*var(--u));border-radius:calc(20*var(--u));
-  background:rgba(10,18,30,.86);border:1px solid rgba(120,200,255,.45);
-  color:#cfe6ff;font-size:calc(14*var(--u));font-weight:700;white-space:nowrap;pointer-events:none;}
-#mobEditBar{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;
-  align-items:center;justify-content:center;gap:calc(6*var(--u)) calc(14*var(--u));
-  padding:calc(8*var(--u)) calc(10*var(--u));pointer-events:auto;
-  background:rgba(8,14,24,.94);border-top:1px solid rgba(120,180,255,.35);}
+/* 【1.11.0】编辑技能位置：技能 HUD 沉到底部、压在按键层之上（192），
+   既点得到、也不挡顶部的设置小窗（小窗 200）。 */
+body.mob-edit #skillHud{display:flex !important;z-index:192 !important;bottom:calc(4*var(--u)) !important;
+  pointer-events:auto !important;transform:none !important;}
+body.mob-edit #skillHud .skSlot{pointer-events:auto;opacity:.92;
+  outline:calc(2*var(--u)) dashed rgba(120,220,255,.85);outline-offset:calc(2*var(--u));}
+body.mob-edit #skillHud .skSlot.mobSel{outline-color:#ffd166;outline-style:solid;
+  box-shadow:0 0 0 calc(3*var(--u)) rgba(255,209,102,.30);}
+/* 【1.11.0】按键设置改成**可拖动的小窗口**（用户要求）：
+   以前是贴底的一条通栏，720P 手机上被技能图标压住、滑块还点不到。
+   现在浮在顶部中央：标题栏（#mobEditTip）当拖动手柄，控件在 #mobEditRow 里自动折行；
+   窗口宽度按 --u 走，最大不超过屏幕，位置由 js/72 记住（gunGame.mobEditWin.v1）。 */
+#mobEditBar{position:absolute;left:50%;top:calc(12*var(--u));transform:translateX(-50%);
+  width:calc(760*var(--u));max-width:calc(100vw - 20*var(--u));
+  display:flex;flex-direction:column;gap:calc(6*var(--u));
+  padding:calc(7*var(--u)) calc(10*var(--u)) calc(9*var(--u));
+  border-radius:calc(14*var(--u));pointer-events:auto;touch-action:none;
+  background:rgba(8,14,24,.96);border:1px solid rgba(120,180,255,.42);
+  box-shadow:0 calc(8*var(--u)) calc(28*var(--u)) rgba(0,0,0,.55);}
+#mobEditTip{display:flex;align-items:center;justify-content:center;
+  padding:calc(3*var(--u)) 0 calc(5*var(--u));cursor:move;
+  color:#9fe0ff;font-size:calc(13*var(--u));font-weight:800;letter-spacing:calc(.4*var(--u));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto;
+  border-bottom:1px solid rgba(120,180,255,.22);}
+#mobEditRow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
+  gap:calc(5*var(--u)) calc(12*var(--u));}
 #mobEditBar b{color:#ffd166;font-size:calc(14*var(--u));min-width:calc(56*var(--u));}
 #mobEditBar label{display:flex;align-items:center;gap:calc(6*var(--u));
   color:#9fb4d6;font-size:calc(13*var(--u));}
@@ -604,9 +752,9 @@ body.mob-edit #touchUI{display:block !important;z-index:190 !important;backgroun
   #gold-hud{left:172px;bottom:26px;font-size:15px}
   #ammo{font-size:24px;right:12px;bottom:26px}
   #weapon-name,#reload-text{bottom:56px;right:12px;font-size:12px}
-  #skillHud{bottom:74px;padding:5px 8px;gap:5px}
-  #skillHud .skSlot{width:66px}
-  #skillHud .skSlot .skBarWrap{width:52px}
+  #skillHud{bottom:calc(74*var(--u));gap:calc(5*var(--u))}
+  #skillHud .skSlot{width:calc(66*var(--u))}
+  #skillHud .skSlot .skBarWrap{width:calc(52*var(--u))}
   #skillHud .skSlot .skName{font-size:9px}
   #go h1{font-size:38px}
   #go p{font-size:15px}
@@ -864,7 +1012,7 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
 .spVal{color:#7fd4ff;font-weight:bold;}
 .ctLayer{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:640;touch-action:auto;}
 .ctLayer.on{display:flex;}
-.ctCard{width:84%;max-width:340px;background:rgba(20,22,34,.98);border:2px solid rgba(255,210,60,.55);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:86vh;overflow-y:auto;touch-action:auto;}
+.ctCard{width:84%;max-width:340px;width:min(92vw,340px);max-width:min(92vw,340px);background:rgba(20,22,34,.98);border:2px solid rgba(255,210,60,.55);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:86vh;overflow-y:auto;touch-action:auto;}
 .ctCard h3{margin:2px 0 12px;font-size:17px;color:#ffd23c;}
 .ctInput{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;letter-spacing:3px;outline:none;}
 .ctErr{font-size:12px;color:#ff6b6b;min-height:16px;margin:8px 0 0;}
@@ -941,11 +1089,12 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
        · 左列（标题＋按钮）：标题在上、主按钮用 margin-top:auto 推到下方，中间自然留白＝有理由；
        · 右列（标签页＋面板）：面板 flex:1 吃掉剩余高度，卡片铺开，底部不再空一块。 */
   #blocker{align-items:stretch;padding:10px 10px 12px}
-  #menu{max-width:1560px;width:97%;margin:auto;height:calc(100vh - 22px);max-height:none;
+  #menu{max-width:min(1760px,97vw);width:97%;margin:auto;height:calc(100vh - 22px);
+    height:calc(100dvh - 22px);max-height:none;   /* dvh 优先：手机浏览器地址栏不再把菜单撑出屏 */
     display:flex;flex-direction:column;text-align:left}
   /* ⚠️ 必须显式写 grid-template-rows:1fr：不写的话行高＝内容高度，
      align-items:stretch 只在行内拉伸，左列的 margin-top:auto 永远推不到底（下面留一大块黑）。 */
-  #menuMid{grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:18px;align-items:stretch;
+  #menuMid{grid-template-columns:clamp(280px,25vw,360px) minmax(0,1fr);gap:clamp(12px,1.3vw,20px);align-items:stretch;
     grid-template-rows:minmax(0,1fr);flex:1;min-height:0}
   #menuSide{position:relative;display:flex;flex-direction:column;min-height:0;justify-content:space-between}
   #menuMain{display:flex;flex-direction:column;min-height:0}
@@ -1157,11 +1306,16 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
 /* ==================== 【batch265】超宽屏：三栏（左玩家卡 / 中主区 / 右联机公告）====================
    ⚠️ 必须放在上面那段横屏规则**之后**：同一个 #menu 先被设成 flex column（撑满画布），
       这里再改成 grid 三列。顺序反过来的话会被覆盖，三栏就散架（左中右叠在一起）。 */
-@media (orientation:landscape) and (min-width:1600px){
+/* 【1.11.0】三栏从"1600 硬断点 + 固定 px 栏宽"改成"1440 起 + clamp 连续宽度"：
+   以前 1600 是阶跃（1599 两栏、1600 突然三栏，内容宽度跳变 300px 以上），
+   左右栏又是 220/252 死值 —— 1920 上偏窄、2560/4K 上更窄。
+   现在两栏宽度随视口连续变化（clamp），只有"要不要显示第三栏"这一个必要断点。 */
+@media (orientation:landscape) and (min-width:1440px){
   /* align-items:stretch —— 中间那列要撑满整高，否则 #menuMid 的 grid-template-rows:1fr 没有参考高度，
-     整块内容只占上半屏、下半屏一片黑（用户截图就是这样）。左右两栏用 align-self:start 保持内容高度。 */
-  html:not(.ui-zoomed) #menu{display:grid;grid-template-columns:220px minmax(0,1fr) 252px;gap:18px;align-items:stretch;
-    height:calc(100vh - 22px)}
+     整块内容只占上半屏、下半屏一片黑（用户截图就是这样）。左右两栏用 align-self:stretch 撑满。 */
+  html:not(.ui-zoomed) #menu{display:grid;
+    grid-template-columns:clamp(180px,13.2vw,236px) minmax(0,1fr) clamp(200px,15.2vw,270px);
+    gap:clamp(12px,1.2vw,20px);align-items:stretch;height:calc(100dvh - 22px)}
   html:not(.ui-zoomed) #menuLeft{display:flex;grid-column:1;grid-row:1}
   html:not(.ui-zoomed) #menuMid{grid-column:2;grid-row:1}
   html:not(.ui-zoomed) #menuRight{display:flex;grid-column:3;grid-row:1}
@@ -1169,7 +1323,12 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
      右栏（联机状态 / 本季公告 / 枪皮币 / 小贴士）**必须靠上排**——
      之前两栏都 space-between，屏幕一拉高，右栏四张卡被撑到整列高度，
      卡片之间空出好几厘米（用户："一拉大屏幕它们就离得好远"）。 */
-  html:not(.ui-zoomed) .menuSide{display:flex;flex-direction:column;gap:10px;position:relative;align-self:stretch;justify-content:flex-start}
+  /* 【1.11.0】左右两栏"等高对齐"：以前左栏 3 张卡、右栏 2~3 张卡，
+     两栏各自按内容堆高 → 左栏比右栏高出一截，看着歪。现在两栏都撑满整列高度，
+     最后一张卡 flex:1 把剩余高度吃掉，两栏底部齐平（内容少也不会露黑边）。 */
+  html:not(.ui-zoomed) .menuSide{display:flex;flex-direction:column;gap:10px;position:relative;align-self:stretch;
+    justify-content:flex-start;height:100%;max-height:100%;overflow-y:auto;overscroll-behavior:contain}
+  html:not(.ui-zoomed) .menuSide>.sideCard:last-child{flex:1 1 auto}
   html:not(.ui-zoomed) #menuSide{justify-content:space-between}
   html:not(.ui-zoomed) #menuMod{align-items:start}
 }
@@ -1253,7 +1412,7 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
 /* auto-fit：没连服务器时只剩「好友」一个按钮，它会占满整行，不会孤零零占 1/3 */
 #socialBtns{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-top:10px}
 #socialBtns .sideBtn{width:100%;margin:0;padding:9px 6px;font-size:13px}
-@media (orientation:landscape) and (min-width:1600px){html:not(.ui-zoomed) #socialBtns{display:none}}
+@media (orientation:landscape) and (min-width:1440px){html:not(.ui-zoomed) #socialBtns{display:none}}
 
 /* ==================== 【1.9.41】剧情界面横屏自适应 ====================
    以前选章 / 选人 / 结算三张卡片固定 max-width:560px，横屏（尤其手机横屏和
@@ -1346,46 +1505,64 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
 </style>
 <!-- 【batch276】预加载：这些分片一起下载（原来是一个接一个阻塞加载，慢的时候要好几十秒）。
      只是提前下载、不执行，脚本标签仍然按原顺序执行 → 顺序和行为一点没变。 -->
-  <link rel="preload" as="script" href="lib/three.r128.min.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/00_前置检查.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/00_升级与场景.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/01_手部与武器建模.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/02_状态键位与粒子.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/10_地图_经典.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/11_方块贴图.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/12_地图_日蚀环城.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/13_地图_实验室.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/14_地图_注册表.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/20_敌人与玩家模型.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/21_攻击与拾取.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/22_输入与手势.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/23_触屏与设置面板.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/24_玩家与动画.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/25_敌人AI.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/26_伤害与界面.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/27_纪念击杀特效.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/30_联机.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/40_英雄_数据.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/41_英雄_施法与瞄准.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/42_英雄_特效一.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/43_英雄_特效二.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/44_英雄_世界与远端.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/50_开局流程.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/60_剧情模式.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/61_模组管理.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/62_聊天与语音.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/63_自定义资产.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/64_陵园与将军.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/65_载具.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/67_万圣节.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/68_好友与队伍.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/69_万圣节枪皮.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/70_月球基地.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/71_引力枪皮.js?v=1.10.29">
-  <link rel="preload" as="script" href="js/72_手机操作.js?v=1.10.29">
-  <link rel="preload" as="script" href="mode/模组加载器.js?v=1.10.29">
+  <link rel="preload" as="script" href="lib/three.r128.min.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/00_前置检查.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/00_升级与场景.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/01_手部与武器建模.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/02_状态键位与粒子.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/10_地图_经典.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/11_方块贴图.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/12_地图_日蚀环城.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/13_地图_实验室.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/14_地图_注册表.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/20_敌人与玩家模型.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/21_攻击与拾取.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/22_输入与手势.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/23_触屏与设置面板.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/24_玩家与动画.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/25_敌人AI.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/26_伤害与界面.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/27_纪念击杀特效.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/30_联机.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/40_英雄_数据.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/41_英雄_施法与瞄准.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/42_英雄_特效一.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/43_英雄_特效二.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/44_英雄_世界与远端.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/50_开局流程.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/60_剧情模式.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/61_模组管理.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/62_聊天与语音.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/63_自定义资产.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/64_陵园与将军.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/65_载具.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/67_万圣节.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/68_好友与队伍.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/69_万圣节枪皮.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/70_月球基地.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/71_引力枪皮.js?v=1.11.0">
+  <link rel="preload" as="script" href="js/72_手机操作.js?v=1.11.0">
+  <link rel="preload" as="script" href="mode/模组加载器.js?v=1.11.0">
 </head>
 <body tabindex="0" data-page-node-id="Zs89goIXHI37yRyM0D51w5">
+<!-- ==================== 【1.11.0】载入屏 ====================
+     放在 body 最前面：HTML 解析到这里就盖满全屏，用户不会先看到白屏或半截菜单。
+     三轮流程：① 校验文件完整度/版本一致性 ② 检查更新 ③ 加载模组与组件。
+     进度条走满后淡出，露出主菜单。驱动代码在 js/73_载入动画.js。 -->
+<div id="boot">
+  <div class="bootBox">
+    <div class="bootLogo">枪战<i>3D</i></div>
+    <div class="bootSub"><span id="bootVer">载入中</span></div>
+    <ul class="bootSteps" id="bootSteps">
+      <li data-i="0"><b></b><span>校验文件完整度</span><em>等待</em></li>
+      <li data-i="1"><b></b><span>检查更新</span><em>等待</em></li>
+      <li data-i="2"><b></b><span>加载模组与组件</span><em>等待</em></li>
+    </ul>
+    <div class="bootBar"><i id="bootFill"></i></div>
+    <div class="bootFoot"><span id="bootPct">0%</span><span id="bootMsg">正在启动…</span></div>
+    <button class="bootFix" id="bootFix">点这里重试</button>
+  </div>
+</div>
 <div id="skillHud"></div>
 <!-- ==================== 手机版操作层（1.10.18 重写） ====================
      DOM 顺序就是层级顺序（后写的压在上面）：
@@ -1396,6 +1573,8 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
      ⚠️ 这里**不再有**「技能①②③」三个按钮：技能改成直接点底部的 #skillHud 槽。
      ⚠️ 也不再有序号按钮/探头键：探头在手机上要占两根手指，收益是负的。
      ⚠️ 没有任何内联 style 写坐标 —— 位置全部在 CSS 里用 --u 算，JS 不参与。 -->
+<!-- 【1.11.0】竖屏提示：只在触屏设备竖屏时出现，横过来自动消失 -->
+<div id="rotateHint"><b>📱↻</b><span>请把手机横过来<br>本游戏是横屏射击，竖屏不显示操作按键</span></div>
 <div id="touchUI">
   <div id="mobLook"></div>
   <div id="mobMove"></div>
@@ -1414,18 +1593,21 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
   <div id="mobPause">⏸</div>
 </div>
 
-<!-- ==================== 按键设置（1.10.19） ====================
+<!-- ==================== 按键设置（1.11.0 改成可拖动小窗） ====================
      进来自定义每个按钮：拖动换位置、点一下选中后调大小/透明度。
-     平时看不见的键（交互、发消息、开麦）在这里全部现形。 -->
+     平时看不见的键（交互、发消息、开麦）在这里全部现形；
+     底部三个技能槽也能单独拖 —— 以前只能整排挪，用户要求"单独调整某个技能"。 -->
 <div id="mobEdit">
-  <div id="mobEditTip">拖动换位置 · 点一下选中可调大小 / 透明度 · 含左右探头</div>
   <div id="mobEditBar">
-    <b id="mobEditName">未选中</b>
-    <label>大小 <input id="mobEditSize" type="range" min="70" max="170" step="5" value="100"><span id="mobEditSizeVal">100%</span></label>
-    <label>透明度 <input id="mobEditAlpha" type="range" min="25" max="100" step="5" value="100"><span id="mobEditAlphaVal">100%</span></label>
-    <button id="mobEditReset" class="gray" type="button">↺ 此项</button>
-    <button id="mobEditResetAll" class="gray" type="button">↺ 全部</button>
-    <button id="mobEditDone" class="ok" type="button">✓ 完成</button>
+    <div id="mobEditTip">🖐 拖动这块标题栏可移动小窗 · 点按键选中后调大小 / 透明度 · 技能①②③可单独拖</div>
+    <div id="mobEditRow">
+      <b id="mobEditName">未选中</b>
+      <label>大小 <input id="mobEditSize" type="range" min="70" max="170" step="5" value="100"><span id="mobEditSizeVal">100%</span></label>
+      <label>透明度 <input id="mobEditAlpha" type="range" min="25" max="100" step="5" value="100"><span id="mobEditAlphaVal">100%</span></label>
+      <button id="mobEditReset" class="gray" type="button">↺ 此项</button>
+      <button id="mobEditResetAll" class="gray" type="button">↺ 全部</button>
+      <button id="mobEditDone" class="ok" type="button">✓ 完成</button>
+    </div>
   </div>
 </div>
 <div id="settingsPanel"><div class="spCard">
@@ -1661,6 +1843,7 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
       <div class="info-card" data-page-node-id="lMtgYZjrj7ufjWP2EFTvz2"><h3 data-page-node-id="6Jj71cggVWh21jEuQUuWtz">🤲 双手系统</h3><p data-page-node-id="tlR4DSaB73PqQyKxrX5Rdi">左手绑定枪体局部坐标<br data-page-node-id="phuGHV8LfZxmgvsQGu40nG">精确对齐前握把<br data-page-node-id="WvD2xpwbwdHS5OEM7E2KCU">换弹左手取出并装入弹匣<br data-page-node-id="MB0IwD75cZrv7DCPlqeMI1">移动/呼吸晃动自然</p></div>
       <div class="info-card" data-page-node-id="DyxhSKETeUcRSvuBF1gQ3c"><h3 data-page-node-id="d6WVcS7RfccHR1TeRwDpp5">👾 敌人AI</h3><p data-page-node-id="bHHQjm5chY0YkYIUyCITnE">🔴 普通兵：中距步枪<br data-page-node-id="mMsjbDl39fR90MWtSLO8Ab">🟠 快速兵：纯近战冲锋<br data-page-node-id="CwPP4OnX31v2mzxXIkQiqC">🟣 重甲兵：远程霰弹<br data-page-node-id="qHsCt1HOc1rx5gDxDqs5Hw">🩷 精英兵：精准狙击<br data-page-node-id="J1YCdNlYiPS63gpaWx2IHZ">👁 仅前方117°视野内且视线无遮挡才会追击，否则随机巡逻</p></div>
       <div class="info-card" data-page-node-id="phwVNKrSt4SHT7S65Uw14a"><h3 data-page-node-id="biMzeOVFcbX8OvbB7ziRkU">🪙 经济</h3><p data-page-node-id="j57XCHARICtBRyBMEJbRJG">击杀获金，爆头双倍<br data-page-node-id="Iq8o00K1sdISbxArKGlLaH">每波结束可进商店</p></div>
+      <div class="info-card" style="border-color:rgba(255,120,120,.45)" data-page-node-id="NOTICECARD0000000001"><h3 style="color:#ff8a8a" data-page-node-id="NOTICEHEAD0000000001">⚠ 使用许可与免责声明</h3><p data-page-node-id="NOTICETEXT0000000001"><b style="color:#ff8a8a">严禁</b>把本项目（含源码、素材、协议、地图数据）用于任何违法用途，包括但不限于：<br>· 制作、分发、售卖<b>外挂 / 修改器 / 自瞄 / 透视 / 加速</b>；<br>· 搭建<b>私服收费</b>、代练、账号交易；<br>· 绕过、破解、篡改他人服务器与本项目的<b>校验 / 反作弊</b>机制；<br>· 任何侵犯他人权益、危害网络安全的行为。<br><br><b style="color:#9fd8ff">允许</b>：学习、阅读、修改、二次创作、非商业分享；转载请保留出处与本声明。<br><br><b style="color:#9fd8ff">关于数据</b>：本机存档（名字 / 金币 / 枪皮 / 升级 / 设置）做了加密与校验，<b>手改会触发校验失败并按损坏处理</b>；但浏览器里没有真正的“防内存读取”——真正公平的对局靠<b>服务端判定</b>，客户端数值只作表现。任何声称“官方防封/外挂检测”的第三方工具都与本项目无关。</p></div>
     </div>
   </div>
   <div id="tab-hero" class="panel vl-panel">
@@ -1833,49 +2016,50 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
 <div id="redDotFx"><div class="ring" id="redDotRing"></div><div class="dot"></div></div>
 <div id="netBoard"></div>
 <div id="netDeath"><h2>☠️ 阵亡</h2><p>3 秒后自动重生…</p></div>
-<div id="go" data-page-node-id="DqwUcqBlNQv7sIbCj4PzRR"><h1 data-page-node-id="PAAcCAGrdQIuFvKccPz0J8">游戏结束</h1><p id="fs" data-page-node-id="vVQNfdHrDUfGSRUmGgj8ib"></p><p id="fw" data-page-node-id="OKYi9WpUJccSytFRQNolxB"></p><p id="fk" data-page-node-id="j62jnVuOtfYcNa7xIURUWB"></p><p id="fg" data-page-node-id="RC7PEwupheqCwNHHlOhEEE"></p><button class="btn" onclick="location.reload()" data-page-node-id="sFkx9kGfBXJsuhnMIeTjFI">再来一局</button></div>
+<div id="go" data-page-node-id="DqwUcqBlNQv7sIbCj4PzRR"><h1 data-page-node-id="PAAcCAGrdQIuFvKccPz0J8">游戏结束</h1><p id="fs" data-page-node-id="vVQNfdHrDUfGSRUmGgj8ib"></p><p id="fw" data-page-node-id="OKYi9WpUJccSytFRQNolxB"></p><p id="fk" data-page-node-id="j62jnVuOtfYcNa7xIURUWB"></p><p id="fg" data-page-node-id="RC7PEwupheqCwNHHlOhEEE"></p><button class="btn" onclick="(window.载入屏?载入屏.重载('正在重新开始…'):location.reload())" data-page-node-id="sFkx9kGfBXJsuhnMIeTjFI">再来一局</button></div>
 
-<script src="lib/three.r128.min.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('lib/three.r128.min.js?v=1.10.29')"></script>
-<script src="js/00_前置检查.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/00_前置检查.js?v=1.10.29')"></script>
-<script src="js/00_升级与场景.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/00_升级与场景.js?v=1.10.29')"></script>
-<script src="js/01_手部与武器建模.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/01_手部与武器建模.js?v=1.10.29')"></script>
-<script src="js/02_状态键位与粒子.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/02_状态键位与粒子.js?v=1.10.29')"></script>
-<script src="js/10_地图_经典.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/10_地图_经典.js?v=1.10.29')"></script>
-<script src="js/11_方块贴图.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/11_方块贴图.js?v=1.10.29')"></script>
-<script src="js/12_地图_日蚀环城.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/12_地图_日蚀环城.js?v=1.10.29')"></script>
-<script src="js/13_地图_实验室.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/13_地图_实验室.js?v=1.10.29')"></script>
-<script src="js/14_地图_注册表.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/14_地图_注册表.js?v=1.10.29')"></script>
-<script src="js/20_敌人与玩家模型.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/20_敌人与玩家模型.js?v=1.10.29')"></script>
-<script src="js/21_攻击与拾取.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/21_攻击与拾取.js?v=1.10.29')"></script>
-<script src="js/22_输入与手势.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/22_输入与手势.js?v=1.10.29')"></script>
-<script src="js/23_触屏与设置面板.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/23_触屏与设置面板.js?v=1.10.29')"></script>
-<script src="js/24_玩家与动画.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/24_玩家与动画.js?v=1.10.29')"></script>
-<script src="js/25_敌人AI.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/25_敌人AI.js?v=1.10.29')"></script>
-<script src="js/26_伤害与界面.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/26_伤害与界面.js?v=1.10.29')"></script>
-<script src="js/27_纪念击杀特效.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/27_纪念击杀特效.js?v=1.10.29')"></script>
-<script src="js/30_联机.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/30_联机.js?v=1.10.29')"></script>
-<script src="js/40_英雄_数据.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/40_英雄_数据.js?v=1.10.29')"></script>
-<script src="js/41_英雄_施法与瞄准.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/41_英雄_施法与瞄准.js?v=1.10.29')"></script>
-<script src="js/42_英雄_特效一.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/42_英雄_特效一.js?v=1.10.29')"></script>
-<script src="js/43_英雄_特效二.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/43_英雄_特效二.js?v=1.10.29')"></script>
-<script src="js/44_英雄_世界与远端.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/44_英雄_世界与远端.js?v=1.10.29')"></script>
-<script src="js/50_开局流程.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/50_开局流程.js?v=1.10.29')"></script>
-<script src="js/60_剧情模式.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/60_剧情模式.js?v=1.10.29')"></script>
-<script src="js/61_模组管理.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/61_模组管理.js?v=1.10.29')"></script>
-<script src="js/62_聊天与语音.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/62_聊天与语音.js?v=1.10.29')"></script>
-<script src="js/63_自定义资产.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/63_自定义资产.js?v=1.10.29')"></script>
-<script src="js/64_陵园与将军.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/64_陵园与将军.js?v=1.10.29')"></script>
-<script src="js/65_载具.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/65_载具.js?v=1.10.29')"></script>
-<script src="js/67_万圣节.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/67_万圣节.js?v=1.10.29')"></script>
-<script src="js/68_好友与队伍.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/68_好友与队伍.js?v=1.10.29')"></script>
-<script src="js/69_万圣节枪皮.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/69_万圣节枪皮.js?v=1.10.29')"></script>
+<script src="lib/three.r128.min.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('lib/three.r128.min.js?v=1.11.0')"></script>
+<script src="js/00_前置检查.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/00_前置检查.js?v=1.11.0')"></script>
+<script src="js/00_升级与场景.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/00_升级与场景.js?v=1.11.0')"></script>
+<script src="js/01_手部与武器建模.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/01_手部与武器建模.js?v=1.11.0')"></script>
+<script src="js/02_状态键位与粒子.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/02_状态键位与粒子.js?v=1.11.0')"></script>
+<script src="js/10_地图_经典.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/10_地图_经典.js?v=1.11.0')"></script>
+<script src="js/11_方块贴图.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/11_方块贴图.js?v=1.11.0')"></script>
+<script src="js/12_地图_日蚀环城.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/12_地图_日蚀环城.js?v=1.11.0')"></script>
+<script src="js/13_地图_实验室.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/13_地图_实验室.js?v=1.11.0')"></script>
+<script src="js/14_地图_注册表.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/14_地图_注册表.js?v=1.11.0')"></script>
+<script src="js/20_敌人与玩家模型.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/20_敌人与玩家模型.js?v=1.11.0')"></script>
+<script src="js/21_攻击与拾取.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/21_攻击与拾取.js?v=1.11.0')"></script>
+<script src="js/22_输入与手势.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/22_输入与手势.js?v=1.11.0')"></script>
+<script src="js/23_触屏与设置面板.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/23_触屏与设置面板.js?v=1.11.0')"></script>
+<script src="js/24_玩家与动画.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/24_玩家与动画.js?v=1.11.0')"></script>
+<script src="js/25_敌人AI.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/25_敌人AI.js?v=1.11.0')"></script>
+<script src="js/26_伤害与界面.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/26_伤害与界面.js?v=1.11.0')"></script>
+<script src="js/27_纪念击杀特效.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/27_纪念击杀特效.js?v=1.11.0')"></script>
+<script src="js/30_联机.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/30_联机.js?v=1.11.0')"></script>
+<script src="js/40_英雄_数据.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/40_英雄_数据.js?v=1.11.0')"></script>
+<script src="js/41_英雄_施法与瞄准.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/41_英雄_施法与瞄准.js?v=1.11.0')"></script>
+<script src="js/42_英雄_特效一.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/42_英雄_特效一.js?v=1.11.0')"></script>
+<script src="js/43_英雄_特效二.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/43_英雄_特效二.js?v=1.11.0')"></script>
+<script src="js/44_英雄_世界与远端.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/44_英雄_世界与远端.js?v=1.11.0')"></script>
+<script src="js/50_开局流程.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/50_开局流程.js?v=1.11.0')"></script>
+<script src="js/60_剧情模式.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/60_剧情模式.js?v=1.11.0')"></script>
+<script src="js/61_模组管理.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/61_模组管理.js?v=1.11.0')"></script>
+<script src="js/62_聊天与语音.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/62_聊天与语音.js?v=1.11.0')"></script>
+<script src="js/63_自定义资产.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/63_自定义资产.js?v=1.11.0')"></script>
+<script src="js/64_陵园与将军.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/64_陵园与将军.js?v=1.11.0')"></script>
+<script src="js/65_载具.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/65_载具.js?v=1.11.0')"></script>
+<script src="js/67_万圣节.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/67_万圣节.js?v=1.11.0')"></script>
+<script src="js/68_好友与队伍.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/68_好友与队伍.js?v=1.11.0')"></script>
+<script src="js/69_万圣节枪皮.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/69_万圣节枪皮.js?v=1.11.0')"></script>
 <!-- 【batch263】赛车场暂不启用（玩法还不成熟）：取消下面这行的注释即可恢复 -->
-<!-- <script src="js/66_赛车场.js?v=1.10.29"></script> -->
-<script src="mode/模组加载器.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('mode/模组加载器.js?v=1.10.29')"></script>
+<!-- <script src="js/66_赛车场.js?v=1.11.0"></script> -->
+<script src="mode/模组加载器.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('mode/模组加载器.js?v=1.11.0')"></script>
 <!-- 【1.10.1】月球基地：新地图 + 剧情第五章「月面守卫战」+ 英雄「月引」 -->
-<script src="js/70_月球基地.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/70_月球基地.js?v=1.10.29')"></script>
-<script src="js/71_引力枪皮.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/71_引力枪皮.js?v=1.10.29')"></script>
-<script src="js/72_手机操作.js?v=1.10.29" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/72_手机操作.js?v=1.10.29')"></script>
+<script src="js/70_月球基地.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/70_月球基地.js?v=1.11.0')"></script>
+<script src="js/71_引力枪皮.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/71_引力枪皮.js?v=1.11.0')"></script>
+<script src="js/72_手机操作.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/72_手机操作.js?v=1.11.0')"></script>
+<script src="js/73_载入动画.js?v=1.11.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/73_载入动画.js?v=1.11.0')"></script>
 <!-- 【batch276】加载看门狗：有分片没下来（网络太慢/被代理掐断）时，自动重试一次；
      还是不行就明说哪几个文件没加载上，别让玩家对着一个半死页面发呆。 -->
 <script>

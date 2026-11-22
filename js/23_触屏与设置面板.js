@@ -161,7 +161,27 @@ var touchUI=document.getElementById('touchUI');var crosshairEl=document.getEleme
    「Macintosh UA + 多指触摸」—— 这条只对 iPad 成立，不会把触摸屏 Windows 误判进来。 */
 var isTouch=(function(){
   var ua=(navigator&&navigator.userAgent)||'', plat=(navigator&&navigator.platform)||'';
-  if(/Android|iPhone|iPod|iPad|Windows Phone|HarmonyOS|Mobile/i.test(ua))return true;
+  /* 【1.11.0】真机上「按钮点不动 / 屏幕拖不了」的头号原因就在这里：
+     以前只认 UA 里那几个关键词，鸿蒙 NEXT（UA 是 OpenHarmony，既没有 HarmonyOS
+     也没有 Mobile）、部分定制浏览器、厂商精简 UA 全部识别失败 →
+     isTouch=false → js/72 整段不加载、#touchUI 不显示，看着就是"按键没反应"。
+     现在先看**指针类型**（跟 UA 无关，最可靠）：
+       · 真机/平板：主指针圈 coarse（手指）、maxTouchPoints ≥ 1 → 触屏
+       · 电脑（含触摸屏笔记本）：主指针是 fine（鼠标/触控板）→ 仍按电脑端
+     再用 UA 兜底，最后补一条"多指设备 + 明显不是桌面 UA"。 */
+  try{
+    var mq=window.matchMedia;
+    var coarse=!!(mq&&mq('(pointer:coarse)').matches);
+    var fine=!!(mq&&mq('(pointer:fine)').matches);
+    var pts=navigator.maxTouchPoints||0;
+    if(coarse&&!fine&&pts>0)return true;
+    /* 粗指针 + 细指针同时为真（少数安卓平板/模拟器）：再要求 UA 像移动端 */
+    if(coarse&&pts>0&&/OpenHarmony|ArkWeb|HarmonyOS|Android|iPhone|iPad|Mobile/i.test(ua))return true;
+    /* 兜底：UA 是空的/被精简，但确实是多指设备，且明显不是 Windows/macOS/x86 Linux 桌面 */
+    if(pts>1&&/OpenHarmony|ArkWeb|HarmonyOS/i.test(ua))return true;
+    if(pts>1&&!/Windows NT|Macintosh|X11|Linux x86_64|CrOS/i.test(ua))return true;
+  }catch(e){}
+  if(/Android|iPhone|iPod|iPad|Windows Phone|HarmonyOS|OpenHarmony|ArkWeb|Mobile/i.test(ua))return true;
   if(/Android|iPhone|iPod|iPad/i.test(plat))return true;
   if(/Macintosh/i.test(ua)&&(navigator.maxTouchPoints||0)>1)return true;
   /* 【batch163】测试手机版：网址加 ?touch=1 强制进入触屏界面 —— 电脑上也能看/玩手机版（摇杆/按键会用鼠标兜底） */
