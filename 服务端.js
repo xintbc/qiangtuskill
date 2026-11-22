@@ -15,7 +15,7 @@
    改版本：上功能 minor+1；动联机协议/存档 major+1 并把 SRV_VER_MIN 顶到新 major 的起点。
    【1.7.5】只加了模组接口（纯客户端），联机协议没变 → SRV_VER 跟着走，SRV_VER_MIN 仍留 1.7.0，
    1.7.0 的老客户端照常能进（版本分化不等于逼所有人升级）。 */
-const SRV_VER = '1.11.0';
+const SRV_VER = '1.11.1';
 const SRV_VER_MIN = '1.7.0';
 
 /* 版本比较：'1.7.0' vs '1.7.0' → 0；前者小 → -1；前者大 → 1（按 major.minor.patch 逐段比） */
@@ -3235,6 +3235,21 @@ function handleMsg(sock, raw) {
     if (p && !p.stale) broadcast({ t: 'voice', i: p.id, n: p.name, on: m.on ? 1 : 0 }, undefined, mapOf(p));
   } else if (m.t === 'skill') {                   // 英雄技能：广播给其他人播特效（投掷物把飞行参数带上）
     handleSkill(p, m);
+  } else if (m.t === 'skCut') {
+    /* 【1.11.1】技能"提前收起"：目前只有闪电大招「球形闪电」用 ——
+       客户端按 N 装填 3 发（这一步已经吃掉 130 秒冷却），中途右键收起时只该罚 1/3。
+       这里只调整冷却，不结算、不广播；且**只允许缩短、不允许延长**，也不能缩到 already-ready 之前。
+       旧客户端不会发这条；旧服务端不认识这个类型会忽略，客户端本地仍然按 1/3 走（不影响单人/画面）。 */
+    try {
+      if (p && !p.stale && m.k === 'lightning' && Number(m.s) === 2) {
+        const now2 = Date.now();
+        if (!p.skReady) p.skReady = {};
+        const key2 = 'lightning#2';
+        const full2 = (SKILL_CD.lightning && SKILL_CD.lightning[2]) || 130000;
+        const target = now2 + Math.round(full2 / 3);
+        if (!p.skReady[key2] || p.skReady[key2] > target) p.skReady[key2] = target;
+      }
+    } catch (e) { }
   } else if (m.t === 'throwfx') {
     /* 【batch219】模组投掷物**飞行**同步：客户端把"模型编号 + 出生点 + 初速 + 生存秒数"发上来，
        转发给同房其他人按抛物线复现。以前模组英雄扔东西，别人那边什么都没有。

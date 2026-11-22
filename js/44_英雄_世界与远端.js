@@ -539,13 +539,29 @@ function heroBallArm(){
   heroHudUpdate(true);
 }
 /* 【1.10.3】右键收起球形闪电：以前右键在这里被直接 return 吞掉，什么都不做，
-   玩家以为"右键解除不了"。收起＝清掉剩余发数、手上收回去；按约定不退冷却。 */
+   玩家以为"右键解除不了"。收起＝清掉剩余发数、手上收回去。
+   【1.11.1】用户：取消释放后不该全额退冷却，也不能一分不罚 —— **只走 1/3 冷却**。
+   实现要点：heroHoldCancel() 会把 cds[2] 直接清零（它是"投掷物收起来就全退"的口径），
+   所以必须先调它（把手上收干净），再把冷却按总冷却的 1/3 重新写上。 */
 function heroBallCancel(){
   if(!(SK.ballLeft>0))return false;
   SK.ballLeft=0;
+  var 总cd=0;
+  try{ 总cd=(heroNow().skills[2]||{}).cd||0; }catch(e){}
   try{ if(SK.hold&&SK.hold.kind==='ball')heroHoldCancel(); }catch(e){}
+  try{
+    if(总cd>0){
+      SK.cds[2]=总cd/3;
+      /* 联机：请服务端把这次大招冷却也缩到 1/3。旧服务端不认这个类型会直接忽略（不影响本地），
+         但不发的话新服务端仍按 130 秒记 → 43 秒后再装填会被它静默丢掉（自己这边能放、别人看不到起手）。 */
+      try{
+        if(typeof netIsMulti==='function'&&netIsMulti()&&NET&&NET.connected)
+          netSend({t:'skCut',k:'lightning',s:2});
+      }catch(_){}
+    }
+  }catch(e){}
   try{ if(typeof heroHudUpdate==='function')heroHudUpdate(true); }catch(e){}
-  try{ showMsg('球形闪电 已收起（不退冷却）','#6ff0ff'); }catch(e){}
+  try{ showMsg('球形闪电 已收起（冷却按 1/3 计，约 '+Math.max(1,Math.round(总cd/3))+' 秒）','#6ff0ff'); }catch(e){}
   return true;
 }
 /* 打出一发。返回 true ＝ 这一下左键被球形闪电接管了（不要再去开枪） */
