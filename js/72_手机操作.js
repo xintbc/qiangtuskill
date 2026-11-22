@@ -829,10 +829,9 @@ window.mobKeySettings=按键设置;
 
 (function 绑编辑按钮(){
   var b=$('spMobKeys');if(b)b.addEventListener('click',function(e){e.preventDefault();按键设置(true);});
-  /* 【1.10.21】暂停菜单 / 主菜单里的直达入口：不用先开设置面板，
-     点一下直接进编辑层（进之前 openSettings(false) 会把设置关掉，菜单由 CSS 藏起来）。 */
-  var pb=$('mobKeyBtn');if(pb)pb.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();按键设置(true);});
-  var mb2=$('mobKeyBtn2');if(mb2)mb2.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();按键设置(true);});
+  /* 【1.11.2】主菜单 / 暂停菜单的直达入口已删（用户反馈主界面被占一行）。
+     现在唯一入口在设置面板里的 #spMobKeys，就是上面这一行。
+     ⚠️ 别再把入口加回 #menuHomeBtns / #menuPauseBtns。 */
   var d=$('mobEditDone');if(d)d.addEventListener('click',function(e){e.preventDefault();按键设置(false);});
   var r=$('mobEditReset');if(r)r.addEventListener('click',function(e){
     e.preventDefault();
