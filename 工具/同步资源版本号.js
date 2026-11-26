@@ -20,7 +20,9 @@ const 多文件 = path.join(根, '多文件版');
 /* ---- 1. 从 js/02 读当前版本 ---- */
 const 状态文件 = path.join(多文件, 'js', '02_状态键位与粒子.js');
 const 状态源 = fs.readFileSync(状态文件, 'utf8');
-const m = 状态源.match(/GAME_VER\s*=\s*['"]([0-9]+\.[0-9]+\.[0-9]+)['"]/);
+/* 【1.11.5-beta1】版本号可能带平台/测试后缀（-pc1 / -mobile1 / -beta1），
+   ?v= 也要能读能写，否则带后缀的测试版永远同步不了（旧的正则只认三段纯数字）。 */
+const m = 状态源.match(/GAME_VER\s*=\s*['"]([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+)?)['"]/);
 if (!m) {
   console.error('✗ 没能从 js/02_状态键位与粒子.js 读到 GAME_VER');
   process.exit(1);
@@ -43,13 +45,13 @@ let 有差异 = 0;
 for (const f of 目标) {
   if (!fs.existsSync(f)) continue;
   const 原 = fs.readFileSync(f, 'utf8');
-  const 旧版本们 = new Set([...原.matchAll(/\?v=([0-9]+\.[0-9]+\.[0-9]+)/g)].map(x => x[1]));
+  const 旧版本们 = new Set([...原.matchAll(/\?v=([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+)?)/g)].map(x => x[1]));
   if (!旧版本们.size) {
     console.log('  跳过（没有 ?v=）', path.relative(根, f));
     continue;
   }
-  const 新 = 原.replace(/(\?v=)[0-9]+\.[0-9]+\.[0-9]+/g, '$1' + 版本);
-  const 处 = (原.match(/\?v=[0-9]+\.[0-9]+\.[0-9]+/g) || []).length;
+  const 新 = 原.replace(/(\?v=)[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+)?/g, '$1' + 版本);
+  const 处 = (原.match(/\?v=[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+)?/g) || []).length;
   const 旧 = [...旧版本们].join('/');
   if (新 === 原) {
     console.log('  ✓ 已是最新', path.relative(根, f), `(${处} 处 ${版本})`);
