@@ -869,6 +869,299 @@ body:not(.is-touch) .only-touch{display:none !important;}
 .story-launch{background:linear-gradient(135deg,#3b1a63,#6b2ea0);border:1px solid rgba(169,140,255,.55)}
 .story-launch.storyDone{background:linear-gradient(135deg,#16351f,#1f6b3a);border-color:rgba(110,240,150,.55)}
 .story-launch em{display:block;font-style:normal;font-size:11px;font-weight:600;opacity:.88;margin-top:3px;letter-spacing:0}
+/* 【1.12.0】搜打撤入口：暗金配色，和单人（红）/ 多人（蓝）/ 剧情（紫）一眼区分开 */
+.raid-launch{background:linear-gradient(135deg,#4a3311,#8a5c14);border:1px solid rgba(255,199,92,.55)}
+.raid-launch:hover{background:linear-gradient(135deg,#5c4015,#a06c18)}
+.raid-launch em{display:block;font-style:normal;font-size:11px;font-weight:600;opacity:.9;margin-top:3px;letter-spacing:0}
+/* ==================== 【1.12.0】搜打撤准备层 ====================
+   独立于 #blocker 的全屏层（z 645 高于名字面板 640）：主菜单可以关着，它自己铺满。
+   尺寸用 px + min()，跟主菜单同一套口径；高度全部走 max-height + 内部滚动，
+   这样 720×400 的小窗和 2340×1080 的手机横屏都不会把「出发」顶到屏幕外。 */
+#raidPrep{position:fixed;inset:0;z-index:645;display:none;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 16%,rgba(64,45,13,.97),rgba(6,7,12,.99) 72%);
+  color:#e8eefc;overflow-y:auto;padding:12px}
+#raidPrep.on{display:flex}
+/* 【1.12.0】撤掉固定 px 的宽高上限，改用 min(可视化 vw/vh)。
+   #raidPrep 现在和主菜单一样被搬进了 #uiZoom（js/00 的放大清单），zoom 会把布局尺寸
+   整体放大，所以 max-height:94vh 视觉上会变成 94vh×k ≈ 137vh —— 卡片上下直接被裁掉。
+   除以 var(--uiz) 才能抵消，和设置面板 .spCard 是同一套写法。 */
+.rpCard{width:min(96vw,1320px);max-height:calc(94vh / var(--uiz,1));display:flex;flex-direction:column;
+  background:rgba(16,17,26,.97);border:1px solid rgba(255,199,92,.36);border-radius:18px;
+  box-shadow:0 24px 70px rgba(0,0,0,.72);overflow:hidden}
+.rpHead{display:flex;align-items:center;gap:14px;padding:14px 18px;
+  border-bottom:1px solid rgba(255,255,255,.09);
+  background:linear-gradient(90deg,rgba(74,51,17,.6),rgba(16,17,26,0))}
+.rpTitle{font-size:19px;font-weight:700;color:#ffc75c;letter-spacing:1px}
+.rpSub{font-size:12px;color:#8b96ab;margin-top:3px;letter-spacing:.4px}
+.rpBack{margin-left:auto;flex:none;padding:9px 16px;border-radius:10px;cursor:pointer;
+  border:1px solid rgba(255,199,92,.45);background:rgba(255,199,92,.1);color:#ffd88a;
+  font-size:13px;font-weight:700;letter-spacing:.5px;transition:.15s}
+.rpBack:hover{background:rgba(255,199,92,.22);border-color:rgba(255,199,92,.8)}
+.rpTabs{display:flex;gap:6px;padding:10px 16px 0;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+.rpTab{padding:9px 20px;border:1px solid transparent;border-bottom:none;border-radius:10px 10px 0 0;
+  background:transparent;color:#93a0b6;font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s}
+.rpTab:hover{color:#e8eefc;background:rgba(255,255,255,.05)}
+.rpTab.active{background:rgba(255,199,92,.14);border-color:rgba(255,199,92,.34);color:#ffd88a}
+/* min-height 给内容少的页签一点体量：不然在 2340×1080 这种大屏上，卡片只剩一条薄片飘在中间。
+   取 24vh / 220px 上限 —— 比"部署页实际内容高度"略高一点，不会留下大片空白。
+   小屏时 24vh 很小（720×400 → 96px），内容该撑多高还是多高。 */
+.rpBody{flex:1;min-height:min(24vh,220px);overflow-y:auto;padding:14px 16px 16px;-webkit-overflow-scrolling:touch}
+.rpPane{display:none}
+.rpPane.on{display:block}
+.rpNotice{padding:16px 18px;border-radius:14px;border:1px dashed rgba(255,199,92,.34);
+  background:rgba(255,199,92,.06);margin-bottom:14px}
+.rpNoticeT{font-size:15px;font-weight:700;color:#ffd88a;margin-bottom:6px}
+.rpNoticeD{font-size:13px;line-height:1.75;color:#a9b4c6}
+.rpRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.rpField{padding:11px 13px;border-radius:12px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.09)}
+.rpField span{display:block;font-size:11.5px;color:#8794a8;letter-spacing:.5px;margin-bottom:4px}
+.rpField b{font-size:14.5px;color:#e8eefc;font-weight:700}
+.rpGo{display:block;width:100%;padding:14px 0;border:none;border-radius:14px;cursor:pointer;
+  font-size:17px;font-weight:800;letter-spacing:2px;color:#3a2606;
+  background:linear-gradient(135deg,#ffcf6a,#e09a20);transition:.15s}
+.rpGo:hover{filter:brightness(1.08)}
+.rpGo.off{background:rgba(255,255,255,.07);color:#7b8699;cursor:not-allowed;letter-spacing:1px}
+.rpGo.off:hover{filter:none}
+/* 卡片底部固定区：只放主行动按钮，不随正文滚动 */
+.rpFoot{flex:none;padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(0deg,rgba(0,0,0,.25),rgba(0,0,0,0))}
+.rpFoot.hide{display:none}
+@media (max-height:520px){
+  .rpHead{padding:9px 12px;gap:10px}
+  .rpTitle{font-size:15px}
+  .rpSub{display:none}
+  .rpTabs{padding:7px 10px 0}
+  .rpTab{padding:6px 13px;font-size:12px}
+  .rpBody{padding:10px 12px 14px}
+  .rpNotice{padding:11px 13px;margin-bottom:10px}
+  .rpNoticeT{font-size:13.5px}
+  .rpNoticeD{font-size:12px;line-height:1.6}
+  .rpGo{padding:10px 0;font-size:14.5px}
+}
+/* ==================== 搜打撤 · 物品网格（1.12.0 阶段 2）====================
+   格子尺寸固定 40px —— 不是懒，是因为整个卡片在 #uiZoom 里，宽度恒定 ≈1080 CSS px
+   （96vw 与 zoom 一起算下来任何窗口都是这个数），所以格子不需要跟着窗口变。
+   好处：物品的 left/top 永远等于「格坐标 × 40」，不用在拖拽时做任何换算。 */
+.rdWrap{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.rdCol{display:flex;flex-direction:column;gap:10px;min-width:0}
+/* 第三列（详情）吃掉剩余宽度：卡片的逻辑宽度固定是 1056（96vw÷zoom 恒等于这个数），
+   前两列加起来只用掉 ~835，不补的话右边会留一条 ~190px 的空带，
+   和「部署」页那种撑满两栏的观感就对不上了。 */
+/* 基准 240 而不是 266：胸挂和安全箱并排后中间列变成 322，再加上 408 的仓库列，
+   266 的基准会把这一行挤到 1525 > 1500，详情面板直接掉到第二行（在 1600×900 上看不见）。 */
+.rdWrap>.rdCol:last-child{flex:1 1 240px;max-width:430px;min-width:0}
+/* 胸挂 + 安全箱并排；窄到放不下就换行（不写死宽度，两个盒子各按自己的格子定宽） */
+.rdEquipTop{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+/* ---- 装备槽 ----
+   「空槽」和「已装备」是同一个盒子的两种形态：
+   空槽显示一块虚线占位（能接拖拽），装上后把占位换成真正的容量网格。
+   这样"把弹挂放到该放弹挂的地方 → 旁边就出现它的容量"是同一个 DOM 的自然结果。 */
+.rdSlot{position:relative;transition:border-color .14s,background .14s}
+.rdSlot.空 .rdGrid{display:none}
+.rdSlot .rdSlotEmpty{display:none}
+.rdSlot.空 .rdSlotEmpty{display:block}
+.rdSlot.over{border-color:rgba(255,199,92,.8)!important;background:rgba(255,199,92,.1)!important;
+  box-shadow:0 0 0 1px rgba(255,199,92,.35) inset}
+.rdSlotEmpty{padding:15px 8px;text-align:center;color:#7a8699;font-size:12px;line-height:1.9;
+  border:1px dashed rgba(255,255,255,.16);border-radius:9px;background:rgba(0,0,0,.16)}
+.rdSlotEmpty span{display:block;color:#5b6577;font-size:10.5px}
+.rdSlotX{margin-left:6px;flex:none;padding:2px 8px;border-radius:6px;cursor:pointer;font-size:10.5px;
+  border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#9aa7bd;transition:.12s}
+.rdSlotX:hover{color:#ff9a9a;border-color:rgba(255,154,154,.55);background:rgba(255,110,110,.1)}
+.rdSlot.空 .rdSlotX{display:none}
+.rdSlotSm{min-width:0;flex:1 1 0;max-width:none}
+/* 中栏这排小槽只有 ~70px 宽：标题居中、去掉稀有度那行，只留图标 + 两三个字 + ✕ */
+.rdSlotSm .rdBoxH{justify-content:center;font-size:10.5px;gap:4px;flex-wrap:nowrap}
+.rdSlotSm .rdBoxH em{display:none}
+.rdSlotSm .rdSlotX{padding:1px 5px;font-size:9.5px;margin-left:2px}
+/* 小槽（武器/头盔/护甲）没有容量网格，空槽就别做那么高，不然右栏把详情挤没了 */
+.rdSlotSm .rdSlotEmpty{padding:3px 5px;font-size:10px;line-height:1.35}
+.rdSlotSm .rdSlotEmpty span{display:none}   /* 小槽只留「空槽」两个字，把高度让给右边的详情 */
+.rdBodyGear{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:2px}
+/* 选中物品看详情时，把上面那排小槽收起来：详情（尤其是"卖出/移入"按钮）优先占满整栏。
+   没选中时它们才展开，用来拖装备上去。 */
+
+.rdBodyGear .rdSlotSm{padding-bottom:8px}
+.rdHead{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+.rdHTitle{font-weight:800;color:#ffd88a;letter-spacing:1px}
+.rdMeta{color:#8b96ab;font-size:12px}
+.rdMeta b{color:#dbe4f2;font-weight:700}
+.rdCoin{margin-left:auto;color:#ffc75c;font-weight:800;font-size:13.5px;letter-spacing:.5px}
+.rdFilters{display:flex;gap:6px;flex-wrap:wrap}
+.rdF{padding:5px 11px;border-radius:999px;cursor:pointer;font-size:12px;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#9aa7bd;transition:.12s}
+.rdF:hover{color:#e8eefc;border-color:rgba(255,255,255,.28)}
+.rdF.on{background:rgba(255,199,92,.16);border-color:rgba(255,199,92,.5);color:#ffd88a;font-weight:700}
+.rdGridWrap{padding:2px;border-radius:12px;background:rgba(0,0,0,.28);align-self:flex-start}
+.rdGrid{position:relative;display:grid;border-radius:10px}
+.rdGrid.off{display:none}
+.rdCell{box-shadow:inset 0 0 0 1px rgba(255,255,255,.055);background:rgba(255,255,255,.014)}
+.rdCell.hot{background:rgba(255,199,92,.16);box-shadow:inset 0 0 0 1px rgba(255,199,92,.4)}
+.rdItem{position:absolute;padding:2px;box-sizing:border-box;cursor:pointer;touch-action:manipulation}
+.rdItemIn{width:100%;height:100%;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(52,57,74,.96),rgba(30,33,44,.96));
+  border:1px solid rgba(255,255,255,.16);transition:box-shadow .12s,opacity .12s}
+.rdItem:hover .rdItemIn{box-shadow:0 0 0 1px rgba(255,255,255,.4),0 3px 10px rgba(0,0,0,.5)}
+/* 图标改成自绘 SVG 后，撑满格子里的可用区域（1×1 格约 28px，2×2 格约 66px） */
+.rdItemIcon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;
+  padding:14%;box-sizing:border-box;font-size:18px;line-height:1;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.rdSvg{width:100%;height:100%;display:block}
+.rdGhost{position:fixed;left:0;top:0;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:99999;
+  padding:7px;box-sizing:border-box;border-radius:10px;pointer-events:none;
+  background:linear-gradient(160deg,rgba(58,64,84,.96),rgba(26,29,39,.96));
+  border:1px solid rgba(255,199,92,.7);box-shadow:0 8px 22px rgba(0,0,0,.6);opacity:.94}
+body.rdDragging,body.rdDragging *{cursor:grabbing!important;user-select:none!important}
+.rdItemN{position:absolute;right:2px;bottom:0;font-size:9.5px;font-weight:800;color:#ffe7b0;
+  text-shadow:0 1px 3px #000,0 0 4px #000;letter-spacing:0}
+.rdItem.sel .rdItemIn{box-shadow:0 0 0 2px #ffc75c,0 0 14px rgba(255,199,92,.65)}
+.rdItem.dim .rdItemIn{opacity:.26}
+.rdItem.warn .rdItemIn{border-color:rgba(255,110,110,.8)}
+.rdBox{border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:8px 8px 9px;background:rgba(255,255,255,.025)}
+.rdBoxH{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#c8d2e2;margin-bottom:6px;
+  flex-wrap:wrap}   /* 窄盒子（安全箱 3×3）里「名字 + 0/9 格·0.0/28kg」放不下，允许换行，
+                        否则整行会把这个盒子撑宽 40px 以上，三栏就挤到换行了 */
+.rdBoxIco{flex:none;width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;margin-right:1px}
+.rdBoxH em{margin-left:auto;font-style:normal;font-size:11px;color:#8794a8;font-weight:600}
+/* 安全箱盒子窄（3×3）：标题和「0/9 格 · 0.0/28kg」硬排一行会把盒子撑宽 40px，改上下两行 */
+.rdBoxH.rdH2{display:block}
+.rdBoxH.rdH2 em{display:block;margin:2px 0 0;font-size:10.5px}
+.rdTools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rdBtn{padding:7px 13px;border-radius:9px;cursor:pointer;font-size:12.5px;font-weight:700;
+  border:1px solid rgba(255,199,92,.35);background:rgba(255,199,92,.08);color:#ffd88a;transition:.12s}
+.rdBtn:hover:not(:disabled){background:rgba(255,199,92,.2)}
+.rdBtn:disabled{opacity:.42;cursor:not-allowed}
+.rdBtnWarm{border-color:rgba(255,199,92,.75);background:rgba(255,199,92,.18);color:#ffe0a0}
+.rdBtnSell{border-color:rgba(140,224,160,.55);background:rgba(140,224,160,.12);color:#a8e8b8}
+.rdBtnSell:hover{background:rgba(140,224,160,.22)}
+.rdNoSell{font-style:normal;color:#8a7f6a;font-size:11px;font-weight:600}
+.rdTip{font-size:11.5px;color:#8794a8}
+.rdDetail{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:12px;
+  background:rgba(255,255,255,.025);min-height:130px}
+.rdEmpty{color:#6f7b90;font-size:12px;line-height:2;text-align:center;padding:22px 6px}
+.rdEmpty span{display:block;color:#586274;font-size:11px}
+.rdDetT{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:800;margin-bottom:8px}
+.rdDetIcon{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+.rdDetT em{margin-left:auto;font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}
+.rdDetRow{display:flex;justify-content:space-between;font-size:12px;color:#93a0b6;padding:3px 0}
+.rdDetRow b{color:#dbe4f2;font-weight:700}
+.rdDetD{font-size:11.5px;line-height:1.75;color:#8794a8;margin:8px 0 10px;
+  border-top:1px solid rgba(255,255,255,.07);padding-top:8px}
+.rdDetActs{display:flex;flex-wrap:wrap;gap:6px}
+.rdDetActs .rdBtn{flex:1 1 46%;text-align:center;padding:7px 6px;font-size:12px}
+.rdInnerWrap{margin-top:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:9px}
+.rdInnerT{font-size:11.5px;color:#ffd88a;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.rdInnerT span{margin-left:auto;color:#8794a8;font-weight:600}
+/* 自带装备条（部署页只读展示，不是可选项） */
+.rdGear{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.rdGearI{display:flex;align-items:center;gap:6px;padding:7px 11px;border-radius:10px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);font-size:12px;color:#b9c4d6;min-width:0}
+.rdGearIco{flex:none;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.rdGearI i{font-style:normal;color:#8794a8;font-size:11px}
+.rdGearI b{color:#e8eefc;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdGearI.off{border-style:dashed;background:transparent;opacity:.72}
+.rdGearI.off b{color:#7a8699;font-weight:600}
+/* 部署页里可点的字段（安全箱） */
+.rpField.rpPick{cursor:pointer;transition:.14s}
+.rpField.rpPick:hover{border-color:rgba(255,199,92,.5);background:rgba(255,199,92,.08)}
+.rpField.rpPick b{color:#ffd88a}
+.rpField.rpPick span::after{content:' · 点击选择';color:#6f7b90;font-weight:600}
+
+/* 安全箱选择窗口 */
+.rdWin{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+  background:rgba(4,5,9,.74);padding:16px}
+.rdWin.on{display:flex}
+.rdWinCard{width:min(780px,96%);max-height:88%;display:flex;flex-direction:column;
+  background:rgba(16,17,26,.99);border:1px solid rgba(255,199,92,.42);border-radius:16px;
+  box-shadow:0 22px 64px rgba(0,0,0,.72);overflow:hidden}
+.rdWinH{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.08);
+  font-size:15px;font-weight:800;color:#ffd88a;letter-spacing:1px}
+.rdWinX{margin-left:auto;width:30px;height:30px;border-radius:8px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#c8d2e2;font-size:16px;line-height:1}
+.rdWinX:hover{background:rgba(255,255,255,.12)}
+.rdWinD{padding:10px 16px 0;font-size:12px;line-height:1.8;color:#95a2b8}
+.rdWinD b{color:#ffd88a}
+.rdWinBody{padding:12px 16px 16px;overflow-y:auto;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px}
+.rdSafeOpt{text-align:left;padding:11px 12px;border-radius:12px;cursor:pointer;transition:.14s;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#c8d2e2}
+.rdSafeOpt:hover{border-color:rgba(255,199,92,.45);background:rgba(255,199,92,.07)}
+.rdSafeOpt.off{opacity:.5;cursor:not-allowed;filter:grayscale(.6)}
+.rdSafeOpt.off:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04)}
+.rdSafeOpt.on{border-color:rgba(255,199,92,.8);background:rgba(255,199,92,.14);
+  box-shadow:0 0 0 1px rgba(255,199,92,.32) inset}
+.rdSafeOpt b{display:flex;align-items:center;gap:7px;font-size:13.5px;color:#ffd88a;font-weight:800;margin-bottom:5px}
+.rdSafeOpt b em{margin-left:auto;font-style:normal;font-size:11px;color:#8794a8;font-weight:600}
+.rdSafeIco{flex:none;width:20px;height:20px;display:flex;align-items:center;justify-content:center}
+.rdSafeOpt>span{display:block;font-size:11.5px;line-height:1.7;color:#93a0b6}
+
+/* 交易行（阶段 3.6）：分类筛选 + 卡片列表 */
+.rdMkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:8px;margin-top:10px}
+.rdMkCard{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08)}
+.rdMkIco{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+.rdMkInfo{flex:1 1 auto;min-width:0}
+.rdMkInfo b{display:block;font-size:12.5px;color:#e8eefc;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdMkInfo i{font-style:normal;font-size:10.5px;color:#8794a8}
+.rdMkPrice{flex:none;font-size:11.5px;font-weight:700;color:#ffd88a;font-variant-numeric:tabular-nums}
+.rdMkCard .rdBtn{flex:none;padding:4px 9px;font-size:11.5px}
+.rdMkCard .rdBtn:disabled{opacity:.38}
+.rdMkEmpty{grid-column:1/-1;text-align:center;color:#7a8699;font-size:12px;padding:22px 8px}
+
+/* 搜刮窗口（阶段 3）：中间是"开盖进度条 → 战利品列表" */
+.rdLootCard{width:min(640px,96%)}
+.rdLootBar{position:relative;height:26px;margin:12px 16px 0;border-radius:8px;overflow:hidden;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,199,92,.28)}
+.rdLootBar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#e0a020,#ffd06a);transition:width .08s linear}
+.rdLootBar>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11.5px;font-weight:700;color:#fff;text-shadow:0 1px 3px #000;letter-spacing:1px}
+.rdLootBody{padding:12px 16px 6px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:120px}
+.rdLootWait,.rdLootEmpty{color:#7f8ca2;font-size:12.5px;text-align:center;padding:26px 8px;line-height:2}
+.rdLootEmpty span{display:block;color:#5f6a7d;font-size:11.5px}
+.rdLootRow{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:9px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left-width:3px}
+.rdLootIco{flex:none;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+.rdLootNm{flex:1 1 auto;min-width:0;font-size:13px;font-weight:700;color:#e8eefc;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdLootNm em{font-style:normal;color:#ffd88a;font-weight:800;margin-left:5px;font-size:12px}
+.rdLootSplit{font-style:normal;color:#6f7b90;font-size:10.5px;margin-left:6px;font-weight:600}
+.rdLootVal{flex:none;font-size:11.5px;color:#8fa0b8;font-variant-numeric:tabular-nums}
+.rdLootRow .rdBtn{flex:none;padding:5px 12px;font-size:12px}
+.rdLootFoot{display:flex;align-items:center;gap:10px;padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08)}
+.rdLootFoot .rdTip{flex:1 1 auto;text-align:right;font-size:11px}
+.rdLootMetaEm{margin-left:auto;margin-right:6px;font-style:normal;font-size:11px;color:#8794a8;font-weight:600}
+.rdLootCard .rdWinX{margin-left:0}
+/* 部署页 */
+.rdPresets{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.rdPre{flex:1 1 200px;text-align:left;padding:12px 14px;border-radius:12px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);transition:.14s;min-width:0}
+.rdPre:hover{border-color:rgba(255,199,92,.4);background:rgba(255,199,92,.06)}
+.rdPre.on{border-color:rgba(255,199,92,.7);background:rgba(255,199,92,.13);box-shadow:0 0 0 1px rgba(255,199,92,.25) inset}
+.rdPre b{display:block;font-size:14.5px;color:#ffd88a;letter-spacing:1px;margin-bottom:4px}
+.rdPre span{display:block;font-size:11.5px;line-height:1.6;color:#93a0b6}
+.rdPre i{display:block;font-style:normal;font-size:11px;color:#6f7b90;margin-top:5px}
+.rdDeploy{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.rdDeployMain{flex:1 1 320px;min-width:0}
+.rdDeploySide{flex:0 0 300px;min-width:0}
+.rdSum{border:1px solid rgba(255,199,92,.28);border-radius:12px;padding:11px 13px;
+  background:rgba(255,199,92,.06);margin-bottom:10px}
+.rdSumT{font-size:12.5px;font-weight:800;color:#ffd88a;letter-spacing:.5px;margin-bottom:7px}
+.rdInsList{display:flex;flex-direction:column;gap:5px}
+.rdIns{padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.08)}
+.rdInsT{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#dbe4f2}
+.rdInsT em{margin-left:auto;font-style:normal;color:#ffc75c;font-size:12px;font-weight:800}
+.rdInsD{font-size:10.5px;line-height:1.5;color:#8794a8;margin-top:1px}
+@media (max-width:640px){
+  .rdDeploySide{flex:1 1 100%}
+  .rdDetail{width:100%}
+}
+@media (max-width:560px){
+  .rpBack{padding:7px 12px;font-size:12px}
+  .rpTitle{font-size:16px}
+}
 .stCard{max-width:560px;text-align:left}
 .stGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0 4px}
 .stCardItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
@@ -1140,12 +1433,24 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
     gap:10px;margin-top:16px}
   #menuHomeBtns #startBtn{grid-area:1 / 1 / 2 / 2}
   #menuHomeBtns #netBtn{grid-area:1 / 2 / 2 / 3}
-  #menuHomeBtns .story-launch{grid-area:2 / 1 / 3 / 3}
+  /* 【1.12.0】第二行同样是两个半宽块：剧情（左）+ 搜打撤（右）。
+     以前剧情是跨两列的一条横幅，加第四个按钮后会掉进网格自动流把对齐挤歪 —— 这里显式钉死 area。 */
+  #menuHomeBtns .story-launch{grid-area:2 / 1 / 3 / 2}
+  #menuHomeBtns .raid-launch{grid-area:2 / 2 / 3 / 3}
   #menuHomeBtns .start-btn,#menuHomeBtns #netBtn{width:100%;max-width:none;height:auto;
     min-height:86px;margin:0;padding:14px 12px;font-size:15px;line-height:1.35;
-    border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
-  #menuHomeBtns .story-launch{min-height:78px}
-  #menuHomeBtns .story-launch em{font-size:11.5px;line-height:1.35;opacity:.9}
+    border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    /* min-width:0 是必须的：grid 的 1fr = minmax(auto,1fr)，子项下面有 nowrap 的副标题时
+       min-content 会把整列撑破 → 四个按钮从 2×2 退化成单列拉满、整个左栏跟着歪。
+       加 overflow:hidden 双保险，任何超长文案都裁在按钮里，不许影响栅格。 */
+    min-width:0;overflow:hidden}
+  #menuHomeBtns .story-launch,#menuHomeBtns .raid-launch{min-height:78px;font-size:13.5px}
+  /* 半宽之后剧情按钮的解锁提示特别长（"通关章节解锁英雄：第一章…第四章…"），
+     换行会把整行撑高、两个按钮高度对不齐。改成**单行省略**：开头信息完整，超出打点。
+     width/min-width 同上面的道理：让它只能被裁，不能反过来撑宽父级。 */
+  #menuHomeBtns .story-launch em{font-size:11.5px;line-height:1.35;opacity:.9;
+    width:100%;min-width:0;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #menuHomeBtns .raid-launch em{font-size:11.5px;line-height:1.35;opacity:.9;width:100%;min-width:0}
   /* 左列中间那块不是"空着"：把身份/金币/提示放大成一栏信息 */
   /* 名字 + 金币合成一块"玩家条"卡片，充当左列中部的实际内容（不再是一大块纯黑） */
   /* 名字 / 金币各是一张独立小卡片：左列是 space-between 均分间距，
@@ -1209,7 +1514,7 @@ body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
   .tab{padding:6px 13px;font-size:12px}
   #menuHomeBtns{gap:6px;margin-top:6px}
   #menuHomeBtns .start-btn,#menuHomeBtns #netBtn{padding:8px 10px;font-size:13px}
-  #menuHomeBtns .story-launch em{display:none}
+  #menuHomeBtns .story-launch em,#menuHomeBtns .raid-launch em{display:none}
   #menuSetBtn{padding:7px 10px !important;font-size:12px !important;margin-top:6px !important}
   /* 矮屏：面板自己滚，别让整页滚（整页滚会把左侧的按钮一起带走） */
   #menu{max-height:calc(100vh - 12px)}
@@ -1755,6 +2060,181 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
   <button id="netCancel" class="spBtn spClose">取消</button>
 </div></div>
 
+<!-- 【1.12.0】搜打撤准备层：独立于 #blocker 的全屏层（z 645）。
+     阶段 1 只有壳 —— 四个标签页都是占位，玩法在后续阶段逐步填。
+     ⚠️ 换 id / 改结构时记得同步 js/78 的绑定与 校验手机版.js 的守护清单；
+        这个层还必须留在 js/22 的点击穿透白名单里，否则点空白会残留 mouseDown。 -->
+<div id="raidPrep">
+  <div class="rpCard">
+    <div class="rpHead">
+      <div>
+        <div class="rpTitle">🧳 搜打撤行动</div>
+        <div class="rpSub">搜索 · 交战 · 撤离　｜　带着装备进去，活着出来才算你的</div>
+      </div>
+      <button class="rpBack" id="raidBackBtn">← 返回原游戏</button>
+    </div>
+    <div class="rpTabs">
+      <button class="rpTab active" data-rp="deploy">🚁 部署</button>
+      <button class="rpTab" data-rp="stash">📦 仓库</button>
+      <button class="rpTab" data-rp="market">🏷 交易行</button>
+      <button class="rpTab" data-rp="profile">📋 档案</button>
+    </div>
+    <div class="rpBody">
+      <div class="rpPane on" id="rp-deploy">
+        <div class="rdDeploy">
+          <div class="rdDeployMain">
+            <div class="rdPresets" id="rdPresets"></div>
+            <div class="rdTools" style="margin:-4px 0 12px;align-items:center">
+              <button class="rdBtn" id="rdPreApply">按选中方案一键装配（可选）</button>
+              <span style="font-size:11px;color:#8ea1b2">点上面的方案只是看清单，不会自动装；不点这个按钮就完全自己拖。</span>
+            </div>
+            <div class="rpRow">
+              <div class="rpField"><span>地图</span><b>灰港封锁区</b></div>
+              <div class="rpField"><span>人数</span><b>匹配 · 最多 6 人</b></div>
+              <div class="rpField rpPick" id="rdSafeField"><span>安全箱</span><b id="rdDeploySafe">不带</b></div>
+            </div>
+            <!-- 胸挂 / 背包 / 头盔 / 护甲是角色自带的，这里只展示、不给选（选了也不该生效） -->
+            <div class="rdGear" id="rdDeployGear"></div>
+            <div class="rpNotice">
+              <div class="rpNoticeT">🚧 阶段 4：灰港封锁区已接入 3D 场景</div>
+              <div class="rpNoticeD">装备（武器 / 胸挂 / 背包 / 头盔 / 护甲 / 安全箱）<b>都要自己从仓库装上</b>。
+                三个方案只是清单：<b>点卡片不会自动装</b>，只有点「按选中方案一键装配」才会照清单搬东西；
+                不点就完全按你自己拖的配置出发，空手也行。<br>
+                点「出发」进图：<b>按住 F 开箱搜刮</b>，走到绿色光圈<b>按住 F 撤离</b>；挨枪会打断开盖。</div>
+            </div>
+          </div>
+          <div class="rdDeploySide">
+            <div class="rdSum" id="rdDeploySum"></div>
+            <div class="rdInsList" id="rdInsList"></div>
+          </div>
+        </div>
+      </div>
+      <div class="rpPane" id="rp-stash">
+        <div class="rdWrap">
+          <div class="rdCol">
+            <div class="rdHead">
+              <span class="rdHTitle">📦 仓库</span>
+              <span class="rdMeta" id="rdStashMeta"></span>
+              <span class="rdCoin" id="rdCoin">🪙 0 封锁币</span>
+            </div>
+            <!-- 装备小槽放在仓库标题下面：它们是"身上穿着什么"，属于角色，
+                 不能因为右边打开了物品详情就被藏起来（那样也拖不进去） -->
+            <div class="rdFilters" id="rdFilters"></div>
+            <div class="rdGridWrap"><div class="rdGrid" id="rdStashGrid"></div></div>
+            <div class="rdTools">
+              <button class="rdBtn" id="rdSortBtn">🧹 一键整理</button>
+              <button class="rdBtn" id="rdSellJunk">💰 一键卖杂物</button>
+              <span class="rdTip" id="rdTip">点物品选中，再点空格移动</span>
+            </div>
+          </div>
+          <div class="rdCol">
+            <!-- 胸挂和安全箱并排放：单列摆三个盒子在 1600×900 上会顶出正文区，
+                 而这两个都是"随时要往里塞东西"的容器，藏起来就得先滚动 -->
+            <div class="rdEquipTop">
+              <div class="rdBox rdSlot 空" data-slot="胸挂">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdRigIco"></span><span id="rdRigName">胸挂</span><em id="rdRigMeta"></em><button class="rdSlotX" data-unset="胸挂">卸下</button></div>
+                <div class="rdGrid" id="rdRigGrid"></div>
+                <div class="rdSlotEmpty" id="rdRigEmpty">空槽<span>把仓库里的胸挂拖到这</span></div>
+              </div>
+              <div class="rdBox rdSlot 空" data-slot="安全箱">
+                <div class="rdBoxH rdH2"><span class="rdBoxIco" id="rdSafeIco"></span><span id="rdSafeName">安全箱</span><em id="rdSafeMeta"></em><button class="rdSlotX" data-unset="安全箱">卸下</button></div>
+                <div class="rdGrid" id="rdSafeGrid"></div>
+                <div class="rdSlotEmpty" id="rdSafeEmpty">空槽<span>保险箱拖到这</span></div>
+                <div class="rdTools"><button class="rdBtn" id="rdSafePick2">选择安全箱</button></div>
+              </div>
+            </div>
+            <div class="rdBox rdSlot 空" data-slot="背包">
+              <div class="rdBoxH"><span class="rdBoxIco" id="rdBpIco"></span><span id="rdBpName">背包</span><em id="rdBpMeta"></em><button class="rdSlotX" data-unset="背包">卸下</button></div>
+              <div class="rdGrid" id="rdBpGrid"></div>
+              <div class="rdSlotEmpty" id="rdBpEmpty">空槽<span>把仓库里的背包拖到这</span></div>
+            </div>
+            <div class="rdBodyGear">
+              <!-- 武器槽：也是从仓库里装上来的，不是预设白给的 -->
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="枪">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdGunIco0"></span><span id="rdGunName0">主武器</span><em id="rdGunMeta0"></em><button class="rdSlotX" data-unset="枪">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdGunEmpty0">空槽<span>把枪拖到这</span></div>
+              </div>
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="枪2">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdGunIco1"></span><span id="rdGunName1">副武器</span><em id="rdGunMeta1"></em><button class="rdSlotX" data-unset="枪2">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdGunEmpty1">空槽<span>把枪拖到这</span></div>
+              </div>
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="头盔">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdHelmIco"></span><span id="rdHelmName">头盔</span><em id="rdHelmMeta"></em><button class="rdSlotX" data-unset="头盔">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdHelmEmpty">空槽<span>拖头盔到这</span></div>
+              </div>
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="护甲">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdArmorIco"></span><span id="rdArmorName">护甲</span><em id="rdArmorMeta"></em><button class="rdSlotX" data-unset="护甲">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdArmorEmpty">空槽<span>拖护甲到这</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="rdCol">
+            <!-- 头盔/护甲没有内层容量，做成一排小槽就够了 -->
+            <div class="rdDetail" id="rdDetail"></div>
+          </div>
+        </div>
+      </div>
+      <div class="rpPane" id="rp-market">
+        <div class="rdHead">
+          <span class="rdHTitle">🏷 交易行</span>
+          <span class="rdMeta">只卖 <b>枪械 / 胸挂 / 背包 / 护甲 / 头盔 / 弹药 / 医药</b>；买入价＝回收价 ×2（倒卖必亏）</span>
+          <span class="rdCoin" id="rdMkCoin">🪙 0 封锁币</span>
+        </div>
+        <div class="rdFilters" id="rdMkFilters"></div>
+        <div class="rdMkGrid" id="rdMkList"></div>
+        <div class="rpNotice" style="margin-top:12px">
+          <div class="rpNoticeT">🚧 全局挂单要等阶段 9</div>
+          <div class="rpNoticeD">现在这里是"系统商店"：按标价直接买，货架不跟别人共享。
+            玩家之间的挂单、报价、离线快照要等服务端那套行情库。<br>
+            想变现：在<b>仓库</b>里选中物品点「卖出」，或者用「一键卖杂物」。</div>
+        </div>
+      </div>
+      <div class="rpPane" id="rp-profile">
+        <div class="rpRow">
+          <div class="rpField"><span>封锁币</span><b id="rdPfCoin">0</b></div>
+          <div class="rpField"><span>仓库物品</span><b id="rdPfItems">0</b></div>
+          <div class="rpField"><span>仓库总值</span><b id="rdPfValue">0</b></div>
+          <div class="rpField"><span>保险凭证</span><b id="rdPfVoucher">0</b></div>
+        </div>
+        <div class="rpNotice">
+          <div class="rpNoticeT">📋 档案</div>
+          <div class="rpNoticeD" id="rdPfText">阶段 7 开放：局数 / 撤离 / 死亡 / 带出总值 / 剧情进度。</div>
+        </div>
+      </div>
+    </div>
+    <!-- 「出发」放在卡片底部固定区（不在 .rpBody 的滚动流里）：
+         以前它在部署页最下面，保险条一多就被顶出可视区，得滚动才点得到。
+         主按钮不该需要滚动。只在「部署」页显示，切页时由 搜打撤_切页 控制。 -->
+    <div class="rpFoot" id="rpFoot">
+      <button class="rpGo" id="raidGoBtn">出发 · 灰港封锁区</button>
+    </div>
+  </div>
+  <!-- 安全箱选择窗口：铺在准备层之内（position:absolute 相对 #raidPrep），
+       不新开全屏层，这样点暗底、点 × 都只影响它自己。 -->
+  <div class="rdWin" id="rdSafeWin">
+    <div class="rdWinCard">
+      <div class="rdWinH"><span>🛡 选择安全箱</span><button class="rdWinX" id="rdSafeClose" aria-label="关闭">×</button></div>
+      <div class="rdWinD">安全箱跟着角色走，<b>不占背包格</b>；死亡时里面的东西整箱保住（受单件价值上限约束）。
+        换箱前要先把里面的东西取出来 —— 不然那些保底物会跟着旧箱一起消失。</div>
+      <div class="rdWinBody" id="rdSafeList"></div>
+    </div>
+  </div>
+  <!-- 搜刮窗口：开盖进度 → 战利品列表。阶段 4 会把它搬到局内 HUD 上，结构不用改。 -->
+  <div class="rdWin" id="rdLootWin">
+    <div class="rdWinCard rdLootCard">
+      <div class="rdWinH"><span id="rdLootName">容器</span><em id="rdLootMeta" class="rdLootMetaEm"></em>
+        <button class="rdWinX" id="rdLootClose" aria-label="关闭">×</button></div>
+      <div class="rdLootBar" id="rdLootBar"><i id="rdLootBarIn"></i><span>开盖中…</span></div>
+      <div class="rdLootBody" id="rdLootBody"></div>
+      <div class="rdLootFoot">
+        <button class="rdBtn" id="rdLootAll">全部拿走</button>
+        <button class="rdBtn" id="rdLootClose2">关闭</button>
+        <span class="rdTip" id="rdLootTip">点「拿」放进背包；装不下会自动试胸挂 / 安全箱</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="namePanel" class="ctLayer on"><div class="ctCard">
   <h3>🪪 起个名字</h3>
   <p class="spHint">给自己起个名字再开打。这个名字在<b>单人</b>和<b>多人对战</b>里都会一直沿用，换局也不会丢；存在本机时是<b>加密</b>的。</p>
@@ -1848,8 +2328,10 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
   <div class="gold-display" data-page-node-id="tYek8qD1Z8eVGREc6tvBMe"><span data-page-node-id="MJAVYZIOnrCETZWijBFw7l">🪙</span> 枪皮币: <span id="shop-skin" data-page-node-id="RLoUkAzVtwjHTUHgeXRSsi">0</span></div>
   <div id="menuHomeBtns">
     <button class="start-btn" id="startBtn" data-page-node-id="R3tKGFyAgM74OEC7ERHiN2">⚔️ 单人游戏</button>
-    <button class="start-btn story-launch" id="storyBtn" data-page-node-id="STORYLAUNCHBTN00001">🎬 剧情模式（共 5 章）<em id="storyTag" data-page-node-id="STORYLAUNCHTAG00001">第一章闪电 / 第二章蚀日者 / 第四章大将军 · 第五章「月面守卫战」已开放</em></button>
     <button id="netBtn">🌐 多人游戏（局域网联机）</button>
+    <button class="start-btn story-launch" id="storyBtn" data-page-node-id="STORYLAUNCHBTN00001">🎬 剧情模式 5 章<em id="storyTag" data-page-node-id="STORYLAUNCHTAG00001">第一章闪电 / 第二章蚀日者 / 第四章大将军 · 第五章「月面守卫战」已开放</em></button>
+    <!-- 【1.12.0】搜打撤入口：一键进准备层，不刷页面、不多层级跳转。#raidBtn 已纳入 校验手机版.js 守护 -->
+    <button class="start-btn raid-launch" id="raidBtn" data-page-node-id="RAIDLAUNCHBTN0001">🧳 搜打撤行动<em>搜索 · 交战 · 撤离</em></button>
   </div>
   <div id="menuPauseBtns">
     <button class="start-btn" id="btnResume">▶️ 继续游戏</button>
@@ -2105,6 +2587,14 @@ body.is-touch.scope-on #skillHud{opacity:.35;}
 <script src="js/71_引力枪皮.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/71_引力枪皮.js?v=1.11.4')"></script>
 <script src="js/72_手机操作.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/72_手机操作.js?v=1.11.4')"></script>
 <script src="js/73_载入动画.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/73_载入动画.js?v=1.11.4')"></script>
+<!-- 【1.12.0】搜打撤：入口按钮 + 准备层 + 双向切换 + 模式框架（阶段 1，不含玩法内容）
+     放在最后：它引用的 GAME_MODES / S / quitToHome / setMenuMode 都在前面的分片里。 -->
+<script src="js/74_搜打撤_数据.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/74_搜打撤_数据.js?v=1.11.4')"></script>
+<script src="js/75_搜打撤_物品.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/75_搜打撤_物品.js?v=1.11.4')"></script>
+<script src="js/76_搜打撤_地图.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/76_搜打撤_地图.js?v=1.11.4')"></script>
+<script src="js/77_搜打撤_局内.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/77_搜打撤_局内.js?v=1.11.4')"></script>
+<script src="js/78_搜打撤_界面.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/78_搜打撤_界面.js?v=1.11.4')"></script>
+<script src="js/79_搜打撤_图标.js?v=1.11.4" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/79_搜打撤_图标.js?v=1.11.4')"></script>
 <!-- 【batch276】加载看门狗：有分片没下来（网络太慢/被代理掐断）时，自动重试一次；
      还是不行就明说哪几个文件没加载上，别让玩家对着一个半死页面发呆。 -->
 <script>

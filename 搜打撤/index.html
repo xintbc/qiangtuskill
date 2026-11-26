@@ -1,0 +1,2034 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>搜打撤 · 灰港封锁区（独立模式）</title>
+<style>
+html,body{height:100%;width:100%;margin:0;overflow:hidden;background:#0a0e14}
+</style>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+/* 关掉浏览器手势：下拉刷新 / 触控板与触摸屏的滑动返回 / 边到边橡皮筋回弹 */
+html{overscroll-behavior:none;height:100%}
+body{overflow:hidden;background:#0a0a15;font-family:'Segoe UI',Arial,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline:none;cursor:crosshair;overscroll-behavior:none}
+canvas{display:block;position:fixed;top:0;left:0;z-index:0;touch-action:none;-webkit-user-drag:none}
+/* overflow 很关键：小屏 / 横屏手机上菜单比屏幕高，不能滚就会把「开始游戏」等按钮顶到屏幕外 */
+#blocker,#wave-shop,#go{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:100;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#blocker{background:rgba(5,5,15,.95)}
+#wave-shop{background:rgba(5,5,15,.85);z-index:80;display:none;cursor:default}
+#weapon-select{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(6,8,18,.92);z-index:110;display:none;cursor:default;align-items:flex-start;justify-content:center;overflow-y:auto;}
+#weapon-select .wsel-inner{width:94%;max-width:900px;margin:auto;padding:26px 0 44px;color:#fff;}
+#weapon-select h2{text-align:center;font-size:30px;margin-bottom:4px;color:#fff;text-shadow:0 0 18px rgba(120,200,255,.5)}
+#weapon-select .wsel-sub{text-align:center;color:#9ab;margin-bottom:20px;font-size:14px}
+#wsel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.wsel-card{background:linear-gradient(180deg,rgba(24,28,44,.96),rgba(12,15,24,.98));border:2px solid rgba(120,160,220,.28);border-radius:14px;padding:16px;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;position:relative;overflow:hidden}
+.wsel-card:hover{transform:translateY(-3px);border-color:rgba(120,200,255,.7);box-shadow:0 8px 26px rgba(0,0,0,.5)}
+.wsel-card.cur{border-color:#ffd23c;box-shadow:0 0 0 2px rgba(255,210,60,.35),0 8px 26px rgba(0,0,0,.5)}
+.wsel-card .wsel-ico{font-size:42px;text-align:center;margin-bottom:8px}
+.wsel-card .wsel-name{font-size:19px;font-weight:bold;text-align:center;margin-bottom:10px}
+.wsel-card .wsel-stats{font-size:13px;color:#bcd;line-height:1.8}
+.wsel-card .wsel-stats b{color:#fff;font-weight:600}
+.wsel-card .wsel-tag{position:absolute;top:8px;right:8px;font-size:11px;color:#0a0;background:rgba(0,255,140,.15);border:1px solid rgba(0,255,140,.4);border-radius:6px;padding:1px 6px}
+.wsel-card.melee .wsel-tag{color:#f80;background:rgba(255,140,0,.15);border-color:rgba(255,140,0,.4)}
+.wsel-card.spike{border-color:rgba(255,140,40,.45)}
+.wsel-card.spike:hover{border-color:rgba(255,170,60,.9)}
+.wsel-card.spike.cur{border-color:#ff9a3c;box-shadow:0 0 0 2px rgba(255,150,50,.35),0 8px 26px rgba(0,0,0,.5)}
+/* 【batch203】纪念枪卡片：暖金描边 + 顶部一条金线，一眼能从一堆灰蓝卡片里认出来。
+   未解锁时整张卡压暗并盖一层锁条（点它只会弹提示，不会换枪）。 */
+.wsel-card.memorial{border-color:rgba(214,176,86,.55);background:linear-gradient(180deg,rgba(38,31,16,.97),rgba(14,12,8,.99))}
+.wsel-card.memorial:hover{border-color:rgba(240,206,120,.9);box-shadow:0 8px 30px rgba(180,140,50,.22),0 8px 26px rgba(0,0,0,.55)}
+.wsel-card.memorial.cur{border-color:#f0ce78;box-shadow:0 0 0 2px rgba(240,206,120,.35),0 8px 26px rgba(0,0,0,.5)}
+.wsel-card.memorial::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;
+  background:linear-gradient(90deg,rgba(214,176,86,0),#f0ce78,rgba(214,176,86,0))}
+.wsel-card.memorial .wsel-name{color:#f4dc9a;text-shadow:0 0 12px rgba(232,188,92,.35)}
+.wsel-card .wsel-note{margin-top:8px;font-size:11.5px;color:#a99a78;text-align:center;letter-spacing:.5px}
+.wsel-card.lock{opacity:.62;filter:grayscale(.35)}
+.wsel-card.lock:hover{transform:none;border-color:rgba(120,160,220,.28);box-shadow:none}
+.wsel-card .wsel-lock{position:absolute;left:0;right:0;bottom:0;padding:5px 0;text-align:center;font-size:11.5px;
+  color:#ffd166;background:linear-gradient(180deg,rgba(10,10,14,0),rgba(10,10,14,.92) 40%);letter-spacing:.5px}
+.wsel-card.spike .wsel-tag{color:#fd6;background:rgba(255,140,0,.15);border-color:rgba(255,140,0,.4)}
+.wsel-close{display:block;margin:24px auto 0;padding:11px 40px;font-size:16px;color:#fff;background:linear-gradient(135deg,#3a6,#282);border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.wsel-close:hover{transform:scale(1.04)}
+#go{background:rgba(0,0,0,.92);z-index:200;display:none}
+#menu{text-align:center;color:#fff;max-width:700px;width:92%;margin:auto;max-height:100%;padding:10px 0}
+#menu h1{font-size:38px;color:#f44;text-shadow:0 0 30px #f00;margin-bottom:4px}
+#menu .subtitle{font-size:13px;color:#666;margin-bottom:8px}
+/* 【1.11.1】标签栏改成**按行铺满**：7 个 tab 一行放不下时会折行（原来 justify-content:center，
+   折出来的第一行右边空 130px、第二行只剩两个按钮、右边空 400px —— 用户："为什么留一个空隙"）。
+   现在 flex-grow 把每一行都拉到满宽，不再有"右边空一截"。 */
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.tab{flex:1 1 auto;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:10px 12px;background:rgba(255,255,255,.05);color:#8a93a3;border:1px solid rgba(255,255,255,.1);border-radius:6px 6px 0 0;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:1px;transition:.2s}
+.tab:hover{background:rgba(255,255,255,.1);color:#c9d3e2}
+.tab.active{background:linear-gradient(180deg,rgba(255,70,85,.20),rgba(255,70,85,.06));color:#ff4655;border-color:#ff4655;border-bottom-color:transparent}
+.panel{display:none;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:0 0 12px 12px;padding:16px;text-align:left}
+.panel.active{display:block}
+/* 【batch175】主菜单一屏放得下：内容区自己滚，**开始/多人这些按钮永远露在外面**，
+   不用每次进来都往下翻半天找按钮。 */
+#menu{max-height:96vh;overflow-y:auto;overscroll-behavior:contain}   /* 兜底：窗口极矮时整个菜单还能滚，不会把按钮裁掉 */
+/* ==================== 【batch229】主菜单三栏：宽屏把功能摊到左右两边，省中间空间 ====================
+   窄屏（<1200px）左右栏整体隐藏，中间全宽 —— 手机横屏 / 小笔记本不受影响。 */
+.menuSide{display:none}
+/* 【batch265】三栏规则移到文末（和横屏的 #menu{display:flex} 放在一起），
+   否则两条 media 同时命中时后者会把 display:grid 覆盖掉 —— 三块叠在一起（用户截图里的错位）。 */
+.sideCard{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:10px 12px;text-align:left}
+.sideTitle{font-size:12px;color:#8fd6ff;font-weight:bold;margin-bottom:7px;letter-spacing:1px}
+.sideRow{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;color:#aaa;padding:3px 0}
+.sideRow b{color:#fff;font-weight:bold;text-align:right;word-break:break-all;max-width:130px}
+.sideHint{font-size:11px;color:#899;line-height:1.65}
+.sideBtn{display:block;width:100%;text-align:left;margin-top:6px;padding:7px 10px;font-size:12px;color:#cdeaff;background:rgba(40,90,140,.35);border:1px solid rgba(120,200,255,.22);border-radius:8px;cursor:pointer;transition:background .15s}
+.sideBtn:hover{background:rgba(60,130,200,.55);color:#fff}
+.sideBtn:first-of-type{margin-top:2px}
+.panel.active{max-height:min(48vh,460px);overflow-y:auto;overscroll-behavior:contain}
+#menuHomeBtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+#menuHomeBtns .start-btn,#menuHomeBtns #netBtn{margin-top:0;padding:11px 18px;font-size:15px;letter-spacing:1px;flex:1 1 160px;max-width:250px}
+#menuSetBtn{margin:8px 5px 0 !important;padding:8px 16px !important;font-size:13px !important}
+#relockBtn{margin:8px 5px 0 !important;padding:8px 16px !important;font-size:13px !important}
+/* ⚠️ 别给 #relockBtn 加 display !important —— 它默认 display:none，由 JS 在「指针没锁上」时才显示；
+   强行 !important 会连 JS 的隐藏一起盖掉，按钮就永远挂在那儿了（batch175 踩过）。 */
+#menuTips{margin:0 auto 6px;max-width:640px;text-align:left}
+#menuTips summary{cursor:pointer;color:#8fd6ff;font-size:12px;list-style:none}
+#menuTips summary::-webkit-details-marker{display:none}
+#menuTips .tip-body{font-size:12px;color:#fa0;line-height:1.6;margin-top:4px}
+.upgrade-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.upgrade-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;transition:.2s}
+.upgrade-card:hover{background:rgba(255,255,255,.07)}
+.upgrade-card.maxed{border-color:rgba(255,204,0,.3);background:rgba(255,204,0,.05)}
+.upgrade-icon{font-size:28px;margin-bottom:8px}
+.upgrade-name{font-size:15px;font-weight:bold;color:#eee;margin-bottom:4px}
+.upgrade-desc{font-size:12px;color:#888;margin-bottom:10px}
+.upgrade-level{display:flex;gap:4px;margin-bottom:10px}
+.level-pip{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.1)}
+.level-pip.filled{background:linear-gradient(90deg,#f44,#f66)}
+.level-pip.filled.maxed{background:linear-gradient(90deg,#fc0,#fd0)}
+.upgrade-btn{width:100%;padding:8px;border:none;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;transition:.2s;color:#fff}
+.upgrade-btn.can-buy{background:linear-gradient(135deg,#f44,#c00)}
+.upgrade-btn.can-buy:hover{transform:scale(1.03)}
+.upgrade-btn.locked{background:rgba(255,255,255,.08);color:#555;cursor:not-allowed}
+.upgrade-btn.max-level{background:linear-gradient(135deg,#fc0,#da0);color:#000;cursor:default}
+.gold-display{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px;font-size:22px;color:#fc0;font-weight:bold}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.info-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px}
+/* 【batch124 世界观】阵营小标 / 选人分组标题 / 本季剧情卡 */
+.vl-fac{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,255,255,.10);vertical-align:middle}
+.vl-group{display:flex;align-items:center;gap:8px;margin:7px 2px 1px;font:800 11px/1.6 system-ui;letter-spacing:1px}
+.vl-group::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.12)}
+.vl-dfac{font-size:11px;font-weight:700;letter-spacing:1px;margin-top:3px;color:#8ea3c0}
+.info-card.story{grid-column:1 / -1;border-color:rgba(255,200,110,.42);
+  background:linear-gradient(180deg,rgba(255,200,110,.08),rgba(255,255,255,.03))}
+.info-card.story h3{color:#ffd75e}
+.info-card.story .fac{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.info-card.story .fac>div{flex:1 1 210px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.7;color:#cfe0f2}
+.info-card.story .fac b{color:#fff}
+.info-card h3{font-size:14px;color:#f44;margin-bottom:8px}
+.info-card p{font-size:12px;color:#aaa;line-height:1.6}
+/* ==================== 特工 / 地图选择（瓦罗兰特风，batch117）====================
+   要点：深色底 + 强调色细分割线；标题大写 + 大字距；左边一列特工（色条+头像+名字+定位+技能图标），
+   右边一大块详情（主色径向渐变的"立绘位" + 巨型图标 + 名字水印 + ✓已选择角标，下面 3 条技能）。
+   全部用 CSS 画，不引外部图片（单文件、离线可用）。强调色 #ff4655＝瓦罗兰特的标志红。
+   【注意】.hero-card 的 class 必须**原样**保留（t_hero.js 会数 `class="hero-card"` 恰好 4 个），
+   所以"选中"靠内联 box-shadow + 卡片里的角标来表示，不能靠加 class。 */
+.vl-panel{background:linear-gradient(180deg,rgba(13,16,26,.94),rgba(7,9,15,.97)) !important;
+  border:1px solid rgba(255,70,85,.30) !important;border-radius:0 0 12px 12px !important}
+.vl-head{display:flex;align-items:baseline;gap:10px;padding:0 2px 9px;border-bottom:2px solid rgba(255,70,85,.55);margin-bottom:11px}
+.vl-title{font-size:19px;font-weight:800;color:#fff;letter-spacing:3px}
+.vl-sub{font-size:10px;font-weight:700;color:#ff4655;letter-spacing:3px;opacity:.9}
+.vl-note{font-size:11px;color:#93a3ba;line-height:1.6;margin-bottom:11px;padding-left:8px;border-left:3px solid rgba(255,70,85,.5)}
+.vl-note b{color:#ffd166}
+/* ---- 特工：左列 + 右详情 ---- */
+.vl-hero{display:grid;grid-template-columns:190px 1fr;gap:14px;align-items:start}
+.vl-list{display:flex;flex-direction:column;gap:7px;
+  /* 【batch180】角色一多（尤其是装了模组角色）或名字一长，列表就撑得比面板还高，
+     超出可视区后**后面的角色直接看不见**。限高 + 自带滚动，保证再多角色也都能翻到。 */
+  max-height:min(56vh,520px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
+.hero-card{--c:#8ea3c0;position:relative;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:center;
+  background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:2px solid rgba(255,255,255,.10);
+  border-left:5px solid var(--c);border-radius:4px 10px 10px 4px;padding:8px 9px;cursor:pointer;transition:.16s;text-align:left}
+.hero-card:hover{background:linear-gradient(90deg,rgba(255,255,255,.11),rgba(255,255,255,.03));transform:translateX(2px)}
+.hero-card .vl-face{grid-row:1 / span 2;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;border-radius:50%;background:rgba(0,0,0,.38);border:1px solid var(--c)}
+.hero-card .vl-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:1px;
+  /* 【batch180】名字 + 后面内联挂的「阵营 / 🔒锁定 / 🧩模组」标签会把卡片撑成两三行
+     （🧩 模组原来压根没有样式，直接继承 14px 粗体，特别占宽）→ 列表更高、后面的角色被挤出可视区。
+     改成弹性行：**名字自己单行省略**，三个标签 flex:none 永不压缩，长名收起来（完整名在右侧详情看）。 */
+  display:flex;align-items:center;min-width:0}
+.hero-card .vl-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-card .vl-fac,.hero-card .vl-lock,.hero-card .vl-mod{flex:none;white-space:nowrap}
+.hero-card .vl-mod{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  color:#9ad8ff;border:1px solid rgba(120,200,255,.45);background:rgba(120,200,255,.12)}
+.hero-card .vl-role{font-size:10px;font-weight:700;color:var(--c);letter-spacing:1px}
+.hero-card .vl-keys{grid-column:1 / span 2;display:flex;gap:4px;margin-top:4px}
+.hero-card .hs{width:22px;height:20px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;border-radius:4px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14)}
+.hero-card .hd{grid-column:1 / span 2;margin-top:4px;font-size:10px;line-height:1.4;color:#8ea3c0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 【batch171】熟练度条（英雄卡内） */
+.hero-card .vl-xp{grid-column:1 / span 2;margin-top:5px}
+.hero-card .vl-xplv{font-size:10px;font-weight:700;color:#9ab;letter-spacing:.5px}
+.hero-card .vl-sptag{margin-left:6px;font-size:10px;font-weight:800;color:#ffd166;border:1px solid rgba(255,209,102,.5);
+  border-radius:4px;padding:0 5px;background:rgba(255,209,102,.12)}
+.hero-card .vl-xpbar{margin-top:3px;height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden}
+.hero-card .vl-xpbar i{display:block;height:100%;background:#49b6ff;border-radius:3px;transition:width .2s}
+/* 【batch171】SP 切换盒（详情区） */
+.vl-spbox{margin-top:10px;padding:9px 11px;border-radius:8px;border:1px dashed rgba(255,209,102,.45);background:rgba(255,209,102,.06)}
+.vl-spbox.on{border-style:solid;background:rgba(255,209,102,.12)}
+.vl-sptitle{font-size:13px;font-weight:800;color:#ffd166;letter-spacing:1px}
+.vl-spdesc{font-size:11px;color:#c9d3e2;line-height:1.5;margin:4px 0 8px}
+.vl-spbtn{display:block;width:100%;padding:8px;font-size:13px;font-weight:800;color:#10131c;cursor:pointer;
+  background:linear-gradient(135deg,#ffd166,#ffb454);border:none;border-radius:7px;letter-spacing:1px}
+.vl-spbtn:hover{filter:brightness(1.08)}
+.vl-spflag{font-size:11px;font-weight:800;color:#ffd166;border:1px solid rgba(255,209,102,.55);border-radius:4px;padding:1px 6px;vertical-align:2px}
+.vl-detail{position:relative;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px}
+.vl-big{position:relative;height:104px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.12);
+  background:radial-gradient(circle at 24% 20%,var(--c),rgba(8,10,18,.97) 66%)}
+.vl-bigicon{position:absolute;left:20px;top:50%;transform:translateY(-50%);font-size:50px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.65))}
+.vl-watermark{position:absolute;right:12px;bottom:-8px;font-size:42px;font-weight:900;letter-spacing:5px;color:rgba(255,255,255,.10);white-space:nowrap}
+.vl-sel{position:absolute;right:8px;top:8px;font-size:11px;font-weight:700;color:#ff4655;border:1px solid rgba(255,70,85,.75);
+  border-radius:4px;padding:2px 7px;background:rgba(255,70,85,.14)}
+.vl-dname{font-size:17px;font-weight:800;color:#fff;letter-spacing:2px;margin:10px 0 2px}
+.vl-drole{font-size:11px;font-weight:700;color:var(--c);letter-spacing:2px}
+.vl-sk{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)}
+.vl-skico{grid-row:1 / span 2;position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;border-radius:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15)}
+.vl-skico b{position:absolute;right:-4px;bottom:-4px;padding:0 3px;font-size:9px;color:#fff;background:#ff4655;border-radius:3px}
+.vl-skname{font-size:13px;font-weight:700;color:#fff}
+.vl-skcd{margin-left:6px;font-size:10px;font-weight:400;color:#7fd6ff}
+.vl-skdesc{font-size:11px;color:#a9b6cc;line-height:1.5}
+.vl-passive{margin-top:9px;padding:7px 9px;border-radius:7px;background:rgba(255,70,85,.09);
+  border:1px solid rgba(255,70,85,.30);font-size:11px;color:#ffd7da;line-height:1.55}
+/* ---- 地图：一条一条横着排 ---- */
+.vl-maps{display:flex;flex-direction:column;gap:10px}
+.map-card{--c:#6ea8ff;position:relative;display:grid;grid-template-columns:118px 1fr;gap:12px;
+  background:rgba(255,255,255,.035);border:2px solid rgba(255,255,255,.10);border-radius:8px;padding:9px;
+  transition:.16s;cursor:pointer;text-align:left}
+.map-card:hover{background:rgba(255,255,255,.075);transform:translateX(2px)}
+.map-card.on{border-color:#ff4655;box-shadow:inset 0 0 0 1px rgba(255,70,85,.45)}
+.map-card .vl-thumb{display:flex;align-items:center;justify-content:center;font-size:36px;border-radius:6px;
+  border:1px solid rgba(255,255,255,.12);background:radial-gradient(circle at 50% 40%,var(--c),rgba(7,9,15,.96) 72%)}
+.map-card .vl-mtop{display:flex;align-items:center}
+.map-card .vl-mname{font-size:16px;font-weight:800;color:#fff;letter-spacing:2px}
+.map-card .vl-mtag{margin-left:8px;padding:1px 6px;font-size:10px;font-weight:700;color:#ff4655;
+  border:1px solid rgba(255,70,85,.75);border-radius:4px;background:rgba(255,70,85,.14)}
+.map-card .md{margin-top:5px;font-size:11px;color:#a9b6cc;line-height:1.55}
+.map-card .mc{margin-top:5px;font-size:11px;color:#7fd6ff}
+/* 狙击开镜时技能栏压淡：镜片正下方就是技能栏，不淡掉会横穿镜片把视野切两半。
+   只是压淡（0.32）不是隐藏 —— 冷却还能看，键位照常能用。收镜立刻恢复。 */
+body.scope-on #skillHud{opacity:.32;transition:opacity .18s linear}
+/* 【1.11.0】技能 HUD 改成」每个技能一张独立小卡」：
+   ① 容器不再有背景板/边框（去掉后拖动单个技能不会留下一个空框）；
+   ② 容器改为 left:0;right:0 + justify-content:center，**不能再用 transform** ——
+      transform 会让子元素里的 position:fixed 相对容器定位，拖动百分比就全错了；
+   ③ 三个槽都能在「按键设置」里单独拖到任意位置（js/72 会把三个一起转成 fixed）。 */
+/* 【1.11.4】⚠️ transform 必须是 none 且加 !important：.skSlot.mobPos 是 position:fixed，
+   只要 #skillHud 有 transform，它就成了 fixed 子元素的包含块 → 玩家拖好的技能位置全部错位。
+   以后谁想给技能栏加动画/缩放，请包一层内层容器，别动 #skillHud 这一层。 */
+#skillHud{position:fixed;left:0;right:0;bottom:calc(92*var(--u));transform:none !important;z-index:220;display:none;align-items:flex-end;justify-content:center;gap:calc(8*var(--u));padding:0;border-radius:0;background:none;border:none;color:#e8eefc;font-size:12px;pointer-events:none}
+/* 【1.11.1】三张卡各缩一圈（82→74、图标 32→28）：--u 的上限是 2.2px，
+   1920 屏上原来单卡 180×177、三张 540px 宽 —— 用户反馈"太大、快占满屏幕"。
+   现在单卡 ≈163×145（1920），三张 489px，仍比键盘/摇杆区窄，不压视野。 */
+#skillHud .skSlot{display:flex;flex-direction:column;align-items:center;gap:calc(1*var(--u));width:calc(74*var(--u));padding:calc(3*var(--u)) calc(2*var(--u));border-radius:calc(9*var(--u));opacity:.55;transition:.15s;
+  background:rgba(16,18,28,.72);border:calc(2*var(--u)) solid rgba(255,255,255,.16)}
+/* 拖动过 / 正在编辑的技能槽：脱离 flex（fixed 到视口），大小透明度跟 --ks/--ka */
+#skillHud .skSlot.mobPos{position:fixed;left:0;top:0;z-index:221;margin:0;
+  transform:translate(-50%,-50%) scale(var(--ks,1));opacity:var(--ka,.55);}
+#skillHud .skSlot.ready{opacity:1;box-shadow:0 0 10px rgba(123,255,168,.30)}
+#skillHud .skSlot .skIcon{width:calc(28*var(--u));height:calc(28*var(--u));border-radius:calc(7*var(--u));display:flex;align-items:center;justify-content:center;font-size:calc(15*var(--u));font-weight:bold}
+#skillHud .skSlot .skName{font-size:calc(9.5*var(--u));color:#cfd8ea;white-space:nowrap}
+#skillHud .skSlot .skKey{font-size:calc(9.5*var(--u));color:#8ea3c0}
+#skillHud .skSlot .skBarWrap{width:calc(62*var(--u));height:calc(4*var(--u));border-radius:calc(3*var(--u));background:rgba(255,255,255,.15);overflow:hidden}
+#skillHud .skSlot .skBar{height:100%;width:0}
+
+.start-btn{margin-top:24px;padding:16px 60px;font-size:24px;font-weight:bold;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:10px;cursor:pointer;transition:.3s;letter-spacing:2px}
+.start-btn:hover{transform:scale(1.05)}
+#hud{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none !important;z-index:50;display:none}
+/* 【batch197】准星重做：四段短线 + 中心点。间隙 --gap 由 JS 按**真实散布**每帧写入
+   （走起来张开、停下收拢、开枪弹一下、开镜收到最小），眼睛能直接读出"这一枪会不会偏"。
+   黑描边（box-shadow）保证在亮墙 / 强光 / 白天空底下仍然看得见 —— 原来 70% 白线在亮处几乎消失。 */
+#crosshair{position:absolute;top:50%;left:50%;width:0;height:0;--gap:5px;--len:8px;transition:opacity .12s linear}
+#crosshair i{position:absolute;display:block;background:#f4f8ff;border-radius:1px;box-shadow:0 0 0 1px rgba(0,0,0,.82),0 0 5px rgba(0,0,0,.45)}
+#crosshair i.u,#crosshair i.d{width:2px;height:var(--len);left:-1px}
+#crosshair i.l,#crosshair i.r{height:2px;width:var(--len);top:-1px}
+#crosshair i.u{top:calc(-1*(var(--gap) + var(--len)))}
+#crosshair i.d{top:var(--gap)}
+#crosshair i.l{left:calc(-1*(var(--gap) + var(--len)))}
+#crosshair i.r{left:var(--gap)}
+#crosshair .dot{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 0 1px rgba(0,0,0,.65)}
+/* ============ 【batch203】纪念枪「长明」专属准星 ============
+   为什么要另做一套：通用准星是白色四段线 + 红点，任何枪都一样。纪念枪要"一眼认得出"：
+   暖金刻线（和老兵勋章一个色系）+ 中心一颗暖光点 + 四角 45° 斜芒（像星芒收束）。
+   尺寸与开合完全沿用同一套散布数据（js/24 _准星刷新 写 --gap），所以"走起来张开、
+   停下收拢"的手感与通用准星一模一样，只是看起来不一样。 */
+#memCross{position:absolute;top:50%;left:50%;width:0;height:0;--gap:5px;--len:9px;opacity:1;transition:opacity .12s linear;pointer-events:none}
+#memCross i{position:absolute;display:block;background:#ffd88a;border-radius:1px;
+  box-shadow:0 0 0 1px rgba(46,30,0,.88),0 0 6px rgba(255,198,86,.62)}
+#memCross i.u,#memCross i.d{width:2px;height:var(--len);left:-1px}
+#memCross i.l,#memCross i.r{height:2px;width:var(--len);top:-1px}
+#memCross i.u{top:calc(-1*(var(--gap) + var(--len)))}
+#memCross i.d{top:var(--gap)}
+#memCross i.l{left:calc(-1*(var(--gap) + var(--len)))}
+#memCross i.r{left:var(--gap)}
+/* 四角斜芒：先居中 → 绕自身转 45° → 沿旋转后的 Y 轴推出去，正好落在对角线方向 */
+#memCross i.k1,#memCross i.k2,#memCross i.k3,#memCross i.k4{
+  width:1px;height:7px;left:0;top:0;background:rgba(255,214,132,.60);
+  box-shadow:0 0 0 1px rgba(40,26,0,.55)}
+#memCross i.k1{transform:translate(-50%,-50%) rotate(45deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross i.k2{transform:translate(-50%,-50%) rotate(135deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross i.k3{transform:translate(-50%,-50%) rotate(225deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross i.k4{transform:translate(-50%,-50%) rotate(315deg) translateY(calc(-1*(var(--gap) + var(--len) + 9px)))}
+#memCross .dot{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;
+  background:#ffeab4;box-shadow:0 0 0 1px rgba(48,30,0,.72),0 0 7px rgba(255,192,84,.95),0 0 15px rgba(255,146,40,.55)}
+/* 开镜时（含镜内视野）纪念准星让位给分划 */
+body.scope-on #memCross{opacity:0}
+/* ============ 联机「感谢陪伴」横幅 ============ */
+#memThanks{position:fixed;left:50%;top:9%;transform:translate(-50%,-22px);z-index:520;pointer-events:none;opacity:0;transition:opacity .5s ease,transform .5s ease}
+#memThanks.on{opacity:1;transform:translate(-50%,0)}
+#memThanks .card{position:relative;padding:13px 30px 14px;border-radius:12px;text-align:center;
+  background:linear-gradient(180deg,rgba(28,22,10,.90),rgba(16,13,7,.94));
+  border:1px solid rgba(214,176,86,.55);
+  box-shadow:0 10px 34px rgba(0,0,0,.62),0 0 0 1px rgba(0,0,0,.5) inset,0 0 26px rgba(214,176,86,.16)}
+#memThanks .card::before{content:'';position:absolute;left:14px;right:14px;top:6px;height:1px;
+  background:linear-gradient(90deg,rgba(214,176,86,0),rgba(240,206,120,.85),rgba(214,176,86,0))}
+#memThanks .line1{font-size:20px;font-weight:700;letter-spacing:4px;color:#f4dc9a;
+  text-shadow:0 0 14px rgba(232,188,92,.55),0 2px 6px #000}
+#memThanks .line2{margin-top:6px;font-size:12.5px;letter-spacing:1.5px;color:#c9b489}
+#memThanks .line2 b{color:#ffe9b6;font-weight:700}
+body.is-touch #memThanks{top:6%;transform:translate(-50%,-14px) scale(.9)}
+body.is-touch #memThanks.on{transform:translate(-50%,0) scale(.9)}
+/* ============ 【batch215】纪念枪「长明」专属击杀计数 ============
+   黑金竖卡，贴在屏幕右侧中部：不挡准星、不撞右下弹药/左下血条、也不和上方横幅打架。
+   每次击杀滑入 → 数字弹一下 + "+1" 上飘 → 2.2 秒后自动收回。 */
+#memKill{position:fixed;right:34px;top:44%;z-index:515;pointer-events:none;
+  opacity:0;transform:translateX(20px);
+  transition:opacity .16s ease,transform .24s cubic-bezier(.2,.9,.3,1.18)}
+#memKill.on{opacity:1;transform:translateX(0)}
+#memKill .mk{position:relative;min-width:138px;padding:9px 14px 10px;text-align:right;
+  background:linear-gradient(180deg,rgba(28,23,11,.91),rgba(9,8,5,.94));
+  border:1px solid rgba(214,176,86,.52);border-radius:3px;
+  box-shadow:0 9px 28px rgba(0,0,0,.62),0 0 24px rgba(214,176,86,.10),inset 0 0 0 1px rgba(0,0,0,.65)}
+/* 左上 / 右下两个金色角标（像仪表盘的定位角） */
+#memKill .mk::before,#memKill .mk::after{content:'';position:absolute;width:10px;height:10px;
+  border:1px solid #e6c46a;opacity:.85}
+#memKill .mk::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+#memKill .mk::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+#memKill .t{font-size:9px;letter-spacing:2.4px;color:#8d7538;font-family:Consolas,'Courier New',monospace;white-space:nowrap}
+#memKill .n{font-size:38px;line-height:1.04;font-weight:800;letter-spacing:1px;
+  color:#f6e2a8;font-family:Consolas,'Courier New',monospace;
+  text-shadow:0 0 16px rgba(232,188,92,.5),0 2px 0 rgba(0,0,0,.55)}
+#memKill .u{font-size:10px;letter-spacing:5px;color:#c9b489;margin-top:1px}
+#memKill .b{margin-top:7px;height:2px;background:rgba(214,176,86,.16);overflow:hidden}
+#memKill .b i{display:block;height:100%;width:100%;
+  background:linear-gradient(90deg,rgba(214,176,86,0),#e6c46a);animation:mkBar 2.2s linear forwards}
+#memKill .p{position:absolute;right:13px;top:-15px;font-size:15px;font-weight:800;opacity:0;
+  color:#ffe9b6;font-family:Consolas,'Courier New',monospace;text-shadow:0 0 10px rgba(255,214,120,.7)}
+#memKill.go .n{animation:mkPop .34s cubic-bezier(.2,1.4,.4,1)}
+#memKill.go .p{animation:mkPlus .95s ease-out forwards}
+@keyframes mkPop{0%{transform:scale(1.45);color:#fff9e6}100%{transform:scale(1)}}
+@keyframes mkPlus{0%{opacity:0;transform:translateY(7px) scale(.9)}16%{opacity:1}100%{opacity:0;transform:translateY(-18px) scale(1)}}
+@keyframes mkBar{0%{width:100%}100%{width:0}}
+/* ============ 【batch273】南瓜鬼宴：专属准星 + 击杀计数卡 ============
+   配色跟枪皮一致：南瓜橙 #ffa63d + 暗紫 #6b3fa0。
+   准星和 #memCross 完全同构（四个正交刻线 + 四角斜芒 + 中心点），
+   只换颜色和中心点形状 —— 都是同一份散布数据驱动，算法一行没变。 */
+#hwCross{position:absolute;top:50%;left:50%;width:0;height:0;--gap:5px;--len:9px;opacity:0;
+  transition:opacity .12s linear;pointer-events:none}
+#hwCross i{position:absolute;display:block;background:#ffb45c;border-radius:1px;
+  box-shadow:0 0 6px rgba(255,150,40,.75)}
+#hwCross i.u,#hwCross i.d{width:2px;height:var(--len);left:-1px}
+#hwCross i.l,#hwCross i.r{height:2px;width:var(--len);top:-1px}
+#hwCross i.u{top:calc(-1*(var(--gap) + var(--len)))}
+#hwCross i.d{top:var(--gap)}
+#hwCross i.l{left:calc(-1*(var(--gap) + var(--len)))}
+#hwCross i.r{left:var(--gap)}
+/* 四角斜芒：改成短短的"南瓜角"，比长明的斜芒更短更钝 */
+#hwCross i.k1,#hwCross i.k2,#hwCross i.k3,#hwCross i.k4{
+  width:2px;height:7px;left:-1px;top:-3.5px;background:#ff8a1f;transform-origin:50% 50%;opacity:.9}
+#hwCross i.k1{transform:translate(-50%,-50%) rotate(45deg) translateY(calc(-1*(var(--gap) + var(--len) + 8px)))}
+#hwCross i.k2{transform:translate(-50%,-50%) rotate(135deg) translateY(calc(-1*(var(--gap) + var(--len) + 8px)))}
+#hwCross i.k3{transform:translate(-50%,-50%) rotate(225deg) translateY(calc(-1*(var(--gap) + var(--len) + 8px)))}
+#hwCross i.k4{transform:translate(-50%,-50%) rotate(315deg) translateY(calc(-1*(var(--gap) + var(--len) + 8px)))}
+/* 中心：一颗糖（橙芯 + 紫圈），比长明的暖光点更"实" */
+#hwCross .dot{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:5px;height:5px;
+  border-radius:50%;background:#ffb45c;border:1.5px solid #7b3fb0;box-shadow:0 0 8px rgba(255,150,40,.9)}
+body.scope-on #hwCross{opacity:0}
+
+#hwKill{position:fixed;right:34px;top:52%;z-index:516;pointer-events:none;
+  opacity:0;transform:translateX(20px);
+  transition:opacity .16s ease,transform .24s cubic-bezier(.2,.9,.3,1.18)}
+#hwKill.on{opacity:1;transform:translateX(0)}
+#hwKill .hk{position:relative;min-width:150px;padding:8px 14px 10px;text-align:right;
+  background:linear-gradient(180deg,rgba(38,20,52,.93),rgba(12,8,18,.95));
+  border:1px solid rgba(255,166,61,.55);border-radius:4px;
+  box-shadow:0 9px 28px rgba(0,0,0,.62),0 0 26px rgba(168,85,247,.16),inset 0 0 0 1px rgba(0,0,0,.6)}
+#hwKill .hk::before,#hwKill .hk::after{content:'';position:absolute;width:10px;height:10px;
+  border:1px solid #ffa63d;opacity:.9}
+#hwKill .hk::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+#hwKill .hk::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+/* 三个元素：南瓜 / 鬼魂 / 糖果，轻微上下浮动，别抢数字的戏 */
+#hwKill .row{display:flex;gap:5px;justify-content:flex-end;align-items:center;margin-bottom:2px;font-size:15px;line-height:1}
+#hwKill .row span{display:inline-block;filter:drop-shadow(0 0 6px rgba(255,150,40,.55))}
+#hwKill .row .pump{animation:hwBob 2.4s ease-in-out infinite}
+#hwKill .row .ghost{animation:hwBob 2.4s ease-in-out .35s infinite;opacity:.92}
+#hwKill .row .candy{animation:hwBob 2.4s ease-in-out .7s infinite}
+@keyframes hwBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+#hwKill .t{font-size:9px;letter-spacing:2px;color:#b08a5a;font-family:Consolas,'Courier New',monospace;white-space:nowrap}
+#hwKill .n{font-size:38px;line-height:1.04;font-weight:800;letter-spacing:1px;
+  color:#ffe0b0;font-family:Consolas,'Courier New',monospace;
+  text-shadow:0 0 16px rgba(255,150,40,.55),0 2px 0 rgba(0,0,0,.55)}
+#hwKill .u{font-size:10px;letter-spacing:5px;color:#d0a878;margin-top:1px}
+#hwKill .b{margin-top:7px;height:2px;background:rgba(255,166,61,.18);overflow:hidden}
+#hwKill .b i{display:block;height:100%;width:100%;
+  background:linear-gradient(90deg,rgba(168,85,247,0),#ffa63d);animation:hwBar 2.6s linear forwards}
+#hwKill .p{position:absolute;right:13px;top:-15px;font-size:15px;font-weight:800;opacity:0;
+  color:#ffe0b0;font-family:Consolas,'Courier New',monospace;text-shadow:0 0 10px rgba(255,166,61,.8)}
+#hwKill.go .n{animation:mkPop .34s cubic-bezier(.2,1.4,.4,1)}
+#hwKill.go .p{animation:mkPlus .95s ease-out forwards}
+@keyframes hwBar{0%{width:100%}100%{width:0}}
+body.is-touch #hwKill{right:14px;top:46%;transform:translateX(14px) scale(.82)}
+body.is-touch #hwKill.on{transform:translateX(0) scale(.82)}
+body.scope-on #hwKill{opacity:.44}
+/* 手机版：缩小并往内挪，别压住右侧的摇杆/开火键 */
+body.is-touch #memKill{right:14px;top:38%;transform:translateX(14px) scale(.82)}
+body.is-touch #memKill.on{transform:translateX(0) scale(.82)}
+/* 开镜时压暗（镜内视野是中心圆，这张卡在黑筒上，压暗一点不抢戏） */
+body.scope-on #memKill{opacity:.44}
+.dot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:#f44}
+#hp-wrap{position:absolute;bottom:30px;left:30px;width:220px;height:18px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.15);border-radius:9px;overflow:hidden}
+#hp-bar{height:100%;width:100%;background:linear-gradient(90deg,#4f4,#6f6);transition:width .2s;border-radius:9px}
+#hp-text{position:absolute;bottom:52px;left:30px;color:#fff;font-size:13px;font-weight:bold;text-shadow:0 0 4px #000}
+#gold-hud{position:absolute;bottom:30px;left:270px;color:#fc0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #000}
+#score{position:absolute;top:16px;right:24px;color:#fff;font-size:22px;font-weight:bold;text-shadow:0 0 8px #000}
+#wave{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#fc0;font-size:17px;font-weight:bold;text-shadow:0 0 8px #000}
+#ammo{position:absolute;bottom:30px;right:30px;color:#fff;font-size:32px;font-weight:bold;text-shadow:0 0 8px #000}
+#ammo span{font-size:16px;color:#aaa}
+#weapon-name{position:absolute;bottom:68px;right:30px;color:#aaa;font-size:14px;font-weight:bold;text-shadow:0 0 4px #000}
+#reload-text{position:absolute;bottom:68px;right:30px;color:#fa0;font-size:14px;opacity:0;transition:opacity .2s}
+#msg{position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);font-size:36px;font-weight:bold;text-shadow:0 0 16px #000;opacity:0;transition:opacity .4s;color:#fff}
+#dmg-overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none !important;z-index:45;border:6px solid transparent;transition:border-color .1s}
+#minimap{position:absolute;top:55px;right:16px;width:120px;height:120px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);border-radius:50%;overflow:hidden;transform:scale(var(--ks,1));transform-origin:100% 0;opacity:var(--ka,1)}
+#fps{position:absolute;top:16px;left:16px;color:#0f0;font-size:11px;font-family:monospace}
+.gold-popup{position:fixed;pointer-events:none;z-index:60;color:#fc0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #000;animation:goldFloat 1.2s forwards}
+@keyframes goldFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
+.ws-btn{padding:12px 40px;font-size:18px;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.ws-btn:hover{transform:scale(1.05)}
+#go h1{font-size:56px;color:#f44;text-shadow:0 0 24px #f00;margin-bottom:16px}
+#go p{color:#fff;font-size:18px;margin:6px}
+#go .btn{margin-top:24px;padding:14px 44px;font-size:20px;color:#fff;background:linear-gradient(135deg,#f44,#c00);border:none;border-radius:8px;cursor:pointer}
+/* ==================== 手机版操作层（1.10.18 全面重写） ====================
+   【这套为什么不会再乱】
+   整套界面只用 --u（设计像素）和 CSS 定位，**JS 一个 px 都不算**。
+   --u 的定义：750×375 横屏 = 1，屏幕比它小就等比缩、比它大就等比放。
+   旧版的位置是 JS 用 window.innerWidth 反推、再写进 style.left/top 的：
+   WebView 里只要发生一次整体缩放（或系统字体放大、或 overviewMode 把页面缩到装得下），
+   布局坐标和触摸坐标就不是同一套单位 —— 屏幕上看着按键在 A 处，手指点 A 处却没反应。
+   交给 CSS 之后，画出来的和摸到的天然是同一套单位，客户端和浏览器行为一致。
+
+   【布局】
+     左 42%   = 移动区（落指即出现动态摇杆）
+     其余全屏 = 视角区（可以多指同时拖）
+     右下角   = 战斗键簇：开火在拇指最舒服的角落，其余沿弧线排开
+     底部中间 = 技能 HUD（3 个圆槽，直接点，不再单独开键）
+
+   【键位间距规则】
+   两个按钮的圆心距离必须 ≥ 各自半径之和 + 8，否则指腹按 A 会压到 B。
+   下面每个 right/bottom/size 都是照这条算出来的，改任何一个都要重算相邻的。
+     开火   r=52  right 20  bottom 20
+     开镜   r=41  right 24  bottom 134   → 距开火 103 ≥ 101 ✔
+     换弹   r=35  right 136 bottom 26    → 距开火 100 ≥  95 ✔
+     跳跃   r=35  right 116 bottom 106   → 距开火 105 ≥  95 ✔
+     蹲     r=33  right 220 bottom 30    → 距换弹  82 ≥  76 ✔
+     换枪   r=33  right 204 bottom 106   → 距蹲    78 ≥  74 ✔
+   ========================================================================= */
+#touchUI{
+  position:fixed;inset:0;z-index:40;pointer-events:none;display:none;
+  user-select:none;-webkit-user-select:none;touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+}
+/* ==================== 【1.11.0】统一缩放令牌（全比例 / 全尺寸兼容） ====================
+   旧的 --u 只有 min(宽约束, 高约束) 两条，没有上下界、也没扣浏览器工具栏，
+   于是：① 超窄/竖屏 按钮挤爆；② 720P + 地址栏把底部按键裁掉一条；
+   ③ 4K 上 HUD 无限放大。修法不是"再开几档"（那是补丁），而是一个公式 + 三层能力检测：
+
+     --u = clamp(下限, min( vw/820 , dvh/420 ), 上限)
+              0.52px                2.2px
+
+   · 设计基准 820×420（比原来 750×375 略大一档基准 → 同屏幕下按钮略小 8%，
+     正好落在"拇指能盖住、又不挡视野"的区间）；
+   · min(vw/A, vh/B) 保证**任何宽高比都同时满足宽高两个约束**，不会横向溢出；
+   · dvh（动态视口）扣掉手机浏览器地址栏，工具栏收起/展开都不裁底；
+   · clamp 下限保证极小窗口按钮仍 ≥54px（能点），上限保证 4K 不把 HUD 放大成墙；
+   · 三层 @supports 是**能力检测**（老内核没有 min()/clamp() 时逐级退回），
+     不是按屏幕尺寸开档 —— 任何设备只会命中"它支持的最高一层"，逻辑完全一致。 */
+:root{--u:0.12195vw;--sx:0px;--sy:0px;}
+@supports (width:min(1vw,1vh)){
+  :root{--u:min(0.12195122vw,0.23809524vh);}
+}
+@supports (height:100dvh){
+  :root{--u:min(0.12195122vw,0.23809524dvh);}
+}
+@supports (width:clamp(1px,1vw,2px)){
+  :root{--u:clamp(0.52px,min(0.12195122vw,0.23809524vh),2.2px);}
+}
+@supports (width:clamp(1px,1vw,2px)) and (height:100dvh){
+  :root{--u:clamp(0.52px,min(0.12195122vw,0.23809524dvh),2.2px);}
+}
+/* 安全区：刘海/圆角屏横屏时左右内缩、底部手势条上抬（不支持 env 的设备恒为 0） */
+:root{
+  --sx:env(safe-area-inset-left,0px);
+  --sxr:env(safe-area-inset-right,0px);
+  --sy:env(safe-area-inset-bottom,0px);
+}
+
+/* 【1.11.0】这里原来有两档 `@media (max-height:780px/620px)` 缩小 --u —— 已删除。
+   按屏幕尺寸开档的问题是：720P 与 700P 会跳变、800P 又不缩，永远有一档是错的。
+   现在统一由上面的 clamp(下限, min(vw/820, dvh/420), 上限) 处理，
+   矮屏自动变小、大屏自动封顶，中间没有任何阶跃。 */
+
+/* 【1.11.0】竖屏策略：横屏射击游戏在竖屏下按键必然会互相压/出屏，
+   与其硬塞（截图实测 390×844 时开火键被挤出屏幕），不如给明确指引：
+   · 操作层/技能层/按键设置全部不渲染；
+   · 菜单、设置、起名字仍可竖屏正常浏览（弹窗宽度已改 min(92vw,…)）。
+   这不是"按尺寸开档"，而是产品行为：竖屏不提供对战操作。 */
+#rotateHint{display:none;position:fixed;inset:0;z-index:1300;
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;
+  background:radial-gradient(circle at 50% 38%,#1a2536,#070b12 72%);
+  color:#dbe9ff;text-align:center;font-size:15px;font-weight:800;line-height:1.8;padding:24px}
+#rotateHint b{font-size:38px;line-height:1}
+@media (orientation:portrait){
+  body.is-touch #rotateHint{display:flex}
+  body.is-touch #touchUI,body.is-touch.mob-edit #touchUI{display:none !important}
+  body.is-touch.mob-edit #mobEdit{display:none !important}
+  body.is-touch #skillHud{display:none !important}
+}
+
+/* ==================== 【1.11.0】载入屏 ====================
+   它必须是 body 的第一个元素：HTML 一渲染就整屏盖住，用户在 35 个 js 还没下完时
+   看到的是这个屏，不是白屏 / 半截菜单。三轮流程由 js/73 驱动。
+   z-index 9000 在 #rotateHint(1300) / #blocker 之上，脚本加载失败提示条(99999)之下。 */
+#boot{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 34%,#16203a,#05060c 74%);
+  color:#dbe9ff;font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  opacity:1;visibility:visible;transition:opacity .16s ease,visibility .16s ease}
+#boot.off{opacity:0;visibility:hidden;pointer-events:none}
+/* 淡出的这 160ms 里，下面的名字面板/主菜单会透上来和 logo 叠在一起（截图实测很难看）。
+   body.boot-on 由 js/73 在启动时挂上、收尾时摘掉：屏在的期间下面的界面一律不显示。
+   ⚠️ 只挂在 js 里、不写死在 body 标签上 —— js/73 万一没加载成功，菜单仍然照常可见。 */
+body.boot-on #blocker,body.boot-on #namePanel,body.boot-on #go{visibility:hidden}
+#boot .bootBox{width:clamp(300px,52vw,560px);padding:0 8px;text-align:center}
+#boot .bootLogo{font-size:clamp(26px,4.4vw,46px);font-weight:900;letter-spacing:.14em;
+  color:#fff;text-shadow:0 0 26px rgba(255,70,85,.55),0 0 60px rgba(255,70,85,.22)}
+#boot .bootLogo i{font-style:normal;color:#ff4655;font-size:.62em;letter-spacing:.06em}
+#boot .bootSub{margin-top:7px;font-size:clamp(10px,1.4vw,12px);color:#66748c;letter-spacing:.2em}
+#boot .bootSteps{list-style:none;margin:clamp(16px,3vh,32px) 0 0;padding:0;text-align:left}
+#boot .bootSteps li{display:flex;align-items:center;gap:10px;padding:7px 0;
+  font-size:clamp(12px,1.55vw,14px);color:#67758d;transition:color .25s}
+#boot .bootSteps li b{flex:none;width:9px;height:9px;border-radius:50%;
+  background:#28324a;box-shadow:0 0 0 3px rgba(40,50,74,.30)}
+#boot .bootSteps li span{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#boot .bootSteps li em{flex:none;font-style:normal;font-size:.86em;color:#4b576e}
+#boot .bootSteps li.run{color:#cfe0f8}
+#boot .bootSteps li.run b{background:#54a8ff;box-shadow:0 0 0 3px rgba(84,168,255,.22);
+  animation:bootPulse 1s ease-in-out infinite}
+#boot .bootSteps li.run em{color:#7fb6ff}
+#boot .bootSteps li.ok{color:#8fa3bd}
+#boot .bootSteps li.ok b{background:#3ddc84;box-shadow:0 0 0 3px rgba(61,220,132,.16)}
+#boot .bootSteps li.ok em{color:#4c9a72}
+#boot .bootSteps li.bad{color:#ff9a9a}
+#boot .bootSteps li.bad b{background:#ff5b5b;box-shadow:0 0 0 3px rgba(255,91,91,.20)}
+#boot .bootSteps li.bad em{color:#d97070}
+@keyframes bootPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.42;transform:scale(.80)}}
+#boot .bootBar{position:relative;height:6px;margin-top:clamp(14px,2.2vh,22px);border-radius:99px;
+  background:rgba(255,255,255,.08);overflow:hidden}
+#boot .bootBar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:99px;
+  background:linear-gradient(90deg,#ff4655,#ff8a5c);box-shadow:0 0 14px rgba(255,70,85,.55);
+  transition:width .28s cubic-bezier(.22,.8,.3,1)}
+#boot .bootFoot{display:flex;justify-content:space-between;gap:12px;margin-top:9px;
+  font-size:clamp(10px,1.45vw,12.5px);color:#7d8ca4}
+#boot #bootPct{flex:none;font-variant-numeric:tabular-nums;font-weight:700;color:#ff8a8a}
+#boot #bootMsg{flex:1 1 auto;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#boot .bootFix{display:none;margin-top:16px;padding:9px 16px;border:0;border-radius:8px;
+  background:#ff4655;color:#fff;font-weight:700;font-size:13px;cursor:pointer}
+#boot .bootFix.on{display:inline-block}
+
+/* ---- 触摸分区 ---- */
+#mobLook{position:absolute;inset:0;pointer-events:auto;z-index:10;}
+#mobMove{position:absolute;left:0;top:0;width:38%;height:100%;pointer-events:auto;z-index:20;}
+
+/* ---- 动态摇杆 ---- */
+#mobJoy{
+  position:fixed;left:0;top:0;z-index:45;pointer-events:none;
+  width:calc(132*var(--u));height:calc(132*var(--u));
+  margin-left:calc(-66*var(--u));margin-top:calc(-66*var(--u));
+  opacity:0;transition:opacity .12s linear;
+}
+#mobJoy.on{opacity:1;}
+#mobJoy .mobJoyRing{
+  position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.03) 60%,rgba(255,255,255,0) 71%);
+  border:calc(2*var(--u)) solid rgba(255,255,255,.30);
+  box-shadow:inset 0 0 calc(14*var(--u)) rgba(0,0,0,.30);
+}
+#mobJoy #mobJoyKnob{
+  position:absolute;left:50%;top:50%;
+  width:calc(58*var(--u));height:calc(58*var(--u));
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:radial-gradient(circle at 38% 34%,rgba(255,255,255,.88),rgba(158,190,222,.62));
+  box-shadow:0 calc(2*var(--u)) calc(8*var(--u)) rgba(0,0,0,.45);
+}
+
+/* ---- 通用按键 ---- */
+.mobBtn{
+  position:absolute;z-index:60;pointer-events:auto;touch-action:none;
+  display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:rgba(16,22,34,.50);
+  border:calc(2*var(--u)) solid rgba(255,255,255,.32);
+  color:rgba(232,240,252,.95);
+  font-size:calc(19*var(--u));font-weight:800;letter-spacing:calc(.5*var(--u));
+  text-shadow:0 1px calc(3*var(--u)) rgba(0,0,0,.85);
+  -webkit-tap-highlight-color:transparent;
+  /* 【1.10.19】大小/透明度由「按键设置」写 --ks/--ka；默认 1/1＝原样 */
+  transform:scale(var(--ks,1));
+  opacity:var(--ka,1);
+  transition:transform .07s linear,background .07s linear,border-color .07s linear,opacity .07s linear;
+}
+.mobBtn.down{transform:scale(calc(var(--ks,1)*.91));background:rgba(64,136,216,.72);border-color:rgba(180,226,255,.88);}
+.mobBtn.on{background:rgba(52,164,236,.60);border-color:rgba(150,226,255,.92);
+  box-shadow:0 0 0 calc(3*var(--u)) rgba(92,202,255,.26);}
+
+#mobFire{
+  right:calc(20*var(--u) + var(--sxr));bottom:calc(20*var(--u) + var(--sy));
+  width:calc(104*var(--u));height:calc(104*var(--u));
+  font-size:calc(23*var(--u));
+  background:radial-gradient(circle at 40% 34%,rgba(244,76,76,.86),rgba(154,24,24,.80));
+  border-color:rgba(255,158,158,.60);
+}
+#mobAim{right:calc(24*var(--u) + var(--sxr));bottom:calc(134*var(--u) + var(--sy));width:calc(82*var(--u));height:calc(82*var(--u));
+  font-size:calc(17*var(--u));background:rgba(26,84,154,.58);border-color:rgba(128,200,255,.50);}
+#mobReload{right:calc(136*var(--u) + var(--sxr));bottom:calc(26*var(--u) + var(--sy));width:calc(70*var(--u));height:calc(70*var(--u));font-size:calc(16*var(--u));}
+#mobJump{right:calc(116*var(--u) + var(--sxr));bottom:calc(106*var(--u) + var(--sy));width:calc(70*var(--u));height:calc(70*var(--u));font-size:calc(16*var(--u));}
+#mobCrouch{right:calc(220*var(--u) + var(--sxr));bottom:calc(30*var(--u) + var(--sy));width:calc(66*var(--u));height:calc(66*var(--u));font-size:calc(15*var(--u));}
+#mobSwap{right:calc(204*var(--u) + var(--sxr));bottom:calc(106*var(--u) + var(--sy));width:calc(66*var(--u));height:calc(66*var(--u));font-size:calc(15*var(--u));}
+/* 交互键（原「上梯」）：梯子 / 万圣节南瓜 / 载具 / 剧情营救，全走这一个键 */
+#mobClimb{right:calc(280*var(--u) + var(--sxr));bottom:calc(126*var(--u) + var(--sy));width:calc(80*var(--u));height:calc(80*var(--u));
+  font-size:calc(16*var(--u));background:rgba(30,118,146,.62);border-color:rgba(126,232,255,.62);display:none;}
+
+/* 【1.10.21】左右探头（电脑上是 Q/E，按住才探、松手回正）。
+   放在开镜键上方一排：左探靠里、右探靠外，两键圆心距 76 ≥ 30+30+8，不会串指。
+   高度 200/212 是按 375 设计高算的，拇指上抬一点就够到，不挡开火区。 */
+/* 【1.11.0】探头键上移：原来 peekR 圆心(y=175) 与开镜(y=134) 只差 41u，
+   而半径和是 30+41=71u → 在 720P/1080P 上肉眼可见地叠在一起（截图实测）。
+   现在 peekR=228 / peekL=236：圆心距 83u，留 12u 净空隙；左右两键横距 76u 不串指。 */
+#mobPeekL{right:calc(104*var(--u) + var(--sxr));bottom:calc(236*var(--u) + var(--sy));
+  width:calc(60*var(--u));height:calc(60*var(--u));font-size:calc(15*var(--u));
+  background:rgba(26,84,154,.50);border-color:rgba(128,200,255,.45);}
+#mobPeekR{right:calc(28*var(--u) + var(--sxr));bottom:calc(228*var(--u) + var(--sy));
+  width:calc(60*var(--u));height:calc(60*var(--u));font-size:calc(15*var(--u));
+  background:rgba(26,84,154,.50);border-color:rgba(128,200,255,.45);}
+#mobPeekL.on,#mobPeekR.on{background:rgba(52,164,236,.72);border-color:rgba(160,230,255,.95);}
+
+#mobPause{
+  position:absolute;left:calc(16*var(--u) + var(--sx));top:calc(14*var(--u) + env(safe-area-inset-top,0px));
+  width:calc(56*var(--u));height:calc(56*var(--u));border-radius:calc(14*var(--u));
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(16,22,34,.56);border:calc(2*var(--u)) solid rgba(255,255,255,.34);
+  color:#fff;font-size:calc(24*var(--u));z-index:70;pointer-events:auto;touch-action:none;
+  transform:scale(var(--ks,1));opacity:var(--ka,1);
+  transition:transform .07s linear,opacity .07s linear;-webkit-tap-highlight-color:transparent;
+}
+#mobPause.down{transform:scale(calc(var(--ks,1)*.92));}
+
+/* ==================== 按键自定义（1.10.19） ====================
+   用户拖动过的元素带 .mobPos：定位改用 left/top 的**中心点**百分比，
+   这样换屏幕比例也不会跑偏；transform 里必须带上 translate(-50%,-50%)，
+   否则 scale 会以左上角为原点、按钮越拖越大越歪。 */
+#touchUI .mobPos{transform:translate(-50%,-50%) scale(var(--ks,1));}
+#touchUI .mobPos.down{transform:translate(-50%,-50%) scale(calc(var(--ks,1)*.91));}
+#mobPause.mobPos{transform:translate(-50%,-50%) scale(var(--ks,1));}
+#mobPause.mobPos.down{transform:translate(-50%,-50%) scale(calc(var(--ks,1)*.92));}
+#minimap.mobPos{transform:translate(-50%,-50%) scale(var(--ks,1));transform-origin:50% 50%;}
+#chatBtn.mobPos,#voiceBtn.mobPos{transform:translate(-50%,-50%) scale(var(--ks,1));}
+
+/* ---- 按键设置模式 ---- */
+body.mob-edit #mobLook,body.mob-edit #mobMove{pointer-events:none;}
+body.mob-edit #hud{display:block !important;z-index:195 !important;}   /* 小地图要浮在编辑底色之上，滑块才拖得到 */
+/* #hud 整体 pointer-events:none!important，子元素默认继承不到触摸 → 小地图要单独放行才能拖 */
+body.mob-edit #minimap{pointer-events:auto !important;}
+/* !important 才压得住 JS 写的内联 display:none（交互键平时是藏着的） */
+body.mob-edit #mobClimb{display:flex !important;}
+body.mob-edit #chatBtn,body.mob-edit #voiceBtn{display:flex !important;}
+body.mob-edit #mobFire,body.mob-edit #mobAim,body.mob-edit #mobReload,body.mob-edit #mobJump,
+body.mob-edit #mobCrouch,body.mob-edit #mobSwap,body.mob-edit #mobClimb,body.mob-edit #mobPause,
+body.mob-edit #chatBtn,body.mob-edit #voiceBtn,body.mob-edit #minimap{
+  outline:calc(2*var(--u)) dashed rgba(120,220,255,.85);outline-offset:calc(2*var(--u));
+}
+body.mob-edit .mobSel{outline-color:#ffd166;outline-style:solid;
+  box-shadow:0 0 0 calc(3*var(--u)) rgba(255,209,102,.30);}
+#mobEdit{position:fixed;inset:0;z-index:200;display:none;pointer-events:none;
+  user-select:none;-webkit-user-select:none;touch-action:none;}
+body.mob-edit #mobEdit{display:block;}
+/* 【1.10.21】按键设置必须"随时能进、进去就看得见"：
+   ① 暂停菜单（#blocker, z-index 100）整块藏掉 —— 否则它压在 #touchUI(40) 上面，
+      看着就是"暂停菜单挡住了按键设置"，而且点空白会落到菜单上把暂停取消掉；
+   ② #touchUI 抬到 190（在菜单与 HUD 之上、编辑层 200 之下），没进游戏也强制显示；
+   ③ 给 #touchUI 铺一层深色底：主菜单/暂停背后的画面可能是亮的，铺了才看得清按键。
+      注意底色只能铺在 #touchUI 上 —— 铺在 #mobEdit(200) 上会把按钮(190)盖住变暗。
+   ④ 退出编辑时这些规则一起失效，#blocker 的内联 display:flex 自动回来，还是原来的暂停菜单。 */
+body.mob-edit #blocker{display:none !important;}
+body.mob-edit #touchUI{display:block !important;z-index:190 !important;background:rgba(8,12,20,.74);}
+/* 【1.11.0】编辑技能位置：技能 HUD 沉到底部、压在按键层之上（192），
+   既点得到、也不挡顶部的设置小窗（小窗 200）。 */
+body.mob-edit #skillHud{display:flex !important;z-index:192 !important;bottom:calc(4*var(--u)) !important;
+  pointer-events:auto !important;transform:none !important;}
+body.mob-edit #skillHud .skSlot{pointer-events:auto;opacity:.92;
+  outline:calc(2*var(--u)) dashed rgba(120,220,255,.85);outline-offset:calc(2*var(--u));}
+body.mob-edit #skillHud .skSlot.mobSel{outline-color:#ffd166;outline-style:solid;
+  box-shadow:0 0 0 calc(3*var(--u)) rgba(255,209,102,.30);}
+/* 【1.11.0】按键设置改成**可拖动的小窗口**（用户要求）：
+   以前是贴底的一条通栏，720P 手机上被技能图标压住、滑块还点不到。
+   现在浮在顶部中央：标题栏（#mobEditTip）当拖动手柄，控件在 #mobEditRow 里自动折行；
+   窗口宽度按 --u 走，最大不超过屏幕，位置由 js/72 记住（gunGame.mobEditWin.v1）。 */
+#mobEditBar{position:absolute;left:50%;top:calc(12*var(--u));transform:translateX(-50%);
+  width:calc(760*var(--u));max-width:calc(100vw - 20*var(--u));
+  display:flex;flex-direction:column;gap:calc(6*var(--u));
+  padding:calc(7*var(--u)) calc(10*var(--u)) calc(9*var(--u));
+  border-radius:calc(14*var(--u));pointer-events:auto;touch-action:none;
+  background:rgba(8,14,24,.96);border:1px solid rgba(120,180,255,.42);
+  box-shadow:0 calc(8*var(--u)) calc(28*var(--u)) rgba(0,0,0,.55);}
+#mobEditTip{display:flex;align-items:center;justify-content:center;
+  padding:calc(3*var(--u)) 0 calc(5*var(--u));cursor:move;
+  color:#9fe0ff;font-size:calc(13*var(--u));font-weight:800;letter-spacing:calc(.4*var(--u));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto;
+  border-bottom:1px solid rgba(120,180,255,.22);}
+#mobEditRow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
+  gap:calc(5*var(--u)) calc(12*var(--u));}
+#mobEditBar b{color:#ffd166;font-size:calc(14*var(--u));min-width:calc(56*var(--u));}
+#mobEditBar label{display:flex;align-items:center;gap:calc(6*var(--u));
+  color:#9fb4d6;font-size:calc(13*var(--u));}
+#mobEditBar input[type=range]{width:calc(130*var(--u));}
+#mobEditBar span{color:#cfe6ff;font-weight:700;min-width:calc(38*var(--u));}
+#mobEditBar button{border:none;border-radius:calc(8*var(--u));padding:calc(8*var(--u)) calc(14*var(--u));
+  background:rgba(60,120,200,.9);color:#fff;font-size:calc(13*var(--u));font-weight:700;
+  -webkit-tap-highlight-color:transparent;}
+#mobEditBar button.gray{background:rgba(90,96,112,.9);}
+#mobEditBar button.ok{background:rgba(40,160,110,.95);}
+
+/* ==================== 多比例 / 多尺寸屏幕适配 ====================
+   三类问题：① 手机横屏 / 小笔记本上菜单比屏幕高 → 按钮被顶出可视区（已用 overflow:auto 兜住）
+             ② HUD 左右两端的元素在窄屏上互相压住 → 按宽度收缩字号与位置
+             ③ 技能 HUD 居中在底部，窄屏上会和摇杆/开火键抢位置 → 抬高 + 缩小 */
+@media (max-width:900px){
+  #menu h1{font-size:34px;margin-bottom:6px}
+  #menu .subtitle{font-size:12px;margin-bottom:12px}
+  .tab{padding:8px 14px;font-size:13px}
+  .panel{padding:14px}
+  .gold-display{font-size:17px;margin-bottom:12px}
+  .upgrade-grid{grid-template-columns:1fr 1fr;gap:9px}
+  .info-grid{grid-template-columns:1fr 1fr;gap:9px}
+  /* 窄屏：特工"左列 + 右详情"排不下 → 变成"上面一排特工卡、下面详情" */
+  .vl-hero{grid-template-columns:1fr;gap:10px}
+  .vl-list{flex-direction:row;flex-wrap:wrap}
+  .hero-card{flex:1 1 42%}
+  .map-card{grid-template-columns:88px 1fr;gap:9px}
+  .map-card .vl-thumb{font-size:28px}
+  .start-btn{padding:13px 40px;font-size:20px;margin-top:14px}
+  #score{font-size:17px;right:12px;top:10px}
+  #wave{font-size:14px;top:10px}
+  #fps{top:10px;left:10px}
+  #minimap{width:92px;height:92px;top:44px;right:10px}
+  #hp-wrap{width:150px;left:12px;bottom:26px;height:16px}
+  #hp-text{left:12px;bottom:46px;font-size:12px}
+  #gold-hud{left:172px;bottom:26px;font-size:15px}
+  #ammo{font-size:24px;right:12px;bottom:26px}
+  #weapon-name,#reload-text{bottom:56px;right:12px;font-size:12px}
+  #skillHud{bottom:calc(74*var(--u));gap:calc(5*var(--u))}
+  #skillHud .skSlot{width:calc(66*var(--u))}
+  #skillHud .skSlot .skBarWrap{width:calc(52*var(--u))}
+  #skillHud .skSlot .skName{font-size:9px}
+  #go h1{font-size:38px}
+  #go p{font-size:15px}
+}
+@media (max-height:640px){
+  #menu h1{font-size:26px;margin-bottom:4px}
+  #menu .subtitle{font-size:11px;margin-bottom:8px}
+  .tabs{margin-bottom:10px}
+  .tab{padding:7px 14px;font-size:12px}
+  .panel{padding:12px}
+  .gold-display{font-size:15px;margin-bottom:8px}
+  .upgrade-card{padding:10px}
+  .upgrade-desc{font-size:11px;margin-bottom:6px}
+  .hero-card{padding:7px}
+  .vl-detail{padding:9px}
+  .map-card .md{font-size:10px}
+  .start-btn{padding:11px 34px;font-size:18px;margin-top:10px}
+  #netBtn{padding:9px 20px;font-size:13px;margin-top:8px}
+  #menuSetBtn{padding:8px 16px;font-size:13px;margin-top:8px}
+  /* 【1.11.4】⚠️ 这里原来写的是 `transform:translateX(-50%) scale(.88)`，两个错叠在一起：
+     ① `translateX(-50%)` 是 1.11.0 之前「#skillHud 自己是 left:50% 的居中条」时代的写法。
+        后来容器改成 left:0;right:0 + justify-content:center，这一句就变成"整条再左移半个屏幕"；
+     ② 更致命：**只要祖先元素 transform≠none，position:fixed 的子元素就改以它为包含块**。
+        玩家拖到自定义位置的技能槽是 `.mobPos`（fixed + left/top 百分比），
+        于是不再相对视口，而是相对这条被左移半屏、又缩放过的容器 →
+        槽位跑到屏幕外/错位；视口高度在 640 上下抖动时媒体查询反复开关，
+        槽就在"视口坐标"和"容器坐标"之间来回跳（用户报的「冷却时来回闪」）。
+     矮屏现在只调 bottom，缩放交给 --u（它按 min(vw,vh) 算，本来就自适应）。 */
+  #skillHud{bottom:calc(66*var(--u))}
+  #msg{font-size:26px}
+}
+@media (max-height:520px){
+  #menu h1{font-size:21px}
+  .tab{padding:6px 11px;font-size:11px}
+  .upgrade-desc{display:none}
+  .info-card p{font-size:11px;line-height:1.4}
+  .start-btn{padding:9px 26px;font-size:16px;margin-top:8px}
+  #go h1{font-size:30px}
+  /* 【1.11.4】同 640 那条：不能再给 #skillHud 加 transform —— 会把 .mobPos 的 fixed 槽
+     关进容器坐标系，拖动后的位置全错。矮屏只压底边。 */
+  #skillHud{bottom:calc(58*var(--u))}
+}
+#settingsPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);pointer-events:auto;touch-action:none;z-index:600;}
+#settingsPanel.on{display:flex;}
+.spCard{width:86%;max-width:360px;background:rgba(22,22,34,.97);border:2px solid rgba(255,255,255,.28);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:min(calc(88vh * var(--uiuser,1) / var(--uiz,1)), calc(96vh / var(--uiz,1)));overflow-y:auto;touch-action:auto;}
+.spCard h3{margin:2px 0 12px;font-size:18px;}
+.spRow{font-size:13px;color:#9fb4d6;margin:6px 0 8px;}
+.spBtn{display:block;width:100%;margin:8px 0;padding:11px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;pointer-events:auto;}
+.spClose{background:rgba(90,90,110,.85);}
+.spInfo{font-size:11px;line-height:1.3;color:#8ea3c0;margin:3px 0 2px;letter-spacing:.2px;}
+.spHint{font-size:12px;color:#9aa;line-height:1.5;margin:10px 2px;}
+#spKeysRow{display:none;}
+body:not(.is-touch) #spKeysRow{display:block;}
+#keyPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);z-index:645;touch-action:auto;}
+#keyPanel.on{display:flex;}
+#keyList{max-height:52vh;overflow-y:auto;margin:6px 0 10px;padding-right:4px;}
+.kRow{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px;color:#dfe8f7;}
+.kRow>span:first-child{flex:1;text-align:left;}
+.kCode{min-width:78px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);color:#7fd4ff;font-weight:bold;font-size:12px;}
+.kCode.wait{background:rgba(255,180,60,.28);border-color:#ffb43c;color:#ffd27f;}
+.kBtn{padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:12px;cursor:pointer;}
+#netBtn{display:inline-block;margin:12px 0 0;padding:11px 26px;border-radius:10px;border:1px solid rgba(120,220,255,.5);background:rgba(30,110,170,.9);color:#cdeaff;font-size:15px;font-weight:bold;cursor:pointer;}
+#netBtn:hover{background:rgba(40,140,210,.95);}
+#netPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:660;touch-action:auto;}
+#netPanel.on{display:flex;}
+/* ============ 【batch222】服务器连接条（非遮罩） ============
+   用户口径：打开游戏就先问服务器地址；不填＝离线（能单人、不能多人）；
+   连接失败要提示，反复失败继续提示，直到主动选"离线模式"。
+   ⚠️ 关键：**绝对不能用 position:fixed 全屏遮罩** —— 原来点"多人"弹的是 #netPanel
+      （z-index 660 的全屏 modal），把设置面板（600）压死在下面，玩家以为"没服务器就改不了设置"。
+      这条是文档流里的普通块，只占自己那块地方，点哪都不会挡。 */
+#srvBar{width:min(780px,94%);margin:0 auto 10px;padding:10px 12px;border-radius:12px;
+  background:rgba(18,24,36,.94);border:1px solid rgba(120,200,255,.38);text-align:left;
+  box-shadow:0 6px 20px rgba(0,0,0,.35);}
+#srvBar.hide{display:none;}
+#srvBar.ok{border-color:rgba(110,240,150,.55);}
+#srvBar.bad{border-color:rgba(255,110,110,.6);}
+#srvBar .svTitle{font:800 13px/1.5 system-ui;color:#cfe6ff;margin-bottom:6px;}
+#srvBar .svRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+#srvBar input{flex:1;min-width:170px;padding:8px 10px;border-radius:8px;font-size:14px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#eaf2ff;outline:none;}
+#srvBar button{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+  border:1px solid rgba(120,220,255,.5);background:rgba(30,110,170,.9);color:#cdeaff;}
+#srvBar button.svOff{border-color:rgba(255,255,255,.3);background:rgba(80,86,100,.9);color:#dfe8f7;}
+#srvBar .svSt{font-size:12px;line-height:1.6;margin-top:7px;color:#9fb4d6;}
+#srvBar.bad .svSt{color:#ffb4b4;}
+#netAddr{width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;outline:none;letter-spacing:1px;margin-top:4px;}
+#netHint.ok{color:#7fe3a0;}
+#netHint.bad{color:#ff6b6b;}
+/* 【batch139】原来是 display:none + 只有 body.is-touch 才显示 —— 判定改成认操作系统之后，
+   电脑上这个"设置"按钮也被一起藏掉了（用户："设置界面不见了，按键映射也调不了"）。
+   灵敏度 / 开镜方式 / 键盘键位对电脑一样需要，所以改成两边都显示。 */
+#menuSetBtn{display:inline-block;margin:14px auto 0;padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;}
+/* 只给触屏端看的行（全屏、陀螺仪、摇杆大小、触屏按键布局）—— 电脑上自动隐藏 */
+body:not(.is-touch) .only-touch{display:none !important;}
+#relockBtn{display:none;margin:10px auto 0;padding:9px 18px;border-radius:10px;border:1px solid rgba(255,210,60,.6);background:rgba(120,80,20,.9);color:#ffd84a;font-size:14px;font-weight:bold;cursor:pointer;}
+/* 鼠标未锁定提示（电脑端）：只要"在打游戏 + 指针没锁"就一直挂着，点一下就能重新锁定 */
+/* ==================== 【batch126】剧情模式 / 英雄锁定 ==================== */
+.vl-lock{font-size:9px;font-weight:800;letter-spacing:1px;margin-left:6px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,180,84,.18);color:#ffb454;border:1px solid rgba(255,180,84,.5);vertical-align:middle}
+.vl-dlock{margin:8px 0 2px;padding:8px 10px;border-radius:8px;font:700 12px/1.6 system-ui;
+  background:rgba(255,180,84,.12);border:1px solid rgba(255,180,84,.4);color:#ffb454}
+.story-launch{background:linear-gradient(135deg,#3b1a63,#6b2ea0);border:1px solid rgba(169,140,255,.55)}
+.story-launch.storyDone{background:linear-gradient(135deg,#16351f,#1f6b3a);border-color:rgba(110,240,150,.55)}
+.story-launch em{display:block;font-style:normal;font-size:11px;font-weight:600;opacity:.88;margin-top:3px;letter-spacing:0}
+/* 【1.12.0】搜打撤入口：暗金配色，和单人（红）/ 多人（蓝）/ 剧情（紫）一眼区分开 */
+.raid-launch{background:linear-gradient(135deg,#4a3311,#8a5c14);border:1px solid rgba(255,199,92,.55)}
+.raid-launch:hover{background:linear-gradient(135deg,#5c4015,#a06c18)}
+.raid-launch em{display:block;font-style:normal;font-size:11px;font-weight:600;opacity:.9;margin-top:3px;letter-spacing:0}
+/* ==================== 【1.12.0】搜打撤准备层 ====================
+   独立于 #blocker 的全屏层（z 645 高于名字面板 640）：主菜单可以关着，它自己铺满。
+   尺寸用 px + min()，跟主菜单同一套口径；高度全部走 max-height + 内部滚动，
+   这样 720×400 的小窗和 2340×1080 的手机横屏都不会把「出发」顶到屏幕外。 */
+#raidPrep{position:fixed;inset:0;z-index:645;display:none;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 16%,rgba(64,45,13,.97),rgba(6,7,12,.99) 72%);
+  color:#e8eefc;overflow-y:auto;padding:12px}
+#raidPrep.on{display:flex}
+/* 【1.12.0】撤掉固定 px 的宽高上限，改用 min(可视化 vw/vh)。
+   #raidPrep 现在和主菜单一样被搬进了 #uiZoom（js/00 的放大清单），zoom 会把布局尺寸
+   整体放大，所以 max-height:94vh 视觉上会变成 94vh×k ≈ 137vh —— 卡片上下直接被裁掉。
+   除以 var(--uiz) 才能抵消，和设置面板 .spCard 是同一套写法。 */
+.rpCard{width:min(96vw,1320px);max-height:calc(94vh / var(--uiz,1));display:flex;flex-direction:column;
+  background:rgba(16,17,26,.97);border:1px solid rgba(255,199,92,.36);border-radius:18px;
+  box-shadow:0 24px 70px rgba(0,0,0,.72);overflow:hidden}
+.rpHead{display:flex;align-items:center;gap:14px;padding:14px 18px;
+  border-bottom:1px solid rgba(255,255,255,.09);
+  background:linear-gradient(90deg,rgba(74,51,17,.6),rgba(16,17,26,0))}
+.rpTitle{font-size:19px;font-weight:700;color:#ffc75c;letter-spacing:1px}
+.rpSub{font-size:12px;color:#8b96ab;margin-top:3px;letter-spacing:.4px}
+.rpBack{margin-left:auto;flex:none;padding:9px 16px;border-radius:10px;cursor:pointer;
+  border:1px solid rgba(255,199,92,.45);background:rgba(255,199,92,.1);color:#ffd88a;
+  font-size:13px;font-weight:700;letter-spacing:.5px;transition:.15s}
+.rpBack:hover{background:rgba(255,199,92,.22);border-color:rgba(255,199,92,.8)}
+.rpTabs{display:flex;gap:6px;padding:10px 16px 0;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+.rpTab{padding:9px 20px;border:1px solid transparent;border-bottom:none;border-radius:10px 10px 0 0;
+  background:transparent;color:#93a0b6;font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s}
+.rpTab:hover{color:#e8eefc;background:rgba(255,255,255,.05)}
+.rpTab.active{background:rgba(255,199,92,.14);border-color:rgba(255,199,92,.34);color:#ffd88a}
+/* min-height 给内容少的页签一点体量：不然在 2340×1080 这种大屏上，卡片只剩一条薄片飘在中间。
+   取 24vh / 220px 上限 —— 比"部署页实际内容高度"略高一点，不会留下大片空白。
+   小屏时 24vh 很小（720×400 → 96px），内容该撑多高还是多高。 */
+.rpBody{flex:1;min-height:min(24vh,220px);overflow-y:auto;padding:14px 16px 16px;-webkit-overflow-scrolling:touch}
+.rpPane{display:none}
+.rpPane.on{display:block}
+.rpNotice{padding:16px 18px;border-radius:14px;border:1px dashed rgba(255,199,92,.34);
+  background:rgba(255,199,92,.06);margin-bottom:14px}
+.rpNoticeT{font-size:15px;font-weight:700;color:#ffd88a;margin-bottom:6px}
+.rpNoticeD{font-size:13px;line-height:1.75;color:#a9b4c6}
+.rpRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.rpField{padding:11px 13px;border-radius:12px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.09)}
+.rpField span{display:block;font-size:11.5px;color:#8794a8;letter-spacing:.5px;margin-bottom:4px}
+.rpField b{font-size:14.5px;color:#e8eefc;font-weight:700}
+.rpGo{display:block;width:100%;padding:14px 0;border:none;border-radius:14px;cursor:pointer;
+  font-size:17px;font-weight:800;letter-spacing:2px;color:#3a2606;
+  background:linear-gradient(135deg,#ffcf6a,#e09a20);transition:.15s}
+.rpGo:hover{filter:brightness(1.08)}
+.rpGo.off{background:rgba(255,255,255,.07);color:#7b8699;cursor:not-allowed;letter-spacing:1px}
+.rpGo.off:hover{filter:none}
+/* 卡片底部固定区：只放主行动按钮，不随正文滚动 */
+.rpFoot{flex:none;padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(0deg,rgba(0,0,0,.25),rgba(0,0,0,0))}
+.rpFoot.hide{display:none}
+@media (max-height:520px){
+  .rpHead{padding:9px 12px;gap:10px}
+  .rpTitle{font-size:15px}
+  .rpSub{display:none}
+  .rpTabs{padding:7px 10px 0}
+  .rpTab{padding:6px 13px;font-size:12px}
+  .rpBody{padding:10px 12px 14px}
+  .rpNotice{padding:11px 13px;margin-bottom:10px}
+  .rpNoticeT{font-size:13.5px}
+  .rpNoticeD{font-size:12px;line-height:1.6}
+  .rpGo{padding:10px 0;font-size:14.5px}
+}
+/* ==================== 搜打撤 · 物品网格（1.12.0 阶段 2）====================
+   格子尺寸固定 40px —— 不是懒，是因为整个卡片在 #uiZoom 里，宽度恒定 ≈1080 CSS px
+   （96vw 与 zoom 一起算下来任何窗口都是这个数），所以格子不需要跟着窗口变。
+   好处：物品的 left/top 永远等于「格坐标 × 40」，不用在拖拽时做任何换算。 */
+.rdWrap{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.rdCol{display:flex;flex-direction:column;gap:10px;min-width:0}
+/* 第三列（详情）吃掉剩余宽度：卡片的逻辑宽度固定是 1056（96vw÷zoom 恒等于这个数），
+   前两列加起来只用掉 ~835，不补的话右边会留一条 ~190px 的空带，
+   和「部署」页那种撑满两栏的观感就对不上了。 */
+/* 基准 240 而不是 266：胸挂和安全箱并排后中间列变成 322，再加上 408 的仓库列，
+   266 的基准会把这一行挤到 1525 > 1500，详情面板直接掉到第二行（在 1600×900 上看不见）。 */
+.rdWrap>.rdCol:last-child{flex:1 1 240px;max-width:430px;min-width:0}
+/* 胸挂 + 安全箱并排；窄到放不下就换行（不写死宽度，两个盒子各按自己的格子定宽） */
+.rdEquipTop{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+/* ---- 装备槽 ----
+   「空槽」和「已装备」是同一个盒子的两种形态：
+   空槽显示一块虚线占位（能接拖拽），装上后把占位换成真正的容量网格。
+   这样"把弹挂放到该放弹挂的地方 → 旁边就出现它的容量"是同一个 DOM 的自然结果。 */
+.rdSlot{position:relative;transition:border-color .14s,background .14s}
+.rdSlot.空 .rdGrid{display:none}
+.rdSlot .rdSlotEmpty{display:none}
+.rdSlot.空 .rdSlotEmpty{display:block}
+.rdSlot.over{border-color:rgba(255,199,92,.8)!important;background:rgba(255,199,92,.1)!important;
+  box-shadow:0 0 0 1px rgba(255,199,92,.35) inset}
+.rdSlotEmpty{padding:15px 8px;text-align:center;color:#7a8699;font-size:12px;line-height:1.9;
+  border:1px dashed rgba(255,255,255,.16);border-radius:9px;background:rgba(0,0,0,.16)}
+.rdSlotEmpty span{display:block;color:#5b6577;font-size:10.5px}
+.rdSlotX{margin-left:6px;flex:none;padding:2px 8px;border-radius:6px;cursor:pointer;font-size:10.5px;
+  border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#9aa7bd;transition:.12s}
+.rdSlotX:hover{color:#ff9a9a;border-color:rgba(255,154,154,.55);background:rgba(255,110,110,.1)}
+.rdSlot.空 .rdSlotX{display:none}
+.rdSlotSm{min-width:0;flex:1 1 0;max-width:none}
+/* 中栏这排小槽只有 ~70px 宽：标题居中、去掉稀有度那行，只留图标 + 两三个字 + ✕ */
+.rdSlotSm .rdBoxH{justify-content:center;font-size:10.5px;gap:4px;flex-wrap:nowrap}
+.rdSlotSm .rdBoxH em{display:none}
+.rdSlotSm .rdSlotX{padding:1px 5px;font-size:9.5px;margin-left:2px}
+/* 小槽（武器/头盔/护甲）没有容量网格，空槽就别做那么高，不然右栏把详情挤没了 */
+.rdSlotSm .rdSlotEmpty{padding:3px 5px;font-size:10px;line-height:1.35}
+.rdSlotSm .rdSlotEmpty span{display:none}   /* 小槽只留「空槽」两个字，把高度让给右边的详情 */
+.rdBodyGear{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:2px}
+/* 选中物品看详情时，把上面那排小槽收起来：详情（尤其是"卖出/移入"按钮）优先占满整栏。
+   没选中时它们才展开，用来拖装备上去。 */
+
+.rdBodyGear .rdSlotSm{padding-bottom:8px}
+.rdHead{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+.rdHTitle{font-weight:800;color:#ffd88a;letter-spacing:1px}
+.rdMeta{color:#8b96ab;font-size:12px}
+.rdMeta b{color:#dbe4f2;font-weight:700}
+.rdCoin{margin-left:auto;color:#ffc75c;font-weight:800;font-size:13.5px;letter-spacing:.5px}
+.rdFilters{display:flex;gap:6px;flex-wrap:wrap}
+.rdF{padding:5px 11px;border-radius:999px;cursor:pointer;font-size:12px;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#9aa7bd;transition:.12s}
+.rdF:hover{color:#e8eefc;border-color:rgba(255,255,255,.28)}
+.rdF.on{background:rgba(255,199,92,.16);border-color:rgba(255,199,92,.5);color:#ffd88a;font-weight:700}
+.rdGridWrap{padding:2px;border-radius:12px;background:rgba(0,0,0,.28);align-self:flex-start}
+.rdGrid{position:relative;display:grid;border-radius:10px}
+.rdGrid.off{display:none}
+.rdCell{box-shadow:inset 0 0 0 1px rgba(255,255,255,.055);background:rgba(255,255,255,.014)}
+.rdCell.hot{background:rgba(255,199,92,.16);box-shadow:inset 0 0 0 1px rgba(255,199,92,.4)}
+.rdItem{position:absolute;padding:2px;box-sizing:border-box;cursor:pointer;touch-action:manipulation}
+.rdItemIn{width:100%;height:100%;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(52,57,74,.96),rgba(30,33,44,.96));
+  border:1px solid rgba(255,255,255,.16);transition:box-shadow .12s,opacity .12s}
+.rdItem:hover .rdItemIn{box-shadow:0 0 0 1px rgba(255,255,255,.4),0 3px 10px rgba(0,0,0,.5)}
+/* 图标改成自绘 SVG 后，撑满格子里的可用区域（1×1 格约 28px，2×2 格约 66px） */
+.rdItemIcon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;
+  padding:14%;box-sizing:border-box;font-size:18px;line-height:1;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.rdSvg{width:100%;height:100%;display:block}
+.rdGhost{position:fixed;left:0;top:0;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:99999;
+  padding:7px;box-sizing:border-box;border-radius:10px;pointer-events:none;
+  background:linear-gradient(160deg,rgba(58,64,84,.96),rgba(26,29,39,.96));
+  border:1px solid rgba(255,199,92,.7);box-shadow:0 8px 22px rgba(0,0,0,.6);opacity:.94}
+body.rdDragging,body.rdDragging *{cursor:grabbing!important;user-select:none!important}
+.rdItemN{position:absolute;right:2px;bottom:0;font-size:9.5px;font-weight:800;color:#ffe7b0;
+  text-shadow:0 1px 3px #000,0 0 4px #000;letter-spacing:0}
+.rdItem.sel .rdItemIn{box-shadow:0 0 0 2px #ffc75c,0 0 14px rgba(255,199,92,.65)}
+.rdItem.dim .rdItemIn{opacity:.26}
+.rdItem.warn .rdItemIn{border-color:rgba(255,110,110,.8)}
+.rdBox{border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:8px 8px 9px;background:rgba(255,255,255,.025)}
+.rdBoxH{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#c8d2e2;margin-bottom:6px;
+  flex-wrap:wrap}   /* 窄盒子（安全箱 3×3）里「名字 + 0/9 格·0.0/28kg」放不下，允许换行，
+                        否则整行会把这个盒子撑宽 40px 以上，三栏就挤到换行了 */
+.rdBoxIco{flex:none;width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;margin-right:1px}
+.rdBoxH em{margin-left:auto;font-style:normal;font-size:11px;color:#8794a8;font-weight:600}
+/* 安全箱盒子窄（3×3）：标题和「0/9 格 · 0.0/28kg」硬排一行会把盒子撑宽 40px，改上下两行 */
+.rdBoxH.rdH2{display:block}
+.rdBoxH.rdH2 em{display:block;margin:2px 0 0;font-size:10.5px}
+.rdTools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rdBtn{padding:7px 13px;border-radius:9px;cursor:pointer;font-size:12.5px;font-weight:700;
+  border:1px solid rgba(255,199,92,.35);background:rgba(255,199,92,.08);color:#ffd88a;transition:.12s}
+.rdBtn:hover:not(:disabled){background:rgba(255,199,92,.2)}
+.rdBtn:disabled{opacity:.42;cursor:not-allowed}
+.rdBtnWarm{border-color:rgba(255,199,92,.75);background:rgba(255,199,92,.18);color:#ffe0a0}
+.rdBtnSell{border-color:rgba(140,224,160,.55);background:rgba(140,224,160,.12);color:#a8e8b8}
+.rdBtnSell:hover{background:rgba(140,224,160,.22)}
+.rdNoSell{font-style:normal;color:#8a7f6a;font-size:11px;font-weight:600}
+.rdTip{font-size:11.5px;color:#8794a8}
+.rdDetail{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:12px;
+  background:rgba(255,255,255,.025);min-height:130px}
+.rdEmpty{color:#6f7b90;font-size:12px;line-height:2;text-align:center;padding:22px 6px}
+.rdEmpty span{display:block;color:#586274;font-size:11px}
+.rdDetT{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:800;margin-bottom:8px}
+.rdDetIcon{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+.rdDetT em{margin-left:auto;font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}
+.rdDetRow{display:flex;justify-content:space-between;font-size:12px;color:#93a0b6;padding:3px 0}
+.rdDetRow b{color:#dbe4f2;font-weight:700}
+.rdDetD{font-size:11.5px;line-height:1.75;color:#8794a8;margin:8px 0 10px;
+  border-top:1px solid rgba(255,255,255,.07);padding-top:8px}
+.rdDetActs{display:flex;flex-wrap:wrap;gap:6px}
+.rdDetActs .rdBtn{flex:1 1 46%;text-align:center;padding:7px 6px;font-size:12px}
+.rdInnerWrap{margin-top:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:9px}
+.rdInnerT{font-size:11.5px;color:#ffd88a;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.rdInnerT span{margin-left:auto;color:#8794a8;font-weight:600}
+/* 自带装备条（部署页只读展示，不是可选项） */
+.rdGear{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.rdGearI{display:flex;align-items:center;gap:6px;padding:7px 11px;border-radius:10px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);font-size:12px;color:#b9c4d6;min-width:0}
+.rdGearIco{flex:none;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.rdGearI i{font-style:normal;color:#8794a8;font-size:11px}
+.rdGearI b{color:#e8eefc;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdGearI.off{border-style:dashed;background:transparent;opacity:.72}
+.rdGearI.off b{color:#7a8699;font-weight:600}
+/* 部署页里可点的字段（安全箱） */
+.rpField.rpPick{cursor:pointer;transition:.14s}
+.rpField.rpPick:hover{border-color:rgba(255,199,92,.5);background:rgba(255,199,92,.08)}
+.rpField.rpPick b{color:#ffd88a}
+.rpField.rpPick span::after{content:' · 点击选择';color:#6f7b90;font-weight:600}
+
+/* 安全箱选择窗口 */
+.rdWin{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+  background:rgba(4,5,9,.74);padding:16px}
+.rdWin.on{display:flex}
+.rdWinCard{width:min(780px,96%);max-height:88%;display:flex;flex-direction:column;
+  background:rgba(16,17,26,.99);border:1px solid rgba(255,199,92,.42);border-radius:16px;
+  box-shadow:0 22px 64px rgba(0,0,0,.72);overflow:hidden}
+.rdWinH{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.08);
+  font-size:15px;font-weight:800;color:#ffd88a;letter-spacing:1px}
+.rdWinX{margin-left:auto;width:30px;height:30px;border-radius:8px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#c8d2e2;font-size:16px;line-height:1}
+.rdWinX:hover{background:rgba(255,255,255,.12)}
+.rdWinD{padding:10px 16px 0;font-size:12px;line-height:1.8;color:#95a2b8}
+.rdWinD b{color:#ffd88a}
+.rdWinBody{padding:12px 16px 16px;overflow-y:auto;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px}
+.rdSafeOpt{text-align:left;padding:11px 12px;border-radius:12px;cursor:pointer;transition:.14s;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#c8d2e2}
+.rdSafeOpt:hover{border-color:rgba(255,199,92,.45);background:rgba(255,199,92,.07)}
+.rdSafeOpt.off{opacity:.5;cursor:not-allowed;filter:grayscale(.6)}
+.rdSafeOpt.off:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04)}
+.rdSafeOpt.on{border-color:rgba(255,199,92,.8);background:rgba(255,199,92,.14);
+  box-shadow:0 0 0 1px rgba(255,199,92,.32) inset}
+.rdSafeOpt b{display:flex;align-items:center;gap:7px;font-size:13.5px;color:#ffd88a;font-weight:800;margin-bottom:5px}
+.rdSafeOpt b em{margin-left:auto;font-style:normal;font-size:11px;color:#8794a8;font-weight:600}
+.rdSafeIco{flex:none;width:20px;height:20px;display:flex;align-items:center;justify-content:center}
+.rdSafeOpt>span{display:block;font-size:11.5px;line-height:1.7;color:#93a0b6}
+
+/* 交易行（阶段 3.6）：分类筛选 + 卡片列表 */
+.rdMkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:8px;margin-top:10px}
+.rdMkCard{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08)}
+.rdMkIco{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+.rdMkInfo{flex:1 1 auto;min-width:0}
+.rdMkInfo b{display:block;font-size:12.5px;color:#e8eefc;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdMkInfo i{font-style:normal;font-size:10.5px;color:#8794a8}
+.rdMkPrice{flex:none;font-size:11.5px;font-weight:700;color:#ffd88a;font-variant-numeric:tabular-nums}
+.rdMkCard .rdBtn{flex:none;padding:4px 9px;font-size:11.5px}
+.rdMkCard .rdBtn:disabled{opacity:.38}
+.rdMkEmpty{grid-column:1/-1;text-align:center;color:#7a8699;font-size:12px;padding:22px 8px}
+
+/* 搜刮窗口（阶段 3）：中间是"开盖进度条 → 战利品列表" */
+.rdLootCard{width:min(640px,96%)}
+.rdLootBar{position:relative;height:26px;margin:12px 16px 0;border-radius:8px;overflow:hidden;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,199,92,.28)}
+.rdLootBar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#e0a020,#ffd06a);transition:width .08s linear}
+.rdLootBar>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11.5px;font-weight:700;color:#fff;text-shadow:0 1px 3px #000;letter-spacing:1px}
+.rdLootBody{padding:12px 16px 6px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:120px}
+.rdLootWait,.rdLootEmpty{color:#7f8ca2;font-size:12.5px;text-align:center;padding:26px 8px;line-height:2}
+.rdLootEmpty span{display:block;color:#5f6a7d;font-size:11.5px}
+.rdLootRow{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:9px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left-width:3px}
+.rdLootIco{flex:none;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+.rdLootNm{flex:1 1 auto;min-width:0;font-size:13px;font-weight:700;color:#e8eefc;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdLootNm em{font-style:normal;color:#ffd88a;font-weight:800;margin-left:5px;font-size:12px}
+.rdLootSplit{font-style:normal;color:#6f7b90;font-size:10.5px;margin-left:6px;font-weight:600}
+.rdLootVal{flex:none;font-size:11.5px;color:#8fa0b8;font-variant-numeric:tabular-nums}
+.rdLootRow .rdBtn{flex:none;padding:5px 12px;font-size:12px}
+.rdLootFoot{display:flex;align-items:center;gap:10px;padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08)}
+.rdLootFoot .rdTip{flex:1 1 auto;text-align:right;font-size:11px}
+.rdLootMetaEm{margin-left:auto;margin-right:6px;font-style:normal;font-size:11px;color:#8794a8;font-weight:600}
+.rdLootCard .rdWinX{margin-left:0}
+/* 部署页 */
+.rdPresets{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.rdPre{flex:1 1 200px;text-align:left;padding:12px 14px;border-radius:12px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);transition:.14s;min-width:0}
+.rdPre:hover{border-color:rgba(255,199,92,.4);background:rgba(255,199,92,.06)}
+.rdPre.on{border-color:rgba(255,199,92,.7);background:rgba(255,199,92,.13);box-shadow:0 0 0 1px rgba(255,199,92,.25) inset}
+.rdPre b{display:block;font-size:14.5px;color:#ffd88a;letter-spacing:1px;margin-bottom:4px}
+.rdPre span{display:block;font-size:11.5px;line-height:1.6;color:#93a0b6}
+.rdPre i{display:block;font-style:normal;font-size:11px;color:#6f7b90;margin-top:5px}
+.rdDeploy{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.rdDeployMain{flex:1 1 320px;min-width:0}
+.rdDeploySide{flex:0 0 300px;min-width:0}
+.rdSum{border:1px solid rgba(255,199,92,.28);border-radius:12px;padding:11px 13px;
+  background:rgba(255,199,92,.06);margin-bottom:10px}
+.rdSumT{font-size:12.5px;font-weight:800;color:#ffd88a;letter-spacing:.5px;margin-bottom:7px}
+.rdInsList{display:flex;flex-direction:column;gap:5px}
+.rdIns{padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.08)}
+.rdInsT{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#dbe4f2}
+.rdInsT em{margin-left:auto;font-style:normal;color:#ffc75c;font-size:12px;font-weight:800}
+.rdInsD{font-size:10.5px;line-height:1.5;color:#8794a8;margin-top:1px}
+@media (max-width:640px){
+  .rdDeploySide{flex:1 1 100%}
+  .rdDetail{width:100%}
+}
+@media (max-width:560px){
+  .rpBack{padding:7px 12px;font-size:12px}
+  .rpTitle{font-size:16px}
+}
+.stCard{max-width:560px;text-align:left}
+.stGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0 4px}
+.stCardItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  padding:10px 6px;text-align:center;cursor:pointer;transition:.15s;border-top:3px solid var(--c,#888)}
+.stCardItem[data-on="1"]{background:rgba(169,140,255,.18);border-color:#a98cff;box-shadow:0 0 0 2px rgba(169,140,255,.45)}
+.stCardItem .stIcon{font-size:24px;line-height:1.2}
+.stCardItem .stName{font:800 14px/1.5 system-ui;color:#fff;margin-top:2px}
+.stCardItem .stTag{font:600 11px/1.4 system-ui;color:#9fb4d6}
+.stCardItem .stSk{font-size:13px;letter-spacing:1px;margin-top:3px}
+.stTip{font-size:12px;line-height:1.7;color:#9fb4d6;margin:6px 0 0}
+#storyCut{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.82);z-index:800;cursor:pointer;padding:0 8%;text-align:center;
+  pointer-events:auto;touch-action:auto}      /* 【batch129】必须可点：点击＝跳下一段 */
+#storyCutTxt{color:#fff;font:700 22px/1.9 system-ui;max-width:760px;text-shadow:0 2px 14px rgba(0,0,0,.9);
+  opacity:0;transition:opacity .5s}
+#storyCutTxt.in{opacity:1}
+#storyCutHint{color:#8ea3c0;font:600 12px/1.6 system-ui;margin-top:22px;letter-spacing:2px}
+/* 【1.9.61】顶部信息统一放进 #storyTop 竖向堆叠（Boss → 任务目标 → 列车 → 营救）。
+   以前各自 fixed 定位：boss top:14 / 目标 top:56 / 列车 top:52 / 营救 top:96 ——
+   列车压目标、boss 压波次、联机横幅又压目标，叠成一团。 */
+#storyTop{position:fixed;left:50%;top:58px;transform:translateX(-50%);z-index:420;
+  display:flex;flex-direction:column;align-items:center;gap:7px;
+  width:min(560px,82vw);pointer-events:none}
+#storyTop>#storyHud{width:auto;max-width:100%}
+/* 剧情模式里 #wave 显示的也是同一句目标（storyGoalText），
+   重复的那条由 updateWave 自己隐藏（见 js/26，那里每帧自检，异常退出也不会残留）。 */
+/* 联机「感谢陪伴」横幅别压在剧情顶部信息上 */
+body.story-on #memThanks{display:none!important}
+#storyHud{display:none;
+  background:rgba(10,14,22,.82);border:1px solid rgba(120,220,255,.45);border-radius:10px;
+  padding:6px 16px;color:#cfe0f2;font:700 14px/1.6 system-ui;letter-spacing:1px}
+#bossWrap{display:none;width:100%;text-align:center}
+#bossName{color:#6ff0ff;font:800 14px/1.8 system-ui;letter-spacing:2px;text-shadow:0 0 12px rgba(0,230,255,.7)}
+#bossBarOut{height:12px;border-radius:7px;background:rgba(0,0,0,.6);border:1px solid rgba(0,230,255,.55);overflow:hidden}
+#bossBar{height:100%;width:100%;background:linear-gradient(90deg,#00e5ff,#6ff0ff,#bdf7ff);transition:width .12s}
+#trainHpWrap{display:none;width:78%;text-align:center;pointer-events:none}
+#trainHpName{color:#ffb347;font:800 13px/1.8 system-ui;letter-spacing:2px;text-shadow:0 0 12px rgba(255,150,60,.7)}
+#trainHpBarOut{height:10px;border-radius:6px;background:rgba(0,0,0,.6);border:1px solid rgba(255,170,80,.55);overflow:hidden}
+#trainHpBar{height:100%;width:100%;background:linear-gradient(90deg,#ff7a2a,#ffb347,#ffd9a0);transition:width .12s}
+.stLine{font:700 14px/1.9 system-ui;color:#fff;margin:5px 0}
+.stLine.dim{font-weight:600;color:#9fb4d6}
+.stUnlock{margin:12px 0;padding:11px 12px;border-radius:10px;background:rgba(111,240,255,.10);
+  border:1px solid rgba(111,240,255,.5);color:#c8f6ff;font:700 13px/1.7 system-ui}
+.stUnlock b{color:#6ff0ff}
+/* ==================== 【batch149】剧情章节选择 + 第二章营救进度 ==================== */
+/* 【1.10.3】5 章后 2 列会撑成 3 行、卡片太高，底部几章看不见；
+   改成自适应列宽（宽屏 3 列、窄屏 2 列），描述压到 2 行。 */
+.stChap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:10px 0 6px}
+.stChap .stChapItem{padding:9px 9px}
+.stChap .stChapItem .stDesc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.stChap .stChapItem .stIcon{font-size:21px}
+.stChapItem{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  padding:12px 10px;cursor:pointer;transition:.15s;border-top:3px solid rgba(73,224,255,.75)}
+.stChapItem[data-on="1"]{background:rgba(73,224,255,.16);border-color:#49e0ff;box-shadow:0 0 0 2px rgba(73,224,255,.4)}
+.stChapItem .stIcon{font-size:26px;line-height:1.2}
+.stChapItem .stName{font:800 14px/1.5 system-ui;color:#fff;margin-top:3px}
+.stChapItem .stTag{font:600 11px/1.5 system-ui;color:#9fb4d6;margin-top:2px}
+.stChapItem .stDesc{font:600 11px/1.6 system-ui;color:#8ea3c0;margin-top:5px}
+#rescueWrap{display:none;
+  width:100%;max-width:430px;background:rgba(10,14,22,.86);border:1px solid rgba(255,160,61,.5);
+  border-radius:11px;padding:8px 14px 10px;text-align:center}
+#rescueTitle{color:#ffc98a;font:800 13px/1.7 system-ui;letter-spacing:1px}
+#rescueBarOut{height:11px;border-radius:7px;background:rgba(0,0,0,.62);border:1px solid rgba(255,160,61,.5);
+  overflow:hidden;margin-top:5px}
+#rescueBar{height:100%;width:0%;background:linear-gradient(90deg,#ff7a2d,#ffc04d,#ffe9a8);transition:width .1s}
+#rescueHint{color:#9fb4d6;font:600 11px/1.7 system-ui;margin-top:5px;letter-spacing:.5px}
+/* 【batch129】剧情专用阵亡提示（红色的另一态；剧情里**不弹**通用的「游戏结束」结算面板） */
+.ctCard.stDead{border-color:rgba(255,90,90,.7);
+  background:linear-gradient(180deg,rgba(120,20,20,.35),rgba(20,22,34,.98))}
+.ctCard.stDead h3{color:#ff6b6b}
+.ctCard.stDead .ctBtn{background:rgba(150,40,40,.9);border-color:rgba(255,120,120,.5)}
+#lockHint{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:95;display:none;padding:11px 22px;border-radius:12px;background:rgba(20,22,34,.94);border:2px solid rgba(255,210,60,.75);color:#ffd84a;font-size:15px;font-weight:bold;cursor:pointer;pointer-events:auto;text-align:center;box-shadow:0 6px 22px rgba(0,0,0,.55);animation:lockPulse 1.4s ease-in-out infinite;}
+#lockHint.on{display:block;}
+/* 提示条占了最上沿时，波次文字往下让一格（剧情模式下 #wave 本来就隐藏） */
+body.lock-on #wave{top:64px}
+@keyframes lockPulse{0%,100%{box-shadow:0 6px 22px rgba(0,0,0,.55)}50%{box-shadow:0 6px 30px rgba(255,210,60,.45)}}
+body.is-touch #lockHint{display:none !important;}
+/* 闪光弹致盲：整屏泛白，透明度由 heroBlindSync() 按剩余致盲时间驱动 */
+#blindFx{position:fixed;inset:0;z-index:4000;background:#fff;opacity:0;pointer-events:none;}
+/* 【batch107】身处烟雾中时的"屏幕雾"：几何上烟已经有 6 米厚（t_smoke.js 量的），这层是
+   "保证不漏"的第二道保险 —— 开镜放大也透不过去。z-index 30：盖住 3D 画面与第一人称枪，
+   但让 HUD(50) / 触屏按键(40) / 准星仍然看得见。 */
+#smokeFx{position:fixed;inset:0;z-index:30;background:#dfe6ec;opacity:0;pointer-events:none;}
+/* 【batch120】闪电「过载/触电」：满屏电弧干扰（不能开镜，视野被糊住） */
+#zapFx{position:fixed;inset:0;z-index:32;opacity:0;pointer-events:none;
+  background:repeating-linear-gradient(115deg,rgba(160,240,255,0) 0 9px,rgba(160,240,255,.22) 9px 10px,rgba(160,240,255,0) 10px 26px);}
+/* 【枪械包·狙击枪】开镜时显示「镜框暗角」：中间透亮、四周压黑，模拟透过瞄准镜看，且不挡视野。
+   z-index 46：盖在 3D 画面与 smokeFx(30) 之上，但在 HUD(50)/准星 之下（开镜时准星本就会被隐藏）。 */
+/* 【batch197】狙击镜重做。原来的实现是「一圈 radial-gradient 压黑 + 42px 红十字」，问题很直观：
+   暗角渐变没有边界（像拿喷枪喷的）、红十字又短又粗没有分划感、镜片完全没有"玻璃"层次。
+   现在拆成三层，全部纯 CSS（不加任何图片 / 不增加绘制开销）：
+     ① #scopeFx 背景：镜片外的一圈黑，边界比原来硬——它是"镜筒"，不该是雾；
+     ② .tube：一个圆，用 inset 阴影做出镜壁的厚度 + 内缘细高光，再补一点左上角反光当玻璃质感；
+     ③ .reticle：四段细线（中心留 4px 缺口）+ 每段末端的 T 型刻度 + 2px 红点，
+        细白线 + 黑描边 —— 在亮背景（雪地/白墙）和暗背景上都读得出来。 */
+#scopeFx{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;
+  background:radial-gradient(circle closest-side at 50% 50%,rgba(0,0,0,0) 0 74.5%,rgba(0,0,0,.55) 76.5%,rgba(0,0,0,.97) 80%,#000 86%);}
+/* 镜筒圆直径 = 76vmin（比原来 90vmin 收一圈：留出真正的黑边，才像"透过镜子看"）。
+   inset 阴影做镜壁厚度，中心留亮 → 明暗过渡不再是"一片雾" */
+#scopeFx .tube{position:absolute;left:50%;top:50%;width:76vmin;height:76vmin;transform:translate(-50%,-50%);border-radius:50%;
+  box-shadow:inset 0 0 34px 12px rgba(0,0,0,.86),inset 0 0 2px 1px rgba(200,225,255,.26),0 0 0 3px rgba(0,0,0,.95),0 0 30px 12px rgba(0,0,0,.55);
+  background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.06),rgba(255,255,255,0) 46%);}
+#scopeFx .reticle{position:absolute;left:50%;top:50%;width:0;height:0;}
+#scopeFx .reticle i{position:absolute;display:block;background:rgba(232,240,250,.80);box-shadow:0 0 2px rgba(0,0,0,.9);}
+#scopeFx .reticle .n,#scopeFx .reticle .s{width:1px;left:-0.5px;}
+#scopeFx .reticle .w,#scopeFx .reticle .e{height:1px;top:-0.5px;}
+#scopeFx .reticle .n{height:14vmin;bottom:0;}
+#scopeFx .reticle .s{height:14vmin;top:0;}
+#scopeFx .reticle .w{width:14vmin;right:0;}
+#scopeFx .reticle .e{width:14vmin;left:0;}
+/* 每段线末端一个 T 型短杠：这就是狙击分划的"刻度"，一眼能看出是镜而不是贴的十字 */
+#scopeFx .reticle .n::after,#scopeFx .reticle .s::after{content:'';position:absolute;left:-4px;width:9px;height:2px;background:rgba(236,242,250,.9);box-shadow:0 0 2px rgba(0,0,0,.85);}
+#scopeFx .reticle .w::after,#scopeFx .reticle .e::after{content:'';position:absolute;top:-4px;width:2px;height:9px;background:rgba(236,242,250,.9);box-shadow:0 0 2px rgba(0,0,0,.85);}
+#scopeFx .reticle .n::after{bottom:0;}
+#scopeFx .reticle .s::after{top:0;}
+#scopeFx .reticle .w::after{right:0;}
+#scopeFx .reticle .e::after{left:0;}
+#scopeFx .reticle .dot{position:absolute;left:-1.5px;top:-1.5px;width:3px;height:3px;border-radius:50%;transform:none;background:#ff3b3b;box-shadow:0 0 4px rgba(255,60,60,.9);}
+/* ============ 【batch203】纪念枪开镜：遮罩要和**几何镜筒**严丝合缝 ============
+   开镜时眼睛里真的塞了一根半径 0.033、距离 0.062 的镜筒（js/24 的 adsScope），
+   它的边缘在屏幕上正好落在 69.3% 半屏半径处。CSS 这层必须贴着它收：
+     · 透明区收到 66.5%（比几何略小一点点）→ 镜筒内壁最外圈被压暗一点，像真的管壁阴影；
+     · 69.2% 起迅速转黑 → 管壁之外全是黑，看不到"镜子外面的世界"；
+     · 分划改暖金（纪念配色），与专属准星同一色系。 */
+body.mem-scope #scopeFx{
+  background:radial-gradient(circle closest-side at 50% 50%,rgba(0,0,0,0) 0 66.2%,rgba(0,0,0,.42) 68.6%,rgba(0,0,0,.97) 72.5%,#000 80%);}
+body.mem-scope #scopeFx .tube{width:69vmin;height:69vmin;
+  box-shadow:inset 0 0 26px 10px rgba(0,0,0,.72),inset 0 0 2px 1px rgba(232,196,106,.20),0 0 0 2px rgba(0,0,0,.95),0 0 26px 10px rgba(0,0,0,.5);}
+body.mem-scope #scopeFx .reticle i{background:rgba(246,224,168,.88);box-shadow:0 0 2px rgba(0,0,0,.95),0 0 5px rgba(232,188,92,.35);}
+body.mem-scope #scopeFx .reticle .n::after,body.mem-scope #scopeFx .reticle .s::after,
+body.mem-scope #scopeFx .reticle .w::after,body.mem-scope #scopeFx .reticle .e::after{background:rgba(246,224,168,.95);}
+body.mem-scope #scopeFx .reticle .dot{background:#ffcf6a;box-shadow:0 0 6px rgba(255,188,80,.95);}
+/* 【枪械包·红点镜】开镜时显示「红点」准星：仅中心一个小点（外圈极淡细环），绝无遮挡，不挡视野 */
+#redDotFx{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;}
+#redDotFx .ring{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px solid rgba(255,60,60,.8);border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.4);}/* 圆尺寸由 JS 按当前散布动态设置；transform 居中保证与红点严格同心 */
+#redDotFx .dot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:4px;height:4px;background:#ff2a2a;border-radius:50%;box-shadow:0 0 5px rgba(255,40,40,.95),0 0 2px #000;}/* 用 transform 居中：全局 .dot 规则自带 translate(-50%,-50%)，不能再叠 margin 否则双重居中会偏 2px */
+/* 【手机版】狙击镜框 / 红点准星：整层降到触屏 UI（#touchUI z-index 40）**之下** ——
+   否则开镜时全屏暗角（边缘纯黑）会把摇杆和所有触屏按钮糊住、看不见（它 pointer-events:none 所以还能点，但看不见等于没法用）。
+   只给 body.is-touch（手机版）降级，电脑版层级完全不变。 */
+body.is-touch #scopeFx,body.is-touch #redDotFx{z-index:38;}
+/* 【batch120】球形闪电：自己倒地时的遮罩 + 倒计时 */
+#downedFx{position:fixed;inset:0;z-index:118;display:none;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;background:radial-gradient(ellipse at center,rgba(120,0,0,0) 34%,rgba(120,0,0,.58) 100%);}
+#downedFx h2{margin:0;font-size:32px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:3px}
+#downedFx p{margin:10px 0 0;color:#ffd7d7;font-size:15px}
+/* 【batch145】虚化（日蚀之门）：紫色边光 + 底部操作提示 */
+#ghostFx{position:fixed;inset:0;z-index:117;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:15vh;pointer-events:none;background:radial-gradient(ellipse at center,rgba(96,44,168,0) 44%,rgba(96,44,168,.5) 100%);}
+#ghostFx h2{margin:0;font-size:26px;color:#fff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#ghostFx p{margin:8px 0 0;color:#e6d4ff;font-size:15px;text-shadow:0 2px 8px #000}
+/* 【batch160】遁入暗影：整圈暗紫黑边光 + 倒计时提示（比虚化更暗——整个人没进影子里去了） */
+#shadowFx{position:fixed;inset:0;z-index:117;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:15vh;pointer-events:none;background:radial-gradient(ellipse at center,rgba(10,4,26,.20) 28%,rgba(10,4,26,.74) 100%);}
+#shadowFx h2{margin:0;font-size:26px;color:#cfc2ff;text-shadow:0 2px 14px #000;letter-spacing:2px}
+#shadowFx p{margin:8px 0 0;color:#a99ad6;font-size:15px;text-shadow:0 2px 8px #000}
+/* 【batch100 被动】天狼「敌情预警」：准星外圈的红色方向箭头（转到敌人方向；越近越亮） */
+#scoutAlert{position:fixed;left:50%;top:50%;width:0;height:0;z-index:405;pointer-events:none !important;display:none;opacity:0;transition:opacity .12s}
+#scoutArrow{position:absolute;left:-14px;top:-72px;width:28px;height:32px;line-height:32px;text-align:center;font-size:26px;color:#ff5a5a;text-shadow:0 0 10px #ff2a2a,0 0 20px #ff0000;transform-origin:14px 72px;opacity:1}
+#scoutRing{position:absolute;left:-14px;top:-72px;width:28px;height:32px;border-radius:50%;box-shadow:0 0 22px 6px rgba(255,50,50,.35);opacity:.9}
+.spRange{display:block;width:100%;height:26px;margin:0 0 12px;touch-action:auto;pointer-events:auto;accent-color:#5aa0ff;}
+.spVal{color:#7fd4ff;font-weight:bold;}
+.ctLayer{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:640;touch-action:auto;}
+.ctLayer.on{display:flex;}
+.ctCard{width:84%;max-width:340px;width:min(92vw,340px);max-width:min(92vw,340px);background:rgba(20,22,34,.98);border:2px solid rgba(255,210,60,.55);border-radius:16px;padding:16px;color:#fff;text-align:center;max-height:86vh;overflow-y:auto;touch-action:auto;}
+.ctCard h3{margin:2px 0 12px;font-size:17px;color:#ffd23c;}
+.ctInput{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:16px;text-align:center;letter-spacing:3px;outline:none;}
+.ctErr{font-size:12px;color:#ff6b6b;min-height:16px;margin:8px 0 0;}
+.ctBtn{display:block;width:100%;margin:9px 0 0;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(60,120,200,.85);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;}
+.ctBtn.ctCancel{background:rgba(255,255,255,.12);}
+.ctRow{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#9fb4d6;margin:11px 0 5px;}
+.ctVal{color:#ffd23c;font-weight:bold;}
+.ctSw{width:52px;height:28px;border-radius:14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);position:relative;cursor:pointer;flex:0 0 auto;}
+.ctSw i{position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#8a8a8a;transition:left .15s,background .15s;}
+.ctSw.on{background:rgba(0,200,120,.35);border-color:#0c8;}
+.ctSw.on i{left:27px;background:#0f8;}
+.ctRange{width:100%;}
+.ctMsg{font-size:11px;color:#7d8ba3;margin-top:12px;line-height:1.55;}
+/* ==================== 多人对战 UI ==================== */
+#netBoard{position:fixed;top:12px;right:12px;z-index:60;background:rgba(12,16,24,.8);border:1px solid #2b3446;
+  border-radius:10px;padding:8px 10px;font-size:13px;color:#dfe7f5;min-width:168px;display:none;line-height:1.6}
+#netBoard h4{margin:0 0 6px;font-size:12px;color:#8ea3c0;font-weight:600;letter-spacing:1px}
+#netBoard .nb-row{display:flex;justify-content:space-between;gap:14px}
+#netBoard .nb-me{color:#ffd166;font-weight:700}
+/* 【batch237】阵亡条：改成**顶部小横幅**（原来是整屏暗红盖住画面）——
+   人要能看见自己躺在地上、还能转头看别人。 */
+#netDeath{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:120;display:none;
+  flex-direction:column;align-items:center;background:rgba(70,0,0,.62);border:1px solid rgba(255,90,90,.5);
+  border-radius:12px;padding:8px 26px;pointer-events:none;box-shadow:0 0 26px rgba(255,40,40,.35)}
+#netDeath h2{margin:0;font-size:20px;color:#fff;text-shadow:0 2px 10px #000;letter-spacing:2px}
+#netDeath p{margin:2px 0 0;color:#ffd7d7;font-size:13px}
+#netMode{margin-top:8px;font-size:12px;color:#7fd6ff;text-align:center;line-height:1.7}
+/* ==================== 主菜单 / 游戏内菜单 ==================== */
+#menuPauseBtns{display:none}
+/* 【1.11.2】删掉 1.10.21 加的两个「按键设置」直达按钮（主菜单 + 暂停菜单）。
+   原因：① 用户反馈手机端主界面被它占掉一整行，空间紧张；
+        ② 「⚙ 设置」按钮在主菜单和暂停态都可见（它不在 #menuHomeBtns/#menuPauseBtns 里，
+           不受 pause-mode 的 display:none 影响），玩家随时能进设置再点「🎮 按键设置」，
+           两条直达入口纯属重复。以后要加入口请加在设置面板里，别再往主界面塞。 */
+#blocker.pause-mode #menuHomeBtns{display:none}
+#blocker.pause-mode #menuPauseBtns{display:block}
+/* 【batch117】局内（暂停菜单）不许换地图 / 换英雄：
+   页签栏整个藏掉，四个面板也一律藏掉（含新增的 #tab-hero / #tab-map）——
+   否则用户在主菜单停在「特工」页时按 Esc，那个面板会跟着暂停菜单一起露出来。 */
+/* 【batch268】暂停时**所有**标签与面板都收起来，只留 #pauseInfo。
+   ⚠️ 原来这里逐个列 id（#tab-upgrades / #tab-info / #tab-hero / #tab-map）——
+   1.9.18 把「枪械改装」换成「枪械购买」(#tab-buy) 后名单没跟着改，
+   暂停菜单里就冒出一整页枪械购买（用户报的就是这个）。
+   以后新增面板也不会再漏：直接按 .panel 收。 */
+#blocker.pause-mode .tabs,#blocker.pause-mode .panel,
+#blocker.pause-mode .gold-display,#blocker.pause-mode #netMode{display:none !important}
+#btnQuit{display:block;margin:14px auto 0;padding:11px 30px;border-radius:10px;
+  border:1px solid rgba(255,120,120,.6);background:rgba(150,40,40,.9);color:#ffd7d7;
+  font-size:15px;font-weight:bold;cursor:pointer;}
+#btnQuit:hover{background:rgba(190,55,55,.95);}
+#namePanel .ctCard{border-color:rgba(120,220,255,.6);}
+#namePanel h3{color:#7fd6ff;}
+#nameInput{letter-spacing:1px;text-align:center;}
+
+/* ==================== 【batch264】横屏优先：主菜单 / 设置面板自适应 ====================
+   旧版是竖屏口径：主菜单固定 700px 居中、设置卡片 360px 一条竖条 ——
+   玩家大多横屏（手机横过来 / 笔记本 / 台式），左右两侧全是遮罩色，看着就是大片"黑边"。
+   现在的分档：
+     · 横屏（宽 ≥720）主菜单拆成「左：标题＋主按钮 / 右：标签页＋面板」，两列吃满宽度；
+     · 超宽（≥1440）再把玩家卡 / 联机公告摊到最左右两栏（三栏）；
+     · 竖屏 / 窄屏 保持原来的单列（观感不变）；
+     · 矮屏横屏（高 ≤610）压扁标题、收起小贴士，把高度全留给面板；
+     · 设置面板横屏两列，内容区自己滚，关闭按钮永远固定在底部可见。
+   ⚠️ #menuMid 内部被包成 #menuSide（左）+ #menuMain（右）两层，
+      grid 的列是给这两层用的，不是给 #menu 的直接子元素。 */
+#menuMid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0}
+#menuSide,#menuMain{min-width:0}
+#menuSide{text-align:center}
+#menuMain{display:block}
+
+@media (orientation:landscape) and (min-width:720px){
+  /* 【batch265】菜单**撑满整个画布**：以前是"内容多少高就多少高"，
+     四周留一圈黑（用户："留下那么多空缺的地方，就算留也要有理由"）。
+     现在 #menu 占满视口高度、左右 97% 宽，内部两列都被拉满：
+       · 左列（标题＋按钮）：标题在上、主按钮用 margin-top:auto 推到下方，中间自然留白＝有理由；
+       · 右列（标签页＋面板）：面板 flex:1 吃掉剩余高度，卡片铺开，底部不再空一块。 */
+  #blocker{align-items:stretch;padding:10px 10px 12px}
+  #menu{max-width:min(1760px,97vw);width:97%;margin:auto;height:calc(100vh - 22px);
+    height:calc(100dvh - 22px);max-height:none;   /* dvh 优先：手机浏览器地址栏不再把菜单撑出屏 */
+    display:flex;flex-direction:column;text-align:left}
+  /* ⚠️ 必须显式写 grid-template-rows:1fr：不写的话行高＝内容高度，
+     align-items:stretch 只在行内拉伸，左列的 margin-top:auto 永远推不到底（下面留一大块黑）。 */
+  #menuMid{grid-template-columns:clamp(280px,25vw,360px) minmax(0,1fr);gap:clamp(12px,1.3vw,20px);align-items:stretch;
+    grid-template-rows:minmax(0,1fr);flex:1;min-height:0}
+  /* 【1.11.1】左列：**只有提示卡能被压缩**，其它块一律不缩。
+     实测 1280×720 上左列内容 619px、容器 566px —— 溢出的 53px 把最下面
+     「设置」按钮裁掉一半，和右列面板底边差出肉眼可见的一截（用户："左右两边排版长度不一样"）。
+     #menuTips 是唯一"少看两行也无所谓"的块：空间不够时它自己缩、内部滚动，
+     标题 / 金币 / 三个大按钮 / 设置按钮全部保持完整高度 —— 1280~2560 都不用按尺寸开档。 */
+  #menuSide{position:relative;display:flex;flex-direction:column;min-height:0;justify-content:space-between;overflow:hidden}
+  #menuSide>*{flex:0 0 auto}
+  #menuSide>#menuTips{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  #menuTips>summary{flex:0 0 auto}
+  #menuTips>.tip-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  #menuMain{display:flex;flex-direction:column;min-height:0}
+  .panel.active{flex:1;min-height:0;overflow-y:auto}
+  /* 【batch265】主按钮不拉长条，改成**拼块**：
+       第一行两个方块（单人 / 多人）  第二行一条横幅（剧情，跨两列）
+     形状不一样、面积也不一样，不是"把原来的一列按钮拉高"。 */
+  /* flex:1 + align-content:end：按钮组吃掉左列剩下的高度、内容贴底。
+     比 margin-top:auto 稳（auto margin 依赖父级真的被拉伸，实测常常不生效）。 */
+  /* flex:none —— 让 #menuSide 的 space-between 真正生效：四块（标题 / 提示 / 玩家条 / 按钮）
+     均分左列高度，间隙均匀。写成 flex:1 的话按钮组会独占剩余空间，中间又变成一大块黑。 */
+  #menuHomeBtns{flex:none;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;
+    gap:10px;margin-top:16px}
+  #menuHomeBtns #startBtn{grid-area:1 / 1 / 2 / 2}
+  #menuHomeBtns #netBtn{grid-area:1 / 2 / 2 / 3}
+  /* 【1.12.0】第二行同样是两个半宽块：剧情（左）+ 搜打撤（右）。
+     以前剧情是跨两列的一条横幅，加第四个按钮后会掉进网格自动流把对齐挤歪 —— 这里显式钉死 area。 */
+  #menuHomeBtns .story-launch{grid-area:2 / 1 / 3 / 2}
+  #menuHomeBtns .raid-launch{grid-area:2 / 2 / 3 / 3}
+  #menuHomeBtns .start-btn,#menuHomeBtns #netBtn{width:100%;max-width:none;height:auto;
+    min-height:86px;margin:0;padding:14px 12px;font-size:15px;line-height:1.35;
+    border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    /* min-width:0 是必须的：grid 的 1fr = minmax(auto,1fr)，子项下面有 nowrap 的副标题时
+       min-content 会把整列撑破 → 四个按钮从 2×2 退化成单列拉满、整个左栏跟着歪。
+       加 overflow:hidden 双保险，任何超长文案都裁在按钮里，不许影响栅格。 */
+    min-width:0;overflow:hidden}
+  #menuHomeBtns .story-launch,#menuHomeBtns .raid-launch{min-height:78px;font-size:13.5px}
+  /* 半宽之后剧情按钮的解锁提示特别长（"通关章节解锁英雄：第一章…第四章…"），
+     换行会把整行撑高、两个按钮高度对不齐。改成**单行省略**：开头信息完整，超出打点。
+     width/min-width 同上面的道理：让它只能被裁，不能反过来撑宽父级。 */
+  #menuHomeBtns .story-launch em{font-size:11.5px;line-height:1.35;opacity:.9;
+    width:100%;min-width:0;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #menuHomeBtns .raid-launch em{font-size:11.5px;line-height:1.35;opacity:.9;width:100%;min-width:0}
+  /* 左列中间那块不是"空着"：把身份/金币/提示放大成一栏信息 */
+  /* 名字 + 金币合成一块"玩家条"卡片，充当左列中部的实际内容（不再是一大块纯黑） */
+  /* 名字 / 金币各是一张独立小卡片：左列是 space-between 均分间距，
+     两块之间本来就会隔开 —— 各自圆角成卡，隔开才不显得"一张卡被掰断"。 */
+  #menuSide #myIdLine{font-size:12.5px;margin:0;letter-spacing:.5px;padding:10px 12px;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:12px}
+  #menuSide .gold-display{font-size:24px;margin:0;padding:10px 12px;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:12px}
+  #menuSide #menuTips{margin:8px 0 0;text-align:left}
+  #menuSide #menuTips summary{font-size:12.5px;padding:7px 10px;border-radius:10px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)}
+  #menuSide #menuTips .tip-body{font-size:12px;line-height:1.7;margin-top:6px}
+  /* 卡片内部也重新分布：图标放大、说明吃掉中间空白、按钮压底部 */
+  #tab-upgrades .upgrade-grid{min-height:100%;align-content:stretch;grid-auto-rows:minmax(112px,auto)}
+  /* 卡片内容均分到上下（图标组 / 说明 / 升级按钮），而不是挤在顶上、下面空半张 */
+  .upgrade-card{display:flex;flex-direction:column;justify-content:space-around}
+  .upgrade-card .upgrade-icon{font-size:32px;margin-bottom:6px}
+  .upgrade-card .upgrade-name{font-size:16px}
+  .upgrade-card .upgrade-btn{margin-top:8px}
+  /* 面板里的卡片也拉高填满：不然 9 张卡只占上半截，下面照样空一块 */
+  #tab-upgrades .upgrade-grid{min-height:100%;align-content:stretch;grid-auto-rows:minmax(112px,auto)}
+  #tab-info .info-grid{min-height:100%;align-content:stretch;grid-auto-rows:minmax(110px,auto)}
+  #menuTitle{font-size:30px;line-height:1.1;margin-bottom:0}
+  /* 【1.11.1】左列原来比容器高 12px（实测 menuSetBtn 底 577 / 容器 565）→ 底边被 overflow
+     裁掉一截，和右列面板差出一截（用户："左右两边排版长度不一样"）。
+     这里把四处间距各收 2~4px，合计 13px，左列正好落回 565 以内，两列底部严格齐平。
+     只收间距、不动尺寸 —— 任何分辨率下都按同一比例生效，不是给某个尺寸单独开档。 */
+  #menu .subtitle{font-size:11px;line-height:1.5;margin-bottom:4px}
+  #menuTips{margin:0 0 4px;max-width:none}
+  #menuTips .tip-body{font-size:11px}
+  #menuHomeBtns{flex-direction:column;gap:7px;margin-top:6px}
+  #menuHomeBtns .start-btn,#menuHomeBtns #netBtn{width:100%;max-width:none;flex:none;padding:9px 12px;font-size:14px;letter-spacing:.5px}
+  #menuSetBtn{width:100%;margin:6px 0 0 !important}
+  #relockBtn{width:100%;margin:6px 0 0}
+  .tabs{gap:6px;margin-bottom:10px}
+  .tab{padding:8px 10px;font-size:13px;border-radius:8px 8px 0 0}
+  .panel{padding:14px 16px}
+  .panel.active{max-height:none}
+  .upgrade-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .info-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .vl-hero{grid-template-columns:216px minmax(0,1fr)}
+  /* ⚠️ 千万别给 .vl-list 写 max-height:none：列表一旦不限高就不会自己滚，
+     手指往上滑的时候滚的是**整个面板** —— 右侧的英雄简介会跟着一起滑走
+     （用户原话："想换英雄往上滑，简介也会往上滑"）。列表和详情必须各自滚。 */
+  /* 【batch267b】54vh 是"拍脑袋"的固定值：1440x810 只有 437px、960 高只有 480px，
+     而英雄详情要 469~585px → 明明面板下面还空着 200~300px，却非要滚。
+     改成按视口算：100vh-260px（260＝标题/标签/上下留白的实际占用）。
+     1440x810 → 550、1707x960 → 700，两档都不用滚就能看完整简介。 */
+  .vl-list{max-height:calc(100vh - 260px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  .vl-detail{max-height:calc(100vh - 260px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  #srvBar{width:100%;margin:0 0 10px}
+}
+
+/* ---- 矮屏横屏（手机横过来、小笔记本）：高度紧张，一切从简 ---- */
+@media (orientation:landscape) and (max-height:610px){
+  #menuTitle{font-size:23px}
+  #menu .subtitle{display:none}
+  #menu .subtitle#myIdLine{display:block;font-size:10px;margin:0 0 4px}
+  #menuTips{display:none}
+  .gold-display{font-size:15px;margin-bottom:6px}
+  .tab{padding:6px 13px;font-size:12px}
+  #menuHomeBtns{gap:6px;margin-top:6px}
+  #menuHomeBtns .start-btn,#menuHomeBtns #netBtn{padding:8px 10px;font-size:13px}
+  #menuHomeBtns .story-launch em,#menuHomeBtns .raid-launch em{display:none}
+  #menuSetBtn{padding:7px 10px !important;font-size:12px !important;margin-top:6px !important}
+  /* 矮屏：面板自己滚，别让整页滚（整页滚会把左侧的按钮一起带走） */
+  #menu{max-height:calc(100vh - 12px)}
+  .panel.active{max-height:calc(100vh - 152px);overflow-y:auto;overscroll-behavior:contain}
+  /* 设置项的长说明在矮屏先收起来，把高度让给能点的控件 */
+  .spBody .spHint{display:none}
+  /* 英雄页：说明先收掉，左列表 / 右简介各自滚，面板整体就不滚了 */
+  .vl-note{display:none}
+  /* overflow-x:hidden 必须写：卡片里的名字标签会把内容撑宽一点点，
+     列表底部就多出一条横向滚动条（矮屏特别难看） */
+  .vl-list{max-height:calc(100vh - 214px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  .vl-detail{max-height:calc(100vh - 214px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  /* ---- 英雄页：390px 高的屏幕上，卡片和详情都要做矮，不然两栏各只剩半截 ---- */
+  .vl-hero{grid-template-columns:172px minmax(0,1fr);gap:10px}
+  .hero-card{padding:6px 7px;gap:1px 6px}
+  .hero-card .vl-face{width:24px;height:24px;font-size:14px}
+  .hero-card .vl-name{font-size:12px}
+  .hero-card .vl-role{font-size:9px;letter-spacing:0}
+  .hero-card .vl-keys{margin-top:2px}
+  .hero-card .hs{width:18px;height:16px;font-size:10px}
+  .hero-card .hd{display:none}        /* 卡片里的「🧬 被动……」两行 */
+  .hero-card .vl-xp{display:none}     /* 熟练度条（大屏再看） */
+  .vl-big{height:54px}
+  .vl-bigicon{font-size:26px;left:12px}
+  .vl-watermark{font-size:22px;bottom:-2px;letter-spacing:3px}
+  .vl-sel{font-size:10px}
+  .vl-dname{font-size:14px;margin:6px 0 1px;letter-spacing:1px}
+  .vl-drole{font-size:10px;letter-spacing:1px}
+  .vl-dfac{font-size:10px;margin-top:1px}
+  .vl-sk{padding:4px 0;gap:1px 7px}
+  .vl-skico{width:24px;height:24px;font-size:13px}
+  .vl-skico b{font-size:8px}
+  .vl-skname{font-size:11px}
+  .vl-skcd{font-size:9px}
+  .vl-skdesc{display:none}            /* 技能长描述：矮屏先不给，滚详情也看不全 */
+  .vl-spbox{margin-top:6px;padding:6px 8px}
+  .vl-spdesc{display:none}
+  .vl-spbtn{padding:6px;font-size:12px}
+  .panel{padding:10px 12px}
+  .upgrade-card{padding:12px}
+  .upgrade-desc{margin-bottom:6px}
+  .info-card{padding:12px}
+  .spCard{padding:12px}
+  .spRow{margin:4px 0 5px}
+  .spRange{margin-bottom:8px;height:22px}
+  .spBtn{margin:6px 0;padding:9px;font-size:14px}
+  .spHint{font-size:11px;line-height:1.45;margin:6px 2px}
+}
+
+/* ---- 设置面板：横屏两列，内容区自己滚、关闭按钮固定 ---- */
+.spCard{width:min(calc(920px * var(--uiuser,1) / var(--uiz,1)), calc(94vw / var(--uiz,1)));max-width:none;text-align:left;
+  display:flex;flex-direction:column;max-height:min(calc(92vh * var(--uiuser,1) / var(--uiz,1)), calc(96vh / var(--uiz,1)));overflow:hidden;gap:0}
+.spCard h3{text-align:center;flex:none}
+.spBody{display:grid;grid-template-columns:minmax(0,1fr);gap:0 28px;align-content:start;
+  min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px;touch-action:auto}
+.spCol{min-width:0}
+/* 底部按钮横排：语音聊天 / 关闭 / 模组管理 三个一排，矮屏才不至于把内容区压没 */
+.spFoot{flex:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,220px));gap:8px;
+  align-items:center;justify-content:center;
+  border-top:1px solid rgba(255,255,255,.12);margin-top:8px;padding-top:8px}
+.spFoot .spBtn{display:flex;align-items:center;justify-content:center;
+  width:100%;max-width:none;margin:0;padding:10px 8px;font-size:14px}
+.spFoot .spHint{grid-column:1 / -1;margin:2px 2px 0;text-align:center}
+/* ⚠️ 模组管理那个按钮是 js/61 直接插进 .spCard 的（不在 .spFoot 里），
+   不单独收一下就会在底部拉成一整条横杠。 */
+.spCard > .spBtn{max-width:380px;margin:8px auto 0}
+/* 深色底上的默认白色滚动条太扎眼，统一成一条细蓝条 */
+#menu::-webkit-scrollbar,.spBody::-webkit-scrollbar,.panel.active::-webkit-scrollbar{width:9px;height:9px}
+#menu::-webkit-scrollbar-track,.spBody::-webkit-scrollbar-track,.panel.active::-webkit-scrollbar-track{background:transparent}
+#menu::-webkit-scrollbar-thumb,.spBody::-webkit-scrollbar-thumb,.panel.active::-webkit-scrollbar-thumb{background:rgba(110,150,210,.45);border-radius:5px}
+#menu::-webkit-scrollbar-thumb:hover,.spBody::-webkit-scrollbar-thumb:hover{background:rgba(140,190,255,.7)}
+@media (orientation:landscape) and (min-width:820px){
+  .spBody{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+
+/* ---- 键位面板横屏放宽（竖屏保持原样） ---- */
+@media (orientation:landscape) and (min-width:820px){
+  #keyPanel .ctCard{width:min(780px,92vw);max-width:780px;text-align:left}
+  #keyPanel .ctCard h3{text-align:center}
+  #keyList{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;max-height:44vh}
+  #keyList .kRow{margin:3px 0}
+  #keyPanel .spBtn{max-width:320px;margin:8px auto 0}
+}
+
+/* ==================== 【batch264】暂停菜单右侧：信息区 ====================
+   以前 pause-mode 下 .tabs 与 4 个面板被 display:none 整块干掉，
+   右半边只剩背景色（用户："一点都不显示，不能显示一些简介吗"）。
+   这里补「本局 / 当前特工 / 操作速查」三张卡，只在暂停时出现。 */
+#pauseInfo{display:none}
+#blocker.pause-mode #pauseInfo{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+@media (min-width:760px){
+  #blocker.pause-mode #pauseInfo{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  #pauseInfo .piWide{grid-column:1 / -1}
+}
+.piCard{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:12px;
+  padding:12px 14px;text-align:left}
+.piTitle{font-size:13px;font-weight:800;color:#8fd6ff;letter-spacing:1px;margin-bottom:8px}
+.piRow{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#9fb4d6;padding:4px 0;
+  border-bottom:1px dashed rgba(255,255,255,.07)}
+.piRow:last-child{border-bottom:none}
+.piRow b{color:#fff;font-weight:800;text-align:right;word-break:break-all}
+.piHero{display:flex;align-items:center;gap:9px;font-size:15px;color:#fff;margin-bottom:8px}
+.piHero .piIco{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:rgba(0,0,0,.35);border:1px solid rgba(255,70,85,.6);font-size:18px;flex:none}
+.piHero .piTag{font-size:11px;font-weight:700;color:#ff8f9c;letter-spacing:1px}
+.piSk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cfe0f2;padding:3px 0}
+.piSk i{width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:5px;
+  background:rgba(255,70,85,.22);border:1px solid rgba(255,70,85,.5);font-style:normal;
+  font-size:11px;font-weight:800;color:#ffbcc4;flex:none}
+.piHint{font-size:12px;color:#9fb4d6;line-height:1.85}
+.piHint b{color:#fff}
+
+/* 暂停时"快捷入口"没有意义（局内不能换英雄/地图，点它只会切到被隐藏的标签页） */
+#blocker.pause-mode #sideQuick{display:none}
+/* 矮屏暂停：把信息卡压紧一点，让「操作速查」一屏能看完 */
+@media (orientation:landscape) and (max-height:610px){
+  #blocker.pause-mode #pauseInfo{gap:8px}
+  .piCard{padding:9px 11px}
+  .piTitle{font-size:12px;margin-bottom:6px}
+  .piRow{font-size:12px;padding:3px 0}
+  .piHero{font-size:13px;margin-bottom:6px}
+  .piHero .piIco{width:26px;height:26px;font-size:15px}
+  .piSk{font-size:11.5px;padding:2px 0}
+  .piHint{font-size:11px;line-height:1.65}
+  .piNote{display:none}
+}
+
+/* ==================== 【batch265】超宽屏：三栏（左玩家卡 / 中主区 / 右联机公告）====================
+   ⚠️ 必须放在上面那段横屏规则**之后**：同一个 #menu 先被设成 flex column（撑满画布），
+      这里再改成 grid 三列。顺序反过来的话会被覆盖，三栏就散架（左中右叠在一起）。 */
+/* 【1.11.0】三栏从"1600 硬断点 + 固定 px 栏宽"改成"1440 起 + clamp 连续宽度"：
+   以前 1600 是阶跃（1599 两栏、1600 突然三栏，内容宽度跳变 300px 以上），
+   左右栏又是 220/252 死值 —— 1920 上偏窄、2560/4K 上更窄。
+   现在两栏宽度随视口连续变化（clamp），只有"要不要显示第三栏"这一个必要断点。 */
+@media (orientation:landscape) and (min-width:1440px){
+  /* align-items:stretch —— 中间那列要撑满整高，否则 #menuMid 的 grid-template-rows:1fr 没有参考高度，
+     整块内容只占上半屏、下半屏一片黑（用户截图就是这样）。左右两栏用 align-self:stretch 撑满。 */
+  html:not(.ui-zoomed) #menu{display:grid;
+    grid-template-columns:clamp(180px,13.2vw,236px) minmax(0,1fr) clamp(200px,15.2vw,270px);
+    gap:clamp(12px,1.2vw,20px);align-items:stretch;height:calc(100dvh - 22px)}
+  html:not(.ui-zoomed) #menuLeft{display:flex;grid-column:1;grid-row:1}
+  html:not(.ui-zoomed) #menuMid{grid-column:2;grid-row:1}
+  html:not(.ui-zoomed) #menuRight{display:flex;grid-column:3;grid-row:1}
+  /* 【batch269】左右两栏分开定：左栏（标题/按钮区）按间距均分是用户要的"铺满"；
+     右栏（联机状态 / 本季公告 / 枪皮币 / 小贴士）**必须靠上排**——
+     之前两栏都 space-between，屏幕一拉高，右栏四张卡被撑到整列高度，
+     卡片之间空出好几厘米（用户："一拉大屏幕它们就离得好远"）。 */
+  /* 【1.11.0】左右两栏"等高对齐"：以前左栏 3 张卡、右栏 2~3 张卡，
+     两栏各自按内容堆高 → 左栏比右栏高出一截，看着歪。现在两栏都撑满整列高度，
+     最后一张卡 flex:1 把剩余高度吃掉，两栏底部齐平（内容少也不会露黑边）。 */
+  html:not(.ui-zoomed) .menuSide{display:flex;flex-direction:column;gap:10px;position:relative;align-self:stretch;
+    justify-content:flex-start;height:100%;max-height:100%;overflow-y:auto;overscroll-behavior:contain}
+  html:not(.ui-zoomed) .menuSide>.sideCard:last-child{flex:1 1 auto}
+  /* 【1.11.1】左列改成"只有提示卡可以被压缩，其它块一律不缩"：
+     实测 1280×720 上左列内容 619px、容器 566px —— 溢出的 53px 把最下面
+     「设置」按钮裁掉一半，和右列面板底边差出肉眼可见的一截（用户："左右两边排版长度不一样"）。
+     提示卡（details）是唯一"少看两行也无所谓"的块：空间不够时它自己缩、内部滚动，
+     标题 / 金币 / 三个大按钮 / 设置按钮全部保持完整高度 —— 1280~2560 都不用按尺寸开档。 */
+  html:not(.ui-zoomed) #menuSide{justify-content:space-between;overflow:hidden}
+  html:not(.ui-zoomed) #menuSide>*{flex:0 0 auto}
+  html:not(.ui-zoomed) #menuSide>#menuTips{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  html:not(.ui-zoomed) #menuTips>summary{flex:0 0 auto}
+  html:not(.ui-zoomed) #menuTips>.tip-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  html:not(.ui-zoomed) #menuMod{align-items:start}
+}
+
+/* 【batch266】枪械购买：卡片复用武器面板那套（.wsel-card），只补网格与价格条 */
+/* 【batch267b】枪皮卡改成**横版**：图左 / 名字+数据中 / 价格按钮右。
+   之前套用武器选择页的竖版大卡（图 42px + 名字 19px + 四行数据），一张 276px 高，
+   而这里通常只有一两件枪皮 → 又长又空（用户："每个枪卡拉的都太长了"）。现在 ~92px。 */
+.buy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:10px;align-content:start}
+/* auto-fit（不是 auto-fill）：只有一两件时把空轨道折叠，卡片**占满整行**，
+   否则一件枪皮蜷在左上角、右边一大片空。 */
+.buy-grid .wsel-card{padding:12px 16px}
+.buy-grid .wsel-card .wsel-ico{font-size:34px;width:44px}
+.buy-grid .wsel-card{cursor:default;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px}
+.buy-grid .wsel-card:hover{transform:none;border-color:rgba(120,160,220,.28);box-shadow:none}
+.buy-grid .wsel-card .wsel-ico{font-size:30px;line-height:1;text-align:center;margin:0;flex:none;width:40px}
+.buy-grid .wsel-card .buy-mid{flex:1;min-width:0;text-align:left}
+.buy-grid .wsel-card .wsel-name{font-size:14px;font-weight:800;text-align:left;margin:0 0 2px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.buy-grid .wsel-card .wsel-stats{font-size:11.5px;line-height:1.5;color:#9fb4d6;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.buy-grid .wsel-card .buy-row{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin:0}
+.buy-grid .wsel-card .buy-btn{padding:6px 12px;border:none;border-radius:7px;font-size:12px;font-weight:800;
+  cursor:pointer;color:#10131c;background:linear-gradient(135deg,#ffd166,#ffb454);white-space:nowrap}
+.buy-grid .wsel-card .buy-btn.off{background:rgba(255,255,255,.10);color:#7c8698;cursor:not-allowed}
+.buy-grid .wsel-card .buy-btn.equip{background:linear-gradient(135deg,#4fc3a1,#2f8f74);color:#06231c}
+.buy-grid .wsel-card .buy-price{font-size:11px;font-weight:800;color:#ffd166;letter-spacing:.5px;white-space:nowrap}
+.buy-grid .wsel-card .buy-owned{font-size:12px;font-weight:800;color:#7ee0a8;white-space:nowrap}
+/* 空状态：一件可买的都没有时给一句说明，而不是空白 */
+.buy-empty{grid-column:1 / -1;padding:22px 18px;border-radius:12px;border:1px dashed rgba(255,255,255,.14);
+  color:#9fb4d6;font-size:13px;line-height:1.8;text-align:center;background:rgba(255,255,255,.03)}
+
+/* ==================== 【batch271】好友 / 在线列表 / 队伍 ==================== */
+#sideBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#sideBtns .sideBtn{width:100%;margin:0}
+#socialPanel{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.68);z-index:610;touch-action:auto}
+#socialPanel.on{display:flex}
+.socialTabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+.socialTab{flex:1;min-width:92px;text-align:center;padding:8px 10px;border-radius:10px;cursor:pointer;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+  font-size:13px;font-weight:700;color:#bcd;user-select:none}
+.socialTab.active{background:linear-gradient(135deg,rgba(80,150,255,.35),rgba(60,110,220,.25));
+  border-color:rgba(120,190,255,.7);color:#fff}
+.socialBody{min-height:200px;max-height:52vh;overflow-y:auto;overscroll-behavior:contain;
+  display:flex;flex-direction:column;gap:6px;padding-right:2px}
+/* 【batch277】顶部标签页版社交容器：滚动交给外层 .vl-panel 统一管，容器自己不裁高度 */
+.vl-panel .socialBody.tabSocBody{min-height:160px;max-height:none;overflow:visible;padding-right:0}
+.socRow{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;
+  background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09)}
+.socRow .socName{flex:1;min-width:0;font-size:13px;font-weight:700;color:#fff;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.socRow .socSub{font-size:11px;color:#8fa5c4;font-weight:400;margin-top:1px}
+.socRow .socBtn{padding:5px 10px;border-radius:7px;border:none;font-size:12px;font-weight:800;cursor:pointer;
+  background:linear-gradient(135deg,#ffd166,#ffb454);color:#10131c;white-space:nowrap;flex:none}
+.socRow .socBtn.ghost,.socBtn.ghost{background:rgba(255,255,255,.10);color:#cfe0f2;
+  border:1px solid rgba(255,255,255,.16)}
+.socRow .socBtn:disabled{opacity:.45;cursor:not-allowed}
+.socEmpty{padding:24px 12px;text-align:center;color:#8fa5c4;font-size:13px;line-height:1.9}
+/* 【batch272】好友申请区块：金色边框，和普通好友行区分开 */
+.socReqBox{border:1px solid rgba(255,209,102,.42);background:rgba(255,209,102,.07);
+  border-radius:10px;padding:6px 8px 8px;margin-bottom:10px}
+.socReqHead{font-size:12px;font-weight:800;color:#ffd166;padding:2px 4px 6px;letter-spacing:.5px}
+.socReqBox .socRow{padding:6px 4px}
+.socInputRow{display:flex;gap:8px;margin-bottom:10px;align-items:center}
+.socInputRow input{flex:1;min-width:0;padding:8px 10px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.35);color:#fff;font-size:13px}
+.socDot{width:8px;height:8px;border-radius:50%;background:#4a5162;flex:none}
+.socDot.on{background:#4ade80;box-shadow:0 0 8px rgba(74,222,128,.8)}
+#partyInvite{position:fixed;left:50%;top:16%;transform:translateX(-50%);z-index:620;display:none;
+  background:rgba(24,28,44,.97);border:2px solid rgba(120,190,255,.6);border-radius:14px;
+  padding:14px 16px;color:#fff;text-align:center;min-width:260px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+#partyInvite.on{display:block}
+#partyInvite .piT{font-size:14px;font-weight:800;margin-bottom:10px}
+#partyInvite .piB{display:flex;gap:8px;justify-content:center}
+#partyInvite .socBtn{padding:7px 14px;border-radius:8px;border:none;font-size:13px;font-weight:800;cursor:pointer;
+  background:linear-gradient(135deg,#ffd166,#ffb454);color:#10131c}
+#partyInvite .socBtn.ghost{background:rgba(255,255,255,.10);color:#cfe0f2;border:1px solid rgba(255,255,255,.16)}
+
+/* 【batch271】两栏/窄屏的社交入口（三栏用左栏快捷入口那一组，这里隐藏，避免出现两套） */
+/* auto-fit：没连服务器时只剩「好友」一个按钮，它会占满整行，不会孤零零占 1/3 */
+#socialBtns{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-top:10px}
+#socialBtns .sideBtn{width:100%;margin:0;padding:9px 6px;font-size:13px}
+@media (orientation:landscape) and (min-width:1440px){html:not(.ui-zoomed) #socialBtns{display:none}}
+
+/* ==================== 【1.9.41】剧情界面横屏自适应 ====================
+   以前选章 / 选人 / 结算三张卡片固定 max-width:560px，横屏（尤其手机横屏和
+   扁窗口）里被挤成中间一条，4 个英雄格子每个不到 80px，字全糊在一起。
+   横屏时放宽到 94vw、横向排开；屏幕矮的时候再压缩留白、把长简介改成可滚动。 */
+@media (orientation:landscape){
+  #storyChapter .ctCard,#storyPick .ctCard,#storyDone .ctCard{max-width:min(920px,94vw);padding:14px 20px}
+  .stGrid{grid-template-columns:repeat(4,1fr);gap:11px}
+  /* 【1.10.3】原来是死板 2 列：界面缩放后 1366 宽会命中这个断点，5 章变 3 行放不下 */
+  .stChap{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stTip{font-size:12.5px}
+}
+@media (orientation:landscape) and (max-height:560px){
+  #storyChapter .ctCard,#storyPick .ctCard,#storyDone .ctCard{max-height:96vh;padding:11px 16px}
+  #storyChapter .ctCard h3,#storyPick .ctCard h3,#storyDone .ctCard h3{font-size:15px;margin:0 0 7px}
+  .stCardItem{padding:7px 4px;border-radius:10px}
+  .stCardItem .stIcon{font-size:19px}
+  .stCardItem .stName{font-size:12px;margin-top:0}
+  .stCardItem .stTag,.stCardItem .stSk{font-size:10px}
+  .stTip{max-height:54px;overflow:auto;margin:4px 0 0}
+  .stGrid{margin:8px 0 2px;gap:7px}
+  .stChap{margin:8px 0 4px;gap:8px}
+  .stChapItem{padding:8px 10px}
+  .stChapItem .stDesc{display:none}
+}
+/* ==================== 【1.10.22】手机版 HUD：照电脑版原尺寸，整层等比缩小 ====================
+   用户口径："手机版为什么始终用小一号的尺寸？用大一号的尺寸直接等比例缩小，强行兼容，
+   而不是研究出一个人不人鬼不鬼的尺寸，设置里怎么调大小都有一点不好看。"
+
+   以前这里是一整套"手机专用尺寸"：每个元素都用 --u（750×375 设计像素）重算一遍宽高和字号，
+   于是手机上出现的是一套**只在手机上存在**的比例 —— 和电脑版对不上，怎么调都别扭。
+
+   现在反过来：
+     · 尺寸一个都不重算，全部沿用电脑版（220 宽血条 / 32 号弹药 / 120 小地图 / 三张技能卡）；
+     · 整层由 --hudk（js/00 写进 :root：视口宽/1080 × 界面倍率）transform:scale 缩小；
+     · 虚拟画布 = 视口 / --hudk，缩完正好铺满屏幕；
+     · 这里只做**必要的挪位**（左下让摇杆、右下让开火键），位置也用电脑版的坐标系。
+   结果：手机上看到的比例与电脑 1080 屏完全一致，只是整体小一圈 —— 这就叫"强行兼容"。
+   ⚠️ 全部加 body.is-touch 前缀，电脑版一个字节都不受影响。 */
+body.is-touch #mobPause{display:flex;}
+
+/* ---- 整层等比缩小 ---- */
+body.is-touch #hud{
+  width:calc(100% / var(--hudk,1));
+  height:calc(100% / var(--hudk,1));
+  transform:scale(var(--hudk,1));
+  transform-origin:0 0;
+}
+
+/* ---- 只挪位、不改尺寸（坐标是 1080×607 母版坐标系）----
+   左下角让给摇杆、右下角让给开火键：
+   血条/金币/FPS 抬到左上（暂停键右边），弹药/枪名抬到右上（小地图左侧）。 */
+body.is-touch #hp-text{left:100px;bottom:auto;top:2px;font-size:13px;}
+body.is-touch #hp-wrap{left:100px;bottom:auto;top:24px;width:220px;height:18px;border-radius:9px;}
+body.is-touch #gold-hud{left:322px;bottom:auto;top:22px;font-size:18px;}
+body.is-touch #fps{left:100px;top:46px;font-size:11px;}
+/* ⚠️ 小地图是 <canvas>：绝对定位的 replaced 元素只写 right 是不够的 ——
+   Chrome 会按"静态位置"（0,0）放它，right 直接被忽略（实测：right=9.6px 但 left 仍是 0）。
+   必须显式写 left:auto 才会真的靠右。
+   尺寸**不再写死**：js 的 tuningApplyUI 会把内联 width/height 设成设置里的"小地图大小"，
+   那正好就是电脑版口径（默认 120），等比缩小后跟着一起变。 */
+body.is-touch #minimap{left:auto;right:16px;top:40px;}
+body.is-touch #score{right:16px;top:8px;font-size:22px;}
+body.is-touch #ammo{right:150px;bottom:auto;top:6px;font-size:32px;}
+body.is-touch #ammo span{font-size:16px;}
+body.is-touch #weapon-name,body.is-touch #reload-text{
+  right:150px;bottom:auto;top:52px;font-size:12px;}
+body.is-touch #wave{top:8px;font-size:17px;}
+
+/* 【1.11.1】触屏技能栏：尺寸/位置**只吃 --u**，不再乘 --hudk，也不再 translateX(-50%)。
+   原来那套是 1.10.x 的写法（当时 #skillHud 是 left:50% + 固定 px 的小条），
+   1.11.0 把容器改成 left:0;right:0 + justify-content:center 之后，这两个属性就变成双重错误：
+     · translateX(-50%)：整条往左挪半个视口 —— 实测 1280×720 上槽0/槽1 直接跑到屏幕外（x=-155/-49）；
+     · scale(--hudk)：槽自身已经按 --u 算过一次，再乘 1.19~2.17 倍 →
+       1080P 手机上单槽 391px、三张 1173px，占掉半个屏幕（用户："快占满全屏了"）。
+   现在：和桌面同一口径（--u），底边抬到 92u 避开手势条；容器不吃触摸（见下）。 */
+body.is-touch #skillHud{
+  bottom:calc(92 * var(--u) + var(--sy));
+  gap:calc(8 * var(--u));
+  padding:0;
+  pointer-events:none;   /* ⚠️ 整条 left:0;right:0 全宽，容器若能点就会把中间一大片视角拖拽全吃掉 */
+}
+/* 只有槽自己收触摸（三个槽之间的缝仍然能拖视角） */
+body.is-touch #skillHud .skSlot{pointer-events:auto;
+  width:calc(74 * var(--u));padding:calc(3 * var(--u)) calc(2 * var(--u));border-radius:calc(9 * var(--u));}
+body.is-touch #skillHud .skSlot .skIcon{width:calc(28 * var(--u));height:calc(28 * var(--u));
+  border-radius:calc(7 * var(--u));font-size:calc(15 * var(--u));}
+body.is-touch #skillHud .skSlot .skName{display:block;font-size:calc(9.5 * var(--u));}
+body.is-touch #skillHud .skSlot .skKey{font-size:calc(9.5 * var(--u));}
+body.is-touch #skillHud .skSlot .skBarWrap{width:calc(62 * var(--u));height:calc(4 * var(--u));}
+/* 开镜时压淡技能栏（和电脑版同一条规则） */
+body.is-touch.scope-on #skillHud{opacity:.35;}
+
+</style>
+</head>
+<body>
+<div id="raidPrep">
+  <div class="rpCard">
+    <div class="rpHead">
+      <div>
+        <div class="rpTitle">🧳 搜打撤行动</div>
+        <div class="rpSub">搜索 · 交战 · 撤离　｜　带着装备进去，活着出来才算你的</div>
+      </div>
+      <button class="rpBack" id="raidBackBtn">← 返回原游戏</button>
+    </div>
+    <div class="rpTabs">
+      <button class="rpTab active" data-rp="deploy">🚁 部署</button>
+      <button class="rpTab" data-rp="stash">📦 仓库</button>
+      <button class="rpTab" data-rp="market">🏷 交易行</button>
+      <button class="rpTab" data-rp="profile">📋 档案</button>
+    </div>
+    <div class="rpBody">
+      <div class="rpPane on" id="rp-deploy">
+        <div class="rdDeploy">
+          <div class="rdDeployMain">
+            <div class="rdPresets" id="rdPresets"></div>
+            <div class="rdTools" style="margin:-4px 0 12px;align-items:center">
+              <button class="rdBtn" id="rdPreApply">按选中方案一键装配（可选）</button>
+              <span style="font-size:11px;color:#8ea1b2">点上面的方案只是看清单，不会自动装；不点这个按钮就完全自己拖。</span>
+            </div>
+            <div class="rpRow">
+              <div class="rpField"><span>地图</span><b>灰港封锁区</b></div>
+              <div class="rpField"><span>人数</span><b>匹配 · 最多 6 人</b></div>
+              <div class="rpField rpPick" id="rdSafeField"><span>安全箱</span><b id="rdDeploySafe">不带</b></div>
+            </div>
+            <!-- 胸挂 / 背包 / 头盔 / 护甲是角色自带的，这里只展示、不给选（选了也不该生效） -->
+            <div class="rdGear" id="rdDeployGear"></div>
+            <div class="rpNotice">
+              <div class="rpNoticeT">🚧 阶段 4：灰港封锁区已接入 3D 场景</div>
+              <div class="rpNoticeD">装备（武器 / 胸挂 / 背包 / 头盔 / 护甲 / 安全箱）<b>都要自己从仓库装上</b>。
+                三个方案只是清单：<b>点卡片不会自动装</b>，只有点「按选中方案一键装配」才会照清单搬东西；
+                不点就完全按你自己拖的配置出发，空手也行。<br>
+                点「出发」进图：<b>按住 F 开箱搜刮</b>，走到绿色光圈<b>按住 F 撤离</b>；挨枪会打断开盖。</div>
+            </div>
+          </div>
+          <div class="rdDeploySide">
+            <div class="rdSum" id="rdDeploySum"></div>
+            <div class="rdInsList" id="rdInsList"></div>
+          </div>
+        </div>
+      </div>
+      <div class="rpPane" id="rp-stash">
+        <div class="rdWrap">
+          <div class="rdCol">
+            <div class="rdHead">
+              <span class="rdHTitle">📦 仓库</span>
+              <span class="rdMeta" id="rdStashMeta"></span>
+              <span class="rdCoin" id="rdCoin">🪙 0 封锁币</span>
+            </div>
+            <!-- 装备小槽放在仓库标题下面：它们是"身上穿着什么"，属于角色，
+                 不能因为右边打开了物品详情就被藏起来（那样也拖不进去） -->
+            <div class="rdFilters" id="rdFilters"></div>
+            <div class="rdGridWrap"><div class="rdGrid" id="rdStashGrid"></div></div>
+            <div class="rdTools">
+              <button class="rdBtn" id="rdSortBtn">🧹 一键整理</button>
+              <button class="rdBtn" id="rdSellJunk">💰 一键卖杂物</button>
+              <span class="rdTip" id="rdTip">点物品选中，再点空格移动</span>
+            </div>
+          </div>
+          <div class="rdCol">
+            <!-- 胸挂和安全箱并排放：单列摆三个盒子在 1600×900 上会顶出正文区，
+                 而这两个都是"随时要往里塞东西"的容器，藏起来就得先滚动 -->
+            <div class="rdEquipTop">
+              <div class="rdBox rdSlot 空" data-slot="胸挂">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdRigIco"></span><span id="rdRigName">胸挂</span><em id="rdRigMeta"></em><button class="rdSlotX" data-unset="胸挂">卸下</button></div>
+                <div class="rdGrid" id="rdRigGrid"></div>
+                <div class="rdSlotEmpty" id="rdRigEmpty">空槽<span>把仓库里的胸挂拖到这</span></div>
+              </div>
+              <div class="rdBox rdSlot 空" data-slot="安全箱">
+                <div class="rdBoxH rdH2"><span class="rdBoxIco" id="rdSafeIco"></span><span id="rdSafeName">安全箱</span><em id="rdSafeMeta"></em><button class="rdSlotX" data-unset="安全箱">卸下</button></div>
+                <div class="rdGrid" id="rdSafeGrid"></div>
+                <div class="rdSlotEmpty" id="rdSafeEmpty">空槽<span>保险箱拖到这</span></div>
+                <div class="rdTools"><button class="rdBtn" id="rdSafePick2">选择安全箱</button></div>
+              </div>
+            </div>
+            <div class="rdBox rdSlot 空" data-slot="背包">
+              <div class="rdBoxH"><span class="rdBoxIco" id="rdBpIco"></span><span id="rdBpName">背包</span><em id="rdBpMeta"></em><button class="rdSlotX" data-unset="背包">卸下</button></div>
+              <div class="rdGrid" id="rdBpGrid"></div>
+              <div class="rdSlotEmpty" id="rdBpEmpty">空槽<span>把仓库里的背包拖到这</span></div>
+            </div>
+            <div class="rdBodyGear">
+              <!-- 武器槽：也是从仓库里装上来的，不是预设白给的 -->
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="枪">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdGunIco0"></span><span id="rdGunName0">主武器</span><em id="rdGunMeta0"></em><button class="rdSlotX" data-unset="枪">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdGunEmpty0">空槽<span>把枪拖到这</span></div>
+              </div>
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="枪2">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdGunIco1"></span><span id="rdGunName1">副武器</span><em id="rdGunMeta1"></em><button class="rdSlotX" data-unset="枪2">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdGunEmpty1">空槽<span>把枪拖到这</span></div>
+              </div>
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="头盔">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdHelmIco"></span><span id="rdHelmName">头盔</span><em id="rdHelmMeta"></em><button class="rdSlotX" data-unset="头盔">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdHelmEmpty">空槽<span>拖头盔到这</span></div>
+              </div>
+              <div class="rdBox rdSlot rdSlotSm 空" data-slot="护甲">
+                <div class="rdBoxH"><span class="rdBoxIco" id="rdArmorIco"></span><span id="rdArmorName">护甲</span><em id="rdArmorMeta"></em><button class="rdSlotX" data-unset="护甲">卸下</button></div>
+                <div class="rdSlotEmpty" id="rdArmorEmpty">空槽<span>拖护甲到这</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="rdCol">
+            <!-- 头盔/护甲没有内层容量，做成一排小槽就够了 -->
+            <div class="rdDetail" id="rdDetail"></div>
+          </div>
+        </div>
+      </div>
+      <div class="rpPane" id="rp-market">
+        <div class="rdHead">
+          <span class="rdHTitle">🏷 交易行</span>
+          <span class="rdMeta">只卖 <b>枪械 / 胸挂 / 背包 / 护甲 / 头盔 / 弹药 / 医药</b>；买入价＝回收价 ×2（倒卖必亏）</span>
+          <span class="rdCoin" id="rdMkCoin">🪙 0 封锁币</span>
+        </div>
+        <div class="rdFilters" id="rdMkFilters"></div>
+        <div class="rdMkGrid" id="rdMkList"></div>
+        <div class="rpNotice" style="margin-top:12px">
+          <div class="rpNoticeT">🚧 全局挂单要等阶段 9</div>
+          <div class="rpNoticeD">现在这里是"系统商店"：按标价直接买，货架不跟别人共享。
+            玩家之间的挂单、报价、离线快照要等服务端那套行情库。<br>
+            想变现：在<b>仓库</b>里选中物品点「卖出」，或者用「一键卖杂物」。</div>
+        </div>
+      </div>
+      <div class="rpPane" id="rp-profile">
+        <div class="rpRow">
+          <div class="rpField"><span>封锁币</span><b id="rdPfCoin">0</b></div>
+          <div class="rpField"><span>仓库物品</span><b id="rdPfItems">0</b></div>
+          <div class="rpField"><span>仓库总值</span><b id="rdPfValue">0</b></div>
+          <div class="rpField"><span>保险凭证</span><b id="rdPfVoucher">0</b></div>
+        </div>
+        <div class="rpNotice">
+          <div class="rpNoticeT">📋 档案</div>
+          <div class="rpNoticeD" id="rdPfText">阶段 7 开放：局数 / 撤离 / 死亡 / 带出总值 / 剧情进度。</div>
+        </div>
+      </div>
+    </div>
+    <!-- 「出发」放在卡片底部固定区（不在 .rpBody 的滚动流里）：
+         以前它在部署页最下面，保险条一多就被顶出可视区，得滚动才点得到。
+         主按钮不该需要滚动。只在「部署」页显示，切页时由 搜打撤_切页 控制。 -->
+    <div class="rpFoot" id="rpFoot">
+      <button class="rpGo" id="raidGoBtn">出发 · 灰港封锁区</button>
+    </div>
+  </div>
+  <!-- 安全箱选择窗口：铺在准备层之内（position:absolute 相对 #raidPrep），
+       不新开全屏层，这样点暗底、点 × 都只影响它自己。 -->
+  <div class="rdWin" id="rdSafeWin">
+    <div class="rdWinCard">
+      <div class="rdWinH"><span>🛡 选择安全箱</span><button class="rdWinX" id="rdSafeClose" aria-label="关闭">×</button></div>
+      <div class="rdWinD">安全箱跟着角色走，<b>不占背包格</b>；死亡时里面的东西整箱保住（受单件价值上限约束）。
+        换箱前要先把里面的东西取出来 —— 不然那些保底物会跟着旧箱一起消失。</div>
+      <div class="rdWinBody" id="rdSafeList"></div>
+    </div>
+  </div>
+  <!-- 搜刮窗口：开盖进度 → 战利品列表。阶段 4 会把它搬到局内 HUD 上，结构不用改。 -->
+  <div class="rdWin" id="rdLootWin">
+    <div class="rdWinCard rdLootCard">
+      <div class="rdWinH"><span id="rdLootName">容器</span><em id="rdLootMeta" class="rdLootMetaEm"></em>
+        <button class="rdWinX" id="rdLootClose" aria-label="关闭">×</button></div>
+      <div class="rdLootBar" id="rdLootBar"><i id="rdLootBarIn"></i><span>开盖中…</span></div>
+      <div class="rdLootBody" id="rdLootBody"></div>
+      <div class="rdLootFoot">
+        <button class="rdBtn" id="rdLootAll">全部拿走</button>
+        <button class="rdBtn" id="rdLootClose2">关闭</button>
+        <span class="rdTip" id="rdLootTip">点「拿」放进背包；装不下会自动试胸挂 / 安全箱</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 只加载搜打撤自己的 JS，不引原版英雄/技能/波次/联机那几十个分片 -->
+<script src="../lib/three.r128.min.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('../lib/three.r128.min.js')"></script>
+<script src="js/74_搜打撤_数据.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/74_搜打撤_数据.js')"></script>
+<script src="js/75_搜打撤_物品.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/75_搜打撤_物品.js')"></script>
+<script src="js/76_搜打撤_地图.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/76_搜打撤_地图.js')"></script>
+<script src="js/77_搜打撤_局内.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/77_搜打撤_局内.js')"></script>
+<script src="js/79_搜打撤_图标.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/79_搜打撤_图标.js')"></script>
+<script src="js/80_独立引擎.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/80_独立引擎.js')"></script>
+<script src="js/78_搜打撤_界面.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/78_搜打撤_界面.js')"></script>
+<script src="js/81_独立外观.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/81_独立外观.js')"></script>
+<script src="js/82_灰港北岸.js?v=1.12.0" onerror="window.__jsFail=(window.__jsFail||[]).concat('js/82_灰港北岸.js')"></script>
+<script>
+window.addEventListener('load',function(){
+  try {
+    var f = window.__jsFail || [];
+    if (f.length) document.body.insertAdjacentHTML('afterbegin',
+      '<div style="position:fixed;inset:0;z-index:99999;background:#0c1119;color:#ff8e8e;padding:40px;font:15px/1.8 monospace">'
+      + '以下脚本没加载成功：<br>' + f.join('<br>') + '</div>');
+  } catch(e){}
+});
+</script>
+</body>
+</html>

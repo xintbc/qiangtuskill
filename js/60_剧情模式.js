@@ -1025,6 +1025,10 @@ function clearFieldData(){
     if(typeof clearDeathFx==='function')clearDeathFx();
     /* ⑨ 模组自己放进场上的物体（黑洞 / 假人 / 歌声光环 / 远端复现物） */
     try{if(window.ModLoader&&typeof ModLoader.clearField==='function')ModLoader.clearField();}catch(e5){}
+    /* ⑩ 【1.12.0】搜打撤：容器 / 地面掉落 / 撤离点光柱 / 守卫 / 任务交互物。
+       挂在最后而不是各写一遍，是为了让"退出对局"永远只有这一条清理路径。
+       不在搜打撤里时 搜打撤_清场() 第一行就 return，原版对局零影响。 */
+    try{ if(typeof 搜打撤_清场==='function')搜打撤_清场(); }catch(e6){}
   }catch(e){}
 }
 /* 退出对局时的「状态归零」：把本局跑过的所有运行时状态重置回"刚打开页面"的初始值。
@@ -1103,6 +1107,8 @@ function resetRoundState(wasMulti){
     try{ if(typeof _gravSrc!=='undefined')_gravSrc.length=0; }catch(e8){}
     /* ⑦ 视角回正 */
     yaw=0;pitch=0;
+    /* ⑧ 【1.12.0】搜打撤：局内标志与阶段归零（不在搜打撤里时是空操作） */
+    try{ if(typeof 搜打撤_清状态==='function')搜打撤_清状态(); }catch(e9){}
   }catch(e){}
 }
 // 结束当前局、回到主菜单（此时才允许加入服务器）
@@ -1194,6 +1200,9 @@ function quitToHome(){
     try{ if(bl)bl.style.display='flex'; }catch(e){}
     try{ setMenuMode('home'); }catch(e){}
     try{ refreshMyIdLine(); }catch(e){}
+    /* 【1.12.0】名字这关过了：如果这次刷新是从对局切去搜打撤造成的，直接回到准备层
+       —— 玩家点一次「搜打撤行动」就该到地方，不该被"刷新 → 主菜单 → 再点一次"打断。 */
+    try{ if(typeof 搜打撤_开机自检==='function')搜打撤_开机自检(); }catch(e){}
   }
   function 弹面板(msg){
     _已进=false;

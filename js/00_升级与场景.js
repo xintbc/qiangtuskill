@@ -144,7 +144,10 @@
     go: 1,               /* 游戏结束 */
     settingsPanel: 1, socialPanel: 1, partyInvite: 1,
     keyPanel: 1, netPanel: 1, namePanel: 1,
-    storyChapter: 1, storyPick: 1, storyDone: 1
+    storyChapter: 1, storyPick: 1, storyDone: 1,
+    /* 【1.12.0】搜打撤准备层也吃同一套等比放大 —— 漏了它就会在 2340×1080 这种
+       宽屏上比别的菜单小一圈，看着像"另一个游戏的界面"。 */
+    raidPrep: 1
   };
   try {
     if (!document.body) return;

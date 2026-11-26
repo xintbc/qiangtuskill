@@ -152,9 +152,9 @@ document.addEventListener('mousedown',function(e){if(window.__聊天输入中)re
      → 在队伍界面点一下空白，直接把暂停菜单解除、游戏继续跑了（用户："点空白处会直接解除暂停"）。
      现在多加了 #socialPanel / #partyInvite / #menu，并用 closest 兜住任意层级。 */
   try{
-    if(target&&target.closest&&target.closest('#socialPanel,#partyInvite,#menu,#blocker,#wave-shop,#weapon-select,#go,#keyPanel,#netPanel,#lockHint,#modPanel'))return;
+    if(target&&target.closest&&target.closest('#socialPanel,#partyInvite,#menu,#blocker,#wave-shop,#weapon-select,#go,#keyPanel,#netPanel,#lockHint,#modPanel,#raidPrep'))return;
   }catch(_eCl){}
-  while(target&&target!==document.body){if(target.id==='wave-shop'||target.id==='weapon-select'||target.id==='blocker'||target.id==='go'||target.id==='keyPanel'||target.id==='netPanel'||target.id==='lockHint'||target.id==='modPanel'||target.id==='socialPanel'||target.id==='partyInvite'||target.id==='menu')return;target=target.parentElement;}if(S.paused&&!S.over&&S.playing){_lockErr=0;_lockUnavailable=false;if(!isTouch)lockPointer();closeGameMenu();return;}
+  while(target&&target!==document.body){if(target.id==='wave-shop'||target.id==='weapon-select'||target.id==='blocker'||target.id==='go'||target.id==='keyPanel'||target.id==='netPanel'||target.id==='lockHint'||target.id==='modPanel'||target.id==='socialPanel'||target.id==='partyInvite'||target.id==='menu'||target.id==='raidPrep')return;target=target.parentElement;}if(S.paused&&!S.over&&S.playing){_lockErr=0;_lockUnavailable=false;if(!isTouch)lockPointer();closeGameMenu();return;}
   // 电脑端在游戏中点了画面但指针还没锁上 → 这一下只用来"重新锁定"，不当作开枪
   if(e.button===0&&!isTouch&&S.playing&&!S.over&&!S.paused&&!pointerLocked){_lockErr=0;_lockUnavailable=false;lockPointer();return;}
   if(e.button===0){if(SK.ghost>0){e.preventDefault();heroPortalPlace();return;}   /* 【batch145】虚化中：左键＝放下门 */
