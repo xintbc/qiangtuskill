@@ -4361,7 +4361,12 @@ const server = http.createServer(function (req, res) {
      页面按相对路径引 lib/（three.js） js/（各分片） mode/（模组加载器）。
      没有这几条路由，玩家打开 /pc 页面能出、脚本全 404 —— 就是一片空白。
      目录穿越防护与上面 /mode/ 同一套：拼出来的路径必须仍在 多文件版/ 里。 */
-  if (url.indexOf('/lib/') === 0 || url.indexOf('/js/') === 0 || url.indexOf('/mode/') === 0) {
+  if (url.indexOf('/lib/') === 0 || url.indexOf('/js/') === 0 || url.indexOf('/mode/') === 0
+      || url.indexOf('/搜打撤/') === 0 || url.indexOf('/%E6%90%9C%E6%89%93%E6%92%A4/') === 0) {
+    /* 【1.11.5-beta1】搜打撤独立页：主游戏 /play 里的「搜打撤行动」跳相对路径
+       搜打撤/index.html，在网页端就是 /搜打撤/index.html —— 这条路由不放行就 404，
+       玩家点了按钮直接"未找到文件"。目录本身在 gameDir()/搜打撤/ 下，和 js/ 同级，
+       复用同一套路径解码 + 目录穿越防护，别让中文路径成为新的任意文件读取口子。 */
     let rel;
     try { rel = decodeURIComponent(url.replace(/^\/+/, '')); }
     catch (e) {
